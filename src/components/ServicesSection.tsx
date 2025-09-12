@@ -20,13 +20,6 @@ const ServicesSection = () => {
       color: "primary"
     },
     {
-      icon: Users,
-      title: "Community Fellowship", 
-      description: "Connect with like-minded traders, share insights, and learn from experienced professionals in our exclusive community.",
-      features: ["Private Discord", "Weekly Meetups", "Peer Learning", "Success Stories"],
-      color: "accent"
-    },
-    {
       icon: TrendingUp,
       title: "Live Trading Signals",
       description: "Receive real-time trading alerts and signals from our expert analysts with detailed entry and exit strategies.",
