@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Play, TrendingUp, Users, Shield } from "lucide-react";
 import heroImage from "@/assets/hero-trading.jpg";
+import DemoVideoModal from "@/components/DemoVideoModal";
 
 const HeroSection = () => {
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
+
   return (
     <section id="home" className="relative min-h-screen flex items-center pt-20 bg-gradient-hero">
       {/* Background overlay */}
@@ -37,7 +41,12 @@ const HeroSection = () => {
                 Start Trading Today
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button variant="ghost" size="lg" className="group">
+              <Button 
+                variant="ghost" 
+                size="lg" 
+                className="group"
+                onClick={() => setIsDemoOpen(true)}
+              >
                 <Play className="w-5 h-5 mr-2" />
                 Watch Demo
               </Button>
@@ -112,6 +121,12 @@ const HeroSection = () => {
           </div>
         </div>
       </div>
+
+      {/* Demo Video Modal */}
+      <DemoVideoModal 
+        isOpen={isDemoOpen} 
+        onClose={() => setIsDemoOpen(false)} 
+      />
     </section>
   );
 };
