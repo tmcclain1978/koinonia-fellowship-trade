@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.submit-contact]
 verify_jwt = false
+
+[functions.fetch-options-chain]
+verify_jwt = false
+
+[functions.fetch-market-news]
+verify_jwt = false
