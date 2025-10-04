@@ -6,58 +6,64 @@ import { Play, BookOpen, LogOut } from "lucide-react";
 
 const Education = () => {
   const [selectedVideo, setSelectedVideo] = useState(0);
+  const [videos, setVideos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const videos = [
-    {
-      title: "Introduction to Options Trading",
-      duration: "15:30",
-      category: "Basics",
-      url: "https://www.youtube.com/embed/VJgHkAqohbE",
-      thumbnail: "https://img.youtube.com/vi/VJgHkAqohbE/mqdefault.jpg"
-    },
-    {
-      title: "Understanding Call and Put Options",
-      duration: "22:45",
-      category: "Strategy",
-      url: "https://www.youtube.com/embed/EfmTWu2yn5Q",
-      thumbnail: "https://img.youtube.com/vi/EfmTWu2yn5Q/mqdefault.jpg"
-    },
-    {
-      title: "Risk Management in Options Trading",
-      duration: "18:20",
-      category: "Risk",
-      url: "https://www.youtube.com/embed/7PM4rNDr4oI",
-      thumbnail: "https://img.youtube.com/vi/7PM4rNDr4oI/mqdefault.jpg"
-    },
-    {
-      title: "Technical Analysis for Options",
-      duration: "25:10",
-      category: "Analysis",
-      url: "https://www.youtube.com/embed/08c8g3wJn90",
-      thumbnail: "https://img.youtube.com/vi/08c8g3wJn90/mqdefault.jpg"
-    },
-    {
-      title: "Advanced Options Strategies",
-      duration: "30:15",
-      category: "Advanced",
-      url: "https://www.youtube.com/embed/7xdoQLHx5Y8",
-      thumbnail: "https://img.youtube.com/vi/7xdoQLHx5Y8/mqdefault.jpg"
-    },
-  ];
-
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/auth");
-      }
-    });
+    checkAuth();
   }, [navigate]);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      navigate("/auth");
+      return;
+    }
+    fetchVideos();
+  };
+
+  const fetchVideos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("videos" as any)
+        .select("*")
+        .eq("status", "published")
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      
+      setVideos((data as any) || []);
+    } catch (error) {
+      console.error("Error fetching videos:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading videos...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">No videos available yet.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pt-16">
@@ -74,7 +80,7 @@ const Education = () => {
                 <iframe
                   width="100%"
                   height="100%"
-                  src={videos[selectedVideo].url}
+                  src={videos[selectedVideo].video_url}
                   title={videos[selectedVideo].title}
                   frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -118,7 +124,7 @@ const Education = () => {
                 >
                   <div className="relative w-24 h-16 flex-shrink-0 bg-black rounded-lg overflow-hidden">
                     <img 
-                      src={video.thumbnail} 
+                      src={video.thumbnail_url} 
                       alt={video.title}
                       className="w-full h-full object-cover"
                     />
