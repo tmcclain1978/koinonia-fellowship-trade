@@ -7,6 +7,8 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Trading from "./pages/Trading";
+import PaperTrading from "./pages/PaperTrading";
+import Analytics from "./pages/Analytics";
 import Education from "./pages/Education";
 import Podcast from "./pages/Podcast";
 import NotFound from "./pages/NotFound";
@@ -24,6 +26,8 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/trading" element={<Trading />} />
+          <Route path="/paper-trading" element={<PaperTrading />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/education" element={<Education />} />
           <Route path="/podcast" element={<Podcast />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

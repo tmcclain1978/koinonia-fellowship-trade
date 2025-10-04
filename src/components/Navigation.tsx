@@ -71,7 +71,27 @@ const Navigation = () => {
                 Trading
               </Link>
               <Link 
-                to="/education" 
+                to="/paper-trading" 
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/paper-trading" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Paper Trading
+              </Link>
+              <Link 
+                to="/analytics" 
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/analytics" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Analytics
+              </Link>
+              <Link 
+                to="/education"
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/education" 
                     ? "text-primary" 
@@ -139,7 +159,29 @@ const Navigation = () => {
                   Trading
                 </Link>
                 <Link 
-                  to="/education" 
+                  to="/paper-trading" 
+                  className={`text-sm font-medium ${
+                    location.pathname === "/paper-trading" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Paper Trading
+                </Link>
+                <Link 
+                  to="/analytics" 
+                  className={`text-sm font-medium ${
+                    location.pathname === "/analytics" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Analytics
+                </Link>
+                <Link 
+                  to="/education"
                   className={`text-sm font-medium ${
                     location.pathname === "/education" 
                       ? "text-primary" 
