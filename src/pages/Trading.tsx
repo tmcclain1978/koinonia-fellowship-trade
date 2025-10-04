@@ -4,8 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, TrendingUp, DollarSign, Activity } from "lucide-react";
+import { CalendarIcon, TrendingUp } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -18,6 +22,8 @@ const Trading = () => {
   const [limitPrice, setLimitPrice] = useState("");
   const [stopPrice, setStopPrice] = useState("");
   const [trailAmount, setTrailAmount] = useState("");
+  const [strikePrice, setStrikePrice] = useState("");
+  const [expirationDate, setExpirationDate] = useState<Date>();
   
   // Multi-leg options
   const [leg1Strike, setLeg1Strike] = useState("");
@@ -32,7 +38,6 @@ const Trading = () => {
   const [leg4Strike, setLeg4Strike] = useState("");
   const [leg4Type, setLeg4Type] = useState("PUT");
   const [leg4Action, setLeg4Action] = useState("BUY");
-  const [expiration, setExpiration] = useState("");
   const [stockQuantity, setStockQuantity] = useState("100");
   const [chartData, setChartData] = useState([
     { time: '9:30', price: 175, volume: 1200 },
@@ -234,17 +239,29 @@ const Trading = () => {
 
               {/* Single Leg */}
               {orderStructure === "single" && (
-                <div className="grid md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Option Type</label>
-                    <select 
-                      value={orderType}
-                      onChange={(e) => setOrderType(e.target.value)}
-                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
-                    >
-                      <option value="CALL">Call</option>
-                      <option value="PUT">Put</option>
-                    </select>
+                <div className="space-y-4 mb-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-2">Option Type</label>
+                      <select 
+                        value={orderType}
+                        onChange={(e) => setOrderType(e.target.value)}
+                        className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                      >
+                        <option value="CALL">Call</option>
+                        <option value="PUT">Put</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-2">Strike Price</label>
+                      <Input
+                        type="number"
+                        step="0.50"
+                        value={strikePrice}
+                        onChange={(e) => setStrikePrice(e.target.value)}
+                        placeholder="150.00"
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
@@ -404,11 +421,30 @@ const Trading = () => {
               {orderStructure !== "covered" && (
                 <div className="mb-4">
                   <label className="block text-sm text-muted-foreground mb-2">Expiration Date</label>
-                  <Input
-                    type="date"
-                    value={expiration}
-                    onChange={(e) => setExpiration(e.target.value)}
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !expirationDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {expirationDate ? format(expirationDate, "PPP") : <span>Pick expiration date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={expirationDate}
+                        onSelect={setExpirationDate}
+                        disabled={(date) => date < new Date()}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               )}
 
