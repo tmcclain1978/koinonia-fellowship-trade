@@ -47,26 +47,7 @@ const Trading = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border sticky top-0 z-50 backdrop-blur-sm bg-card/90">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-                ← Dashboard
-              </Button>
-              <h1 className="font-display text-2xl font-bold text-foreground">
-                🧾 Trade Ticket
-              </h1>
-            </div>
-            <Button variant="ghost" onClick={handleSignOut}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background pt-16">{/* pt-16 for fixed nav */}
 
       <div className="container mx-auto px-6 py-8">
         <p className="text-muted-foreground mb-6">

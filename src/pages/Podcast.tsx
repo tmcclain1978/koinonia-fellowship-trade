@@ -44,34 +44,7 @@ const Podcast = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border sticky top-0 z-50 backdrop-blur-sm bg-card/90">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-                ← Dashboard
-              </Button>
-              <div className="flex items-center gap-3">
-                <h1 className="font-display text-2xl font-bold text-foreground flex items-center gap-2">
-                  <Radio className="w-6 h-6" />
-                  You Got Options — Live Podcast
-                </h1>
-                <div className="flex items-center gap-2 px-3 py-1 bg-destructive/10 border border-destructive/20 rounded-full">
-                  <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
-                  <span className="text-xs text-destructive font-medium">LIVE</span>
-                </div>
-              </div>
-            </div>
-            <Button variant="ghost" onClick={handleSignOut}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-background pt-16">
       <div className="container mx-auto px-6 py-8">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Live Stream */}
