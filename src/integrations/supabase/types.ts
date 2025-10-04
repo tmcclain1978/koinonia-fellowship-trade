@@ -113,6 +113,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_api_credentials: {
+        Row: {
+          created_at: string
+          id: string
+          schwab_client_id: string | null
+          schwab_client_secret: string | null
+          schwab_refresh_token: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          schwab_client_id?: string | null
+          schwab_client_secret?: string | null
+          schwab_refresh_token?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          schwab_client_id?: string | null
+          schwab_client_secret?: string | null
+          schwab_refresh_token?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_watchlist: {
         Row: {
           added_at: string | null

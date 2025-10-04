@@ -11,6 +11,7 @@ import PaperTrading from "./pages/PaperTrading";
 import Analytics from "./pages/Analytics";
 import Education from "./pages/Education";
 import Podcast from "./pages/Podcast";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/education" element={<Education />} />
           <Route path="/podcast" element={<Podcast />} />
+          <Route path="/settings" element={<Settings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

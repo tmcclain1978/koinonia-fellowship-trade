@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +12,53 @@ serve(async (req) => {
   }
 
   try {
+    // Get the authorization header
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Get the current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch user's API credentials
+    const { data: credentials, error: credError } = await supabase
+      .from('user_api_credentials')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (credError) {
+      console.error('Error fetching credentials:', credError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch API credentials' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!credentials || !credentials.schwab_client_id || !credentials.schwab_refresh_token) {
+      return new Response(
+        JSON.stringify({ error: 'Please configure your Schwab API credentials in Settings' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { symbol, strikePrice, expirationDate, contractType } = await req.json();
     
     if (!symbol) {
@@ -20,69 +68,21 @@ serve(async (req) => {
       );
     }
 
-    const POLYGON_API_KEY = Deno.env.get('POLYGON_API_KEY');
-    if (!POLYGON_API_KEY) {
-      throw new Error('POLYGON_API_KEY not configured');
-    }
+    console.log('Fetching options chain for:', symbol, 'using user credentials');
 
-    console.log('Fetching options chain for:', symbol);
-
-    // Build query parameters
-    const params = new URLSearchParams({
-      apiKey: POLYGON_API_KEY,
-    });
-    
-    if (strikePrice) params.append('strike_price', strikePrice.toString());
-    if (expirationDate) params.append('expiration_date', expirationDate);
-    if (contractType) params.append('contract_type', contractType);
-
-    const url = `https://api.polygon.io/v3/snapshot/options/${symbol.toUpperCase()}?${params.toString()}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Polygon API error:', response.status, errorText);
-      throw new Error(`Polygon API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Options chain data received:', data.results?.length || 0, 'contracts');
-
-    // Transform the data to match our UI format
-    const transformedResults = (data.results || []).map((contract: any) => ({
-      strike: contract.details?.strike_price,
-      contractType: contract.details?.contract_type,
-      expiration: contract.details?.expiration_date,
-      delta: contract.greeks?.delta,
-      gamma: contract.greeks?.gamma,
-      theta: contract.greeks?.theta,
-      vega: contract.greeks?.vega,
-      impliedVolatility: contract.implied_volatility,
-      bid: contract.last_quote?.bid,
-      ask: contract.last_quote?.ask,
-      lastPrice: contract.last_trade?.price,
-      volume: contract.day?.volume,
-      openInterest: contract.open_interest,
-      breakEven: contract.break_even_price,
-    }));
-
+    // TODO: Implement Schwab API OAuth flow and options chain fetching
+    // For now, return a message indicating setup is needed
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        symbol: data.underlying_asset?.ticker,
-        results: transformedResults 
+        error: 'Schwab API integration in progress. Please check back soon.',
+        message: 'Your credentials are configured and ready to use once the Schwab API integration is complete.'
       }),
       { 
-        status: 200, 
+        status: 501, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
+
   } catch (error) {
     console.error('Error in fetch-options-chain function:', error);
     return new Response(

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, X, TrendingUp, LogOut, User } from "lucide-react";
+import { Menu, X, TrendingUp, LogOut, User, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const Navigation = () => {
@@ -116,6 +116,12 @@ const Navigation = () => {
                   <User className="w-4 h-4" />
                   <span className="max-w-[150px] truncate">{user.email}</span>
                 </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/settings">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Settings
+                  </Link>
+                </Button>
                 <Button variant="ghost" size="sm" onClick={handleSignOut}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Sign Out
@@ -208,6 +214,17 @@ const Navigation = () => {
                     <User className="w-4 h-4" />
                     <span className="truncate">{user.email}</span>
                   </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    asChild
+                    className="w-full justify-start"
+                  >
+                    <Link to="/settings" onClick={() => setIsMenuOpen(false)}>
+                      <Settings className="w-4 h-4 mr-2" />
+                      Settings
+                    </Link>
+                  </Button>
                   <Button 
                     variant="ghost" 
                     size="sm" 
