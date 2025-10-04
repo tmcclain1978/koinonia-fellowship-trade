@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   Mail, 
   Phone, 
@@ -7,10 +10,57 @@ import {
   Send,
   ArrowRight,
   MessageCircle,
-  Calendar
+  Calendar,
+  Loader2
 } from "lucide-react";
 
 const ContactSection = () => {
+  const { toast } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    tradingExperience: "",
+    message: ""
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("submit-contact", {
+        body: formData
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Message Sent!",
+        description: data.message || "We'll contact you within 24 hours.",
+      });
+
+      // Reset form
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        tradingExperience: "",
+        message: ""
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
     <section id="contact" className="py-20 bg-background-alt">
       <div className="container mx-auto px-6">
@@ -36,7 +86,7 @@ const ContactSection = () => {
               </p>
             </div>
 
-            <form className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-card-foreground mb-2">
@@ -45,6 +95,8 @@ const ContactSection = () => {
                   <input
                     type="text"
                     required
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
                     className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
                     placeholder="John"
                   />
@@ -56,6 +108,8 @@ const ContactSection = () => {
                   <input
                     type="text"
                     required
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({...formData, lastName: e.target.value})}
                     className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
                     placeholder="Doe"
                   />
@@ -69,6 +123,8 @@ const ContactSection = () => {
                 <input
                   type="email"
                   required
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
                   placeholder="john.doe@example.com"
                 />
@@ -80,6 +136,8 @@ const ContactSection = () => {
                 </label>
                 <input
                   type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
                   placeholder="(555) 123-4567"
                 />
@@ -89,7 +147,11 @@ const ContactSection = () => {
                 <label className="block text-sm font-medium text-card-foreground mb-2">
                   Trading Experience
                 </label>
-                <select className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors">
+                <select 
+                  value={formData.tradingExperience}
+                  onChange={(e) => setFormData({...formData, tradingExperience: e.target.value})}
+                  className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
+                >
                   <option value="">Select your experience level</option>
                   <option value="beginner">Beginner (0-1 years)</option>
                   <option value="intermediate">Intermediate (1-3 years)</option>
@@ -103,15 +165,27 @@ const ContactSection = () => {
                 </label>
                 <textarea
                   rows={4}
+                  required
+                  value={formData.message}
+                  onChange={(e) => setFormData({...formData, message: e.target.value})}
                   className="w-full px-4 py-3 bg-input border border-border rounded-lg text-card-foreground placeholder-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors resize-none"
                   placeholder="Tell us about your trading goals and how we can help..."
                 ></textarea>
               </div>
 
-              <Button variant="hero" size="lg" className="w-full group">
-                <Send className="w-5 h-5 mr-2" />
-                Send Message
-                <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              <Button type="submit" variant="hero" size="lg" className="w-full group" disabled={submitting}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    Send Message
+                    <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </Button>
             </form>
           </div>

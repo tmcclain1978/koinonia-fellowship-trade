@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Play, TrendingUp, Users, Shield } from "lucide-react";
 import heroImage from "@/assets/hero-trading.jpg";
@@ -6,6 +7,7 @@ import DemoVideoModal from "@/components/DemoVideoModal";
 
 const HeroSection = () => {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <section id="home" className="relative min-h-screen flex items-center pt-20 bg-gradient-hero">
@@ -37,7 +39,12 @@ const HeroSection = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button variant="hero" size="lg" className="group">
+              <Button 
+                variant="hero" 
+                size="lg" 
+                className="group"
+                onClick={() => navigate("/auth")}
+              >
                 Start Trading Today
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>

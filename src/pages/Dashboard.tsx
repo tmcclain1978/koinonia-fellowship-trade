@@ -1,0 +1,130 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { User } from "@supabase/supabase-js";
+import { LogOut, TrendingUp, Activity, DollarSign } from "lucide-react";
+import AIAnalysis from "@/components/AIAnalysis";
+
+const Dashboard = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+      } else {
+        navigate("/auth");
+      }
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        navigate("/auth");
+      } else {
+        setUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    toast({
+      title: "Signed out",
+      description: "You've been successfully signed out.",
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="bg-card border-b border-border">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              Koinonia Dashboard
+            </h1>
+            <Button variant="ghost" onClick={handleSignOut}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="container mx-auto px-6 py-8">
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-display font-bold text-foreground mb-2">
+            Welcome back, {user?.user_metadata?.full_name || user?.email}!
+          </h2>
+          <p className="text-muted-foreground">
+            Access AI-powered trading analysis and real-time market insights.
+          </p>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-card rounded-xl p-6 border border-border">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Success Rate</p>
+                <p className="text-2xl font-bold text-foreground">85%</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-xl p-6 border border-border">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Signals</p>
+                <p className="text-2xl font-bold text-foreground">12</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-xl p-6 border border-border">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Monthly Return</p>
+                <p className="text-2xl font-bold text-foreground">+22.8%</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* AI Analysis Section */}
+        <AIAnalysis />
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;

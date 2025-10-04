@@ -1,1 +1,7 @@
 project_id = "cxsfpxsbejzpukrdrulu"
+
+[functions.analyze-stock]
+verify_jwt = false
+
+[functions.submit-contact]
+verify_jwt = false

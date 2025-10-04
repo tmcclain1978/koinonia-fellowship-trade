@@ -1,9 +1,16 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Menu, X, TrendingUp } from "lucide-react";
 
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const location = useLocation();
+  
+  // Don't show navigation on auth and dashboard pages
+  if (location.pathname === "/auth" || location.pathname === "/dashboard") {
+    return null;
+  }
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-background/90 backdrop-blur-md border-b border-border">
@@ -34,8 +41,8 @@ const Navigation = () => {
             <a href="#contact" className="text-foreground hover:text-primary transition-colors">
               Contact
             </a>
-            <Button variant="hero" size="sm">
-              Get Started
+            <Button variant="hero" size="sm" asChild>
+              <Link to="/auth">Get Started</Link>
             </Button>
           </div>
 
@@ -64,8 +71,8 @@ const Navigation = () => {
               <a href="#contact" className="text-foreground hover:text-primary transition-colors">
                 Contact
               </a>
-              <Button variant="hero" size="sm" className="self-start">
-                Get Started
+              <Button variant="hero" size="sm" className="self-start" asChild>
+                <Link to="/auth">Get Started</Link>
               </Button>
             </div>
           </div>
