@@ -81,6 +81,48 @@ const Dashboard = () => {
           </p>
         </div>
 
+        {/* Quick Access Cards */}
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <button 
+            onClick={() => navigate("/trading")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-primary/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Trade Options</h3>
+            <p className="text-sm text-muted-foreground">
+              Place orders and manage your options portfolio
+            </p>
+          </button>
+
+          <button 
+            onClick={() => navigate("/education")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-accent/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <Activity className="w-6 h-6 text-accent" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Education Hub</h3>
+            <p className="text-sm text-muted-foreground">
+              Learn trading strategies and market analysis
+            </p>
+          </button>
+
+          <button 
+            onClick={() => navigate("/podcast")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-success/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <DollarSign className="w-6 h-6 text-success" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Live Podcast</h3>
+            <p className="text-sm text-muted-foreground">
+              Watch live trading discussions and Q&A
+            </p>
+          </button>
+        </div>
+
         {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-card rounded-xl p-6 border border-border">
