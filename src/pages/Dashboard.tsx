@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
-import { LogOut, TrendingUp, Activity, DollarSign } from "lucide-react";
+import { LogOut, TrendingUp, Activity, DollarSign, Settings } from "lucide-react";
 import AIAnalysis from "@/components/AIAnalysis";
 
 const Dashboard = () => {
@@ -57,13 +57,25 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background pt-16">
       <div className="container mx-auto px-6 py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-display font-bold text-foreground mb-2">
-            Welcome back, {user?.user_metadata?.full_name || user?.email}!
-          </h2>
-          <p className="text-muted-foreground">
-            Access AI-powered trading analysis and real-time market insights.
-          </p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h2 className="text-3xl font-display font-bold text-foreground mb-2">
+              Welcome back, {user?.user_metadata?.full_name || user?.email}!
+            </h2>
+            <p className="text-muted-foreground">
+              Access AI-powered trading analysis and real-time market insights.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/settings")}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
         </div>
 
         {/* Quick Access Cards */}

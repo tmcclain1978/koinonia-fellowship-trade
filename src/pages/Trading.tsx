@@ -31,17 +31,21 @@ const Trading = () => {
   const [expirationDates, setExpirationDates] = useState<any[]>([]);
   const [strikePrices, setStrikePrices] = useState<any[]>([]);
 
-  // Fetch options chain data from Polygon
+  // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {
     if (!symbol) return;
     
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-options-chain', {
+      const { data, error } = await supabase.functions.invoke('fetch-schwab-options', {
         body: { symbol }
       });
 
       if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
 
       if (data?.results) {
         setOptionsData(data.results);

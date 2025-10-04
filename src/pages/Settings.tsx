@@ -6,176 +6,144 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save } from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
 
-export default function Settings() {
+const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [schwabClientId, setSchwabClientId] = useState("");
-  const [schwabClientSecret, setSchwabClientSecret] = useState("");
-  const [schwabRefreshToken, setSchwabRefreshToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [credentials, setCredentials] = useState({
+    schwab_client_id: "",
+    schwab_client_secret: "",
+  });
 
   useEffect(() => {
     checkAuth();
+    fetchCredentials();
   }, []);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       navigate("/auth");
-      return;
     }
-    await loadCredentials();
   };
 
-  const loadCredentials = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  const fetchCredentials = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const { data, error } = await supabase
-        .from("user_api_credentials")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+    const { data, error } = await supabase
+      .from("user_api_credentials")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-      if (error) throw error;
-
-      if (data) {
-        setSchwabClientId(data.schwab_client_id || "");
-        setSchwabClientSecret(data.schwab_client_secret || "");
-        setSchwabRefreshToken(data.schwab_refresh_token || "");
-      }
-    } catch (error) {
-      console.error("Error loading credentials:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load your API credentials",
-        variant: "destructive",
+    if (data) {
+      setCredentials({
+        schwab_client_id: data.schwab_client_id || "",
+        schwab_client_secret: data.schwab_client_secret || "",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const { error } = await supabase
-        .from("user_api_credentials")
-        .upsert({
-          user_id: user.id,
-          schwab_client_id: schwabClientId,
-          schwab_client_secret: schwabClientSecret,
-          schwab_refresh_token: schwabRefreshToken,
-        }, {
-          onConflict: "user_id"
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Your API credentials have been saved",
+    const { error } = await supabase
+      .from("user_api_credentials")
+      .upsert({
+        user_id: user.id,
+        schwab_client_id: credentials.schwab_client_id,
+        schwab_client_secret: credentials.schwab_client_secret,
       });
-    } catch (error) {
-      console.error("Error saving credentials:", error);
+
+    if (error) {
       toast({
         title: "Error",
-        description: "Failed to save your API credentials",
+        description: "Failed to save credentials",
         variant: "destructive",
       });
-    } finally {
-      setSaving(false);
+    } else {
+      toast({
+        title: "Success",
+        description: "Credentials saved successfully",
+      });
     }
+    setLoading(false);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div>
-          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-            ← Back to Dashboard
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-6 max-w-2xl">
+        <Button
+          variant="ghost"
+          onClick={() => navigate("/dashboard")}
+          className="mb-6"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Dashboard
+        </Button>
 
         <Card>
           <CardHeader>
             <CardTitle>API Settings</CardTitle>
             <CardDescription>
-              Configure your Schwab API credentials to fetch live options data
+              Configure your Schwab API credentials to fetch options data
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="clientId">Schwab Client ID</Label>
+              <Label htmlFor="client-id">Schwab Client ID</Label>
               <Input
-                id="clientId"
+                id="client-id"
                 type="text"
-                value={schwabClientId}
-                onChange={(e) => setSchwabClientId(e.target.value)}
+                value={credentials.schwab_client_id}
+                onChange={(e) =>
+                  setCredentials({ ...credentials, schwab_client_id: e.target.value })
+                }
                 placeholder="Enter your Schwab Client ID"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="clientSecret">Schwab Client Secret</Label>
+              <Label htmlFor="client-secret">Schwab Client Secret</Label>
               <Input
-                id="clientSecret"
+                id="client-secret"
                 type="password"
-                value={schwabClientSecret}
-                onChange={(e) => setSchwabClientSecret(e.target.value)}
+                value={credentials.schwab_client_secret}
+                onChange={(e) =>
+                  setCredentials({ ...credentials, schwab_client_secret: e.target.value })
+                }
                 placeholder="Enter your Schwab Client Secret"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="refreshToken">Schwab Refresh Token</Label>
-              <Input
-                id="refreshToken"
-                type="password"
-                value={schwabRefreshToken}
-                onChange={(e) => setSchwabRefreshToken(e.target.value)}
-                placeholder="Enter your Schwab Refresh Token"
-              />
-              <p className="text-sm text-muted-foreground">
-                You can obtain your refresh token from the Schwab OAuth flow
-              </p>
-            </div>
-
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={loading}
               className="w-full"
             >
-              {saving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Credentials
-                </>
-              )}
+              <Save className="mr-2 h-4 w-4" />
+              Save Credentials
             </Button>
+
+            <div className="text-sm text-muted-foreground mt-4">
+              <p className="font-semibold mb-2">How to get your Schwab API credentials:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Log in to your Schwab Developer Portal</li>
+                <li>Create or select your application</li>
+                <li>Copy your Client ID and Client Secret</li>
+                <li>Paste them here and save</li>
+              </ol>
+            </div>
           </CardContent>
         </Card>
       </div>
     </div>
   );
-}
+};
+
+export default Settings;
