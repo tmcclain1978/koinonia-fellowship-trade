@@ -14,7 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      contact_submissions: {
+        Row: {
+          created_at: string | null
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          message: string
+          phone: string | null
+          trading_experience: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          first_name: string
+          id?: string
+          last_name: string
+          message: string
+          phone?: string | null
+          trading_experience?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          first_name?: string
+          id?: string
+          last_name?: string
+          message?: string
+          phone?: string | null
+          trading_experience?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          full_name: string | null
+          id: string
+          trading_experience: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          full_name?: string | null
+          id?: string
+          trading_experience?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          full_name?: string | null
+          id?: string
+          trading_experience?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trading_signals: {
+        Row: {
+          ai_analysis: string | null
+          confidence_score: number | null
+          created_at: string | null
+          entry_price: number | null
+          expires_at: string | null
+          id: string
+          signal_type: string
+          stop_loss: number | null
+          symbol: string
+          target_price: number | null
+        }
+        Insert: {
+          ai_analysis?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          entry_price?: number | null
+          expires_at?: string | null
+          id?: string
+          signal_type: string
+          stop_loss?: number | null
+          symbol: string
+          target_price?: number | null
+        }
+        Update: {
+          ai_analysis?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          entry_price?: number | null
+          expires_at?: string | null
+          id?: string
+          signal_type?: string
+          stop_loss?: number | null
+          symbol?: string
+          target_price?: number | null
+        }
+        Relationships: []
+      }
+      user_watchlist: {
+        Row: {
+          added_at: string | null
+          id: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          id?: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string | null
+          id?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
