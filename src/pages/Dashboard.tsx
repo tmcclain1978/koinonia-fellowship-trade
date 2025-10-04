@@ -19,6 +19,29 @@ const Dashboard = () => {
       if (session) {
         setUser(session.user);
         
+        // Check account status
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("account_status")
+          .eq("user_id", session.user.id)
+          .single();
+        
+        if (profileData?.account_status === "pending") {
+          navigate("/pending-approval");
+          return;
+        }
+        
+        if (profileData?.account_status === "suspended") {
+          await supabase.auth.signOut();
+          toast({
+            title: "Account Suspended",
+            description: "Your account has been suspended. Please contact support.",
+            variant: "destructive",
+          });
+          navigate("/auth");
+          return;
+        }
+        
         // Check if user is admin
         const { data: roleData } = await supabase
           .from("user_roles")

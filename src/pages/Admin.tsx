@@ -19,6 +19,9 @@ interface UserData {
   role: string;
   subscription: string;
   status: string;
+  account_status: string;
+  full_name: string;
+  created_at: string;
 }
 
 interface VideoData {
@@ -134,35 +137,46 @@ const Admin = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // Get all users with their roles and subscriptions
-      const { data: rolesData } = await supabase
-        .from("user_roles")
-        .select(`
-          user_id,
-          role
-        `);
-
-      const { data: subsData } = await supabase
-        .from("subscriptions")
-        .select("*");
-
-      // Get user emails from profiles or auth
+      // Get all profiles with their account status
       const { data: profilesData } = await supabase
         .from("profiles")
         .select("*");
 
+      // Get all roles
+      const { data: rolesData } = await supabase
+        .from("user_roles")
+        .select("*");
+
+      // Get all subscriptions
+      const { data: subsData } = await supabase
+        .from("subscriptions")
+        .select("*");
+
       const usersMap = new Map();
       
-      rolesData?.forEach((role) => {
-        usersMap.set(role.user_id, {
-          id: role.user_id,
-          role: role.role,
-          email: "Loading...",
+      // Start with profiles as the base
+      profilesData?.forEach((profile) => {
+        usersMap.set(profile.user_id, {
+          id: profile.user_id,
+          email: profile.user_id, // We'll show user_id instead of email for privacy
+          full_name: profile.full_name || "N/A",
+          role: "free_user",
           subscription: "None",
-          status: "N/A"
+          status: "N/A",
+          account_status: profile.account_status || "pending",
+          created_at: profile.created_at
         });
       });
 
+      // Add role information
+      rolesData?.forEach((role) => {
+        const user = usersMap.get(role.user_id);
+        if (user) {
+          user.role = role.role;
+        }
+      });
+
+      // Add subscription information
       subsData?.forEach((sub) => {
         const user = usersMap.get(sub.user_id);
         if (user) {
@@ -230,6 +244,30 @@ const Admin = () => {
       toast({
         title: "Error",
         description: "Failed to update subscription",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateAccountStatus = async (userId: string, newStatus: "pending" | "active" | "suspended") => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ account_status: newStatus })
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Account ${newStatus === "active" ? "approved" : newStatus}`,
+      });
+      fetchUsers();
+    } catch (error) {
+      console.error("Error updating account status:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update account status",
         variant: "destructive",
       });
     }
@@ -412,7 +450,7 @@ const Admin = () => {
           <h1 className="text-3xl font-bold">Admin Portal</h1>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -420,6 +458,18 @@ const Admin = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{users.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Approval</CardTitle>
+              <Users className="h-4 w-4 text-warning" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-warning">
+                {users.filter(u => u.account_status === "pending").length}
+              </div>
             </CardContent>
           </Card>
 
@@ -474,21 +524,51 @@ const Admin = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>User ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Account Status</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Subscription</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Joined</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-mono text-xs">{user.id.slice(0, 8)}...</TableCell>
+                    {users
+                      .sort((a, b) => {
+                        // Sort by account_status: pending first
+                        if (a.account_status === "pending" && b.account_status !== "pending") return -1;
+                        if (a.account_status !== "pending" && b.account_status === "pending") return 1;
+                        return 0;
+                      })
+                      .map((user) => (
+                      <TableRow key={user.id} className={user.account_status === "pending" ? "bg-warning/5" : ""}>
+                        <TableCell className="font-medium">{user.full_name}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={user.account_status}
+                            onValueChange={(value) => updateAccountStatus(user.id, value as "pending" | "active" | "suspended")}
+                          >
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">
+                                <span className="text-warning">⏳ Pending</span>
+                              </SelectItem>
+                              <SelectItem value="active">
+                                <span className="text-success">✓ Active</span>
+                              </SelectItem>
+                              <SelectItem value="suspended">
+                                <span className="text-destructive">⊘ Suspended</span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell>
                           <Select
                             value={user.role}
                             onValueChange={(value) => updateUserRole(user.id, value as "admin" | "user" | "free_user")}
+                            disabled={user.account_status !== "active"}
                           >
                             <SelectTrigger className="w-32">
                               <SelectValue />
@@ -504,6 +584,7 @@ const Admin = () => {
                           <Select
                             value={user.subscription}
                             onValueChange={(value) => updateSubscription(user.id, value)}
+                            disabled={user.account_status !== "active"}
                           >
                             <SelectTrigger className="w-32">
                               <SelectValue />
@@ -516,17 +597,18 @@ const Admin = () => {
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            user.status === "active" ? "bg-success/20 text-success" :
-                            user.status === "N/A" ? "bg-muted text-muted-foreground" :
-                            "bg-destructive/20 text-destructive"
-                          }`}>
-                            {user.status}
-                          </span>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(user.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          <Button variant="outline" size="sm">View Details</Button>
+                          {user.account_status === "pending" && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => updateAccountStatus(user.id, "active")}
+                            >
+                              Approve
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

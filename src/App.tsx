@@ -14,6 +14,7 @@ import Podcast from "./pages/Podcast";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Help from "./pages/Help";
+import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/pending-approval" element={<PendingApproval />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/trading" element={<Trading />} />
           <Route path="/paper-trading" element={<PaperTrading />} />
