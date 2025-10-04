@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(false); // Default to signup for new users
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -68,9 +68,20 @@ const Auth = () => {
         });
       }
     } catch (error: any) {
+      console.error("Auth error:", error);
+      
+      let errorMessage = error.message;
+      
+      // Provide helpful error messages
+      if (error.message?.includes("Invalid login credentials")) {
+        errorMessage = isLogin 
+          ? "Invalid email or password. Don't have an account? Click 'Sign up' below."
+          : "This email is already registered. Click 'Sign in' below to login.";
+      }
+      
       toast({
-        title: "Error",
-        description: error.message,
+        title: isLogin ? "Login Failed" : "Signup Failed",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -83,6 +94,11 @@ const Auth = () => {
       <div className="w-full max-w-md">
         <div className="bg-card rounded-2xl p-8 shadow-elegant border border-border">
           <div className="text-center mb-8">
+            <div className={`inline-block px-4 py-1 rounded-full mb-4 text-xs font-medium ${
+              isLogin ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
+            }`}>
+              {isLogin ? '🔑 Login Mode' : '✨ Sign Up Mode'}
+            </div>
             <h1 className="font-display text-3xl font-bold text-foreground mb-2">
               {isLogin ? "Welcome Back" : "Join Koinonia"}
             </h1>
@@ -156,12 +172,18 @@ const Auth = () => {
 
           <div className="mt-6 text-center">
             <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-primary hover:text-primary-glow transition-colors"
+              onClick={() => {
+                setIsLogin(!isLogin);
+                // Clear form when switching modes
+                setEmail("");
+                setPassword("");
+                setFullName("");
+              }}
+              className="text-primary hover:text-primary-glow transition-colors font-medium"
             >
               {isLogin
-                ? "Don't have an account? Sign up"
-                : "Already have an account? Sign in"}
+                ? "Don't have an account? Sign up →"
+                : "Already have an account? Sign in →"}
             </button>
           </div>
         </div>
