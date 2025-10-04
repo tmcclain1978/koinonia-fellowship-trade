@@ -24,6 +24,31 @@ const Trading = () => {
   const [trailAmount, setTrailAmount] = useState("");
   const [strikePrice, setStrikePrice] = useState("");
   const [expirationDate, setExpirationDate] = useState<Date>();
+  const [showExpirations, setShowExpirations] = useState(false);
+  const [showStrikes, setShowStrikes] = useState(false);
+  
+  // Mock expiration dates
+  const expirationDates = [
+    { date: new Date(2025, 9, 6), daysOut: 2, type: "Weekly 100", iv: "10.75% (+$4.123)" },
+    { date: new Date(2025, 9, 7), daysOut: 3, type: "Weekly 100", iv: "12.28% (+$5.828)" },
+    { date: new Date(2025, 9, 8), daysOut: 4, type: "Weekly 100", iv: "12.97% (+$7.116)" },
+    { date: new Date(2025, 9, 13), daysOut: 9, type: "Weekly 100", iv: "13.04% (+$10.863)" },
+    { date: new Date(2025, 9, 20), daysOut: 16, type: "Weekly 100", iv: "14.32% (+$19.462)" },
+    { date: new Date(2025, 10, 7), daysOut: 34, type: "Weekly 100", iv: "17.16% (+$27.959)" },
+    { date: new Date(2025, 11, 19), daysOut: 76, type: "100", iv: "19.24% (+$46.975)" },
+  ];
+  
+  // Mock strike prices
+  const strikePrices = [
+    { strike: 664, delta: 1.00, probITM: "100.00%", bid: 6.39, ask: 6.47, callBid: 0.41, callAsk: 0.43 },
+    { strike: 665, delta: 0.93, probITM: "90.58%", bid: 5.46, ask: 5.54, callBid: 0.49, callAsk: 0.51 },
+    { strike: 666, delta: 0.84, probITM: "83.99%", bid: 4.55, ask: 4.63, callBid: 0.59, callAsk: 0.60 },
+    { strike: 667, delta: 0.76, probITM: "76.80%", bid: 3.70, ask: 3.76, callBid: 0.72, callAsk: 0.74 },
+    { strike: 668, delta: 0.66, probITM: "67.98%", bid: 2.89, ask: 2.94, callBid: 0.91, callAsk: 0.93 },
+    { strike: 669, delta: 0.54, probITM: "57.54%", bid: 2.16, ask: 2.19, callBid: 1.16, callAsk: 1.18 },
+    { strike: 670, delta: 0.42, probITM: "45.60%", bid: 1.51, ask: 1.53, callBid: 1.51, callAsk: 1.54 },
+    { strike: 671, delta: 0.30, probITM: "33.47%", bid: 0.98, ask: 1.00, callBid: 1.98, callAsk: 2.02 },
+  ];
   
   // Multi-leg options
   const [leg1Strike, setLeg1Strike] = useState("");
@@ -253,24 +278,93 @@ const Trading = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Strike Price</label>
+                      <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
                       <Input
                         type="number"
-                        step="0.50"
-                        value={strikePrice}
-                        onChange={(e) => setStrikePrice(e.target.value)}
-                        placeholder="150.00"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        min="1"
                       />
                     </div>
                   </div>
+                  
+                  {/* Expiration Selection */}
                   <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
-                    <Input
-                      type="number"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      min="1"
-                    />
+                    <label className="block text-sm text-muted-foreground mb-2">Expiration Date</label>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowExpirations(!showExpirations)}
+                      className="w-full justify-start"
+                    >
+                      {expirationDate ? format(expirationDate, "MMMM d, yyyy") : "Select expiration"}
+                    </Button>
+                    {showExpirations && (
+                      <div className="mt-2 border border-border rounded-lg bg-card max-h-64 overflow-y-auto">
+                        {expirationDates.map((exp, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setExpirationDate(exp.date);
+                              setShowExpirations(false);
+                            }}
+                            className="flex items-center justify-between p-3 hover:bg-accent cursor-pointer border-b border-border last:border-b-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-foreground">
+                                {format(exp.date, "MMMM d, yyyy")} ({exp.daysOut} days)
+                              </span>
+                              <span className="text-xs bg-destructive text-destructive-foreground px-2 py-0.5 rounded">
+                                {exp.type}
+                              </span>
+                            </div>
+                            <span className="text-sm text-muted-foreground">{exp.iv}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Strike Selection */}
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-2">Strike Price</label>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowStrikes(!showStrikes)}
+                      className="w-full justify-start"
+                    >
+                      {strikePrice || "Select strike price"}
+                    </Button>
+                    {showStrikes && (
+                      <div className="mt-2 border border-border rounded-lg bg-card max-h-80 overflow-y-auto">
+                        <div className="grid grid-cols-7 gap-1 p-2 bg-muted text-xs font-semibold text-muted-foreground border-b border-border">
+                          <div>Delta</div>
+                          <div>Prob ITM</div>
+                          <div>Bid</div>
+                          <div>Ask</div>
+                          <div className="text-center">Strike</div>
+                          <div>Bid</div>
+                          <div>Ask</div>
+                        </div>
+                        {strikePrices.map((strike, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              setStrikePrice(strike.strike.toString());
+                              setShowStrikes(false);
+                            }}
+                            className="grid grid-cols-7 gap-1 p-2 hover:bg-accent cursor-pointer border-b border-border last:border-b-0 text-sm"
+                          >
+                            <div className="text-muted-foreground">{strike.delta.toFixed(2)}</div>
+                            <div className="text-muted-foreground">{strike.probITM}</div>
+                            <div className="text-foreground">{strike.bid.toFixed(2)}</div>
+                            <div className="text-foreground">{strike.ask.toFixed(2)}</div>
+                            <div className="text-center font-semibold text-primary">{strike.strike}</div>
+                            <div className="text-foreground">{strike.callBid.toFixed(2)}</div>
+                            <div className="text-foreground">{strike.callAsk.toFixed(2)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -417,8 +511,8 @@ const Trading = () => {
                 </div>
               )}
 
-              {/* Expiration for options */}
-              {orderStructure !== "covered" && (
+              {/* Expiration for multi-leg strategies */}
+              {orderStructure !== "covered" && orderStructure !== "single" && (
                 <div className="mb-4">
                   <label className="block text-sm text-muted-foreground mb-2">Expiration Date</label>
                   <Popover>
