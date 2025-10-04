@@ -15,6 +15,7 @@ const Settings = () => {
   const [credentials, setCredentials] = useState({
     schwab_client_id: "",
     schwab_client_secret: "",
+    trading_mode: "paper",
   });
 
   useEffect(() => {
@@ -43,6 +44,7 @@ const Settings = () => {
       setCredentials({
         schwab_client_id: data.schwab_client_id || "",
         schwab_client_secret: data.schwab_client_secret || "",
+        trading_mode: data.trading_mode || "paper",
       });
     }
   };
@@ -58,6 +60,7 @@ const Settings = () => {
         user_id: user.id,
         schwab_client_id: credentials.schwab_client_id,
         schwab_client_secret: credentials.schwab_client_secret,
+        trading_mode: credentials.trading_mode,
       });
 
     if (error) {
@@ -87,14 +90,45 @@ const Settings = () => {
           Back to Dashboard
         </Button>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>API Settings</CardTitle>
-            <CardDescription>
-              Configure your Schwab API credentials to fetch options data
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Trading Mode</CardTitle>
+              <CardDescription>
+                Choose between paper trading (simulated) or live trading (real money)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="trading-mode">Trading Mode</Label>
+                <select
+                  id="trading-mode"
+                  value={credentials.trading_mode}
+                  onChange={(e) =>
+                    setCredentials({ ...credentials, trading_mode: e.target.value })
+                  }
+                  className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                >
+                  <option value="paper">Paper Trading (Simulated)</option>
+                  <option value="live">Live Trading (Real Money)</option>
+                </select>
+                <p className="text-sm text-muted-foreground">
+                  {credentials.trading_mode === "paper" 
+                    ? "Paper trading mode: All orders are simulated with virtual money"
+                    : "⚠️ Live trading mode: Real orders will be placed with your Schwab account"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>API Settings</CardTitle>
+              <CardDescription>
+                Configure your Schwab API credentials to fetch options data
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="client-id">Schwab Client ID</Label>
               <Input
@@ -141,6 +175,7 @@ const Settings = () => {
             </div>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );

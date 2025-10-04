@@ -12,6 +12,8 @@ import Analytics from "./pages/Analytics";
 import Education from "./pages/Education";
 import Podcast from "./pages/Podcast";
 import Settings from "./pages/Settings";
+import Admin from "./pages/Admin";
+import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ const App = () => (
           <Route path="/education" element={<Education />} />
           <Route path="/podcast" element={<Podcast />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/help" element={<Help />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
