@@ -119,6 +119,42 @@ export type Database = {
         }
         Relationships: []
       }
+      day_trades_log: {
+        Row: {
+          account_value: number
+          broker: string
+          buy_timestamp: string
+          created_at: string | null
+          id: string
+          is_margin_account: boolean
+          sell_timestamp: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          account_value: number
+          broker?: string
+          buy_timestamp: string
+          created_at?: string | null
+          id?: string
+          is_margin_account?: boolean
+          sell_timestamp: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          account_value?: number
+          broker?: string
+          buy_timestamp?: string
+          created_at?: string | null
+          id?: string
+          is_margin_account?: boolean
+          sell_timestamp?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           account_status: string
@@ -286,6 +322,8 @@ export type Database = {
       }
       user_api_credentials: {
         Row: {
+          account_type: string | null
+          account_value: number | null
           created_at: string
           id: string
           schwab_client_id: string | null
@@ -296,6 +334,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          account_type?: string | null
+          account_value?: number | null
           created_at?: string
           id?: string
           schwab_client_id?: string | null
@@ -306,6 +346,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          account_type?: string | null
+          account_value?: number | null
           created_at?: string
           id?: string
           schwab_client_id?: string | null
@@ -367,6 +409,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      count_recent_day_trades: {
+        Args: { _current_date?: string; _user_id: string }
+        Returns: number
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]

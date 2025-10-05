@@ -36,23 +36,61 @@ serve(async (req) => {
     // Get trade parameters from request body
     const { symbol, action, quantity, price } = await req.json();
 
-    // Get user's Schwab credentials (decrypt using the encrypt-credentials function)
+    // Check PDT status before executing trade (only for live accounts)
     const { data: credentialsData, error: credError } = await supabase.functions.invoke(
       "encrypt-credentials",
       {
         body: { operation: "load" },
-        headers: { Authorization: `Bearer ${supabaseKey}` },
+        headers: { Authorization: authHeader },
       }
     );
     
     const credentials = credentialsData?.credentials;
+    const isPaperTrading = credentials?.trading_mode === "paper";
 
+    // Only check PDT for live trading
+    if (!isPaperTrading) {
+      const { data: pdtCheck, error: pdtError } = await supabase.functions.invoke(
+        'check-pdt-status',
+        {
+          body: { symbol, isSell: action.toLowerCase() === 'sell' },
+          headers: { Authorization: authHeader }
+        }
+      );
+
+      if (pdtError) {
+        console.error('PDT check failed:', pdtError);
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            error: 'Failed to verify Pattern Day Trading status'
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // If trade is blocked by PDT rules
+      if (!pdtCheck.canTrade) {
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            error: pdtCheck.message || 'Trade blocked by Pattern Day Trading rules',
+            pdtBlocked: true,
+            dayTradeCount: pdtCheck.dayTradeCount,
+            accountValue: pdtCheck.accountValue
+          }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Store warning if present (but allow trade)
+      var pdtWarning = pdtCheck.warning ? pdtCheck.message : null;
+    }
+
+    // Credentials already loaded above for PDT check
     if (!credentials || !credentials.schwab_client_id) {
       throw new Error("Schwab API credentials not configured");
     }
-
-    // Check trading mode
-    const isPaperTrading = credentials.trading_mode === "paper";
 
     let tradeResult;
 
@@ -107,6 +145,8 @@ serve(async (req) => {
         orderId: tradeResult.orderId,
         executedPrice: tradeResult.executedPrice,
         message: tradeResult.message,
+        pdtWarning: pdtWarning || undefined,
+        isPaperTrading
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
