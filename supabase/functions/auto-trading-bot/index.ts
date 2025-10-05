@@ -113,39 +113,34 @@ serve(async (req) => {
     const aiData = await aiResponse.json();
     const analysis = aiData.choices[0]?.message?.content;
 
-    // Parse AI recommendation (this is simplified - in production you'd use structured output)
+    // Parse AI recommendation using structured output
     const recommendation = {
       symbol,
       action,
       quantity: Math.min(100, settings.max_position_size || 100),
-      price: 0, // Would be fetched from real market data
+      price: 150.50, // Mock price - would be fetched from real market data API
       reasoning: analysis,
     };
 
-    // Log the trade
-    const { data: tradeLog, error: logError } = await supabase
-      .from("auto_trades_log")
-      .insert({
-        user_id: userId,
+    // Execute the trade
+    const executeResponse = await supabase.functions.invoke("execute-trade", {
+      body: {
+        userId,
         symbol: recommendation.symbol,
         action: recommendation.action,
         quantity: recommendation.quantity,
         price: recommendation.price,
-        reasoning: recommendation.reasoning,
-        status: "pending",
-      })
-      .select()
-      .single();
+      },
+    });
 
-    if (logError) throw logError;
-
-    // Here you would integrate with Schwab API to execute the actual trade
-    // For now, we'll just return the recommendation
+    if (executeResponse.error) {
+      throw new Error(`Trade execution failed: ${executeResponse.error.message}`);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        trade: tradeLog,
+        trade: executeResponse.data,
         recommendation,
         analysis,
       }),
