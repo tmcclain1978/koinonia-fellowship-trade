@@ -54,11 +54,32 @@ const PaperTrading = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('paper_trading_accounts')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
+
+      // Auto-create account if it doesn't exist
+      if (!data && !error) {
+        const { data: newAccount, error: createError } = await supabase
+          .from('paper_trading_accounts')
+          .insert({
+            user_id: user.id,
+            balance: 100000,
+            starting_balance: 100000,
+          })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        data = newAccount;
+        
+        toast({
+          title: "Paper Trading Account Created",
+          description: "You've been credited with $100,000 in virtual funds!",
+        });
+      }
 
       if (error && error.code !== 'PGRST116') throw error;
       setAccount(data);
@@ -164,6 +185,40 @@ const PaperTrading = () => {
     }
   };
 
+  const handleResetAccount = async () => {
+    if (!confirm('Are you sure you want to reset your paper trading account? This will restore your balance to $100,000 and cannot be undone.')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('paper_trading_accounts')
+        .update({ balance: 100000 })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Account Reset",
+        description: "Your balance has been restored to $100,000",
+      });
+
+      loadAccount();
+    } catch (error: any) {
+      toast({
+        title: "Error resetting account",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const calculateStats = () => {
     const profitable = trades.filter(t => t.profit_loss && t.profit_loss > 0).length;
     const totalPL = trades.reduce((sum, t) => sum + (Number(t.profit_loss) || 0), 0);
@@ -187,17 +242,26 @@ const PaperTrading = () => {
             </p>
           </div>
           {account && (
-            <Card className="p-4">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">Account Balance</p>
-                <p className="text-2xl font-bold text-primary">
-                  ${Number(account.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Starting: ${Number(account.starting_balance).toLocaleString()}
-                </p>
-              </div>
-            </Card>
+            <div className="flex gap-3 items-center">
+              <Card className="p-4">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Account Balance</p>
+                  <p className="text-2xl font-bold text-primary">
+                    ${Number(account.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Starting: ${Number(account.starting_balance).toLocaleString()}
+                  </p>
+                </div>
+              </Card>
+              <Button
+                variant="outline"
+                onClick={handleResetAccount}
+                disabled={loading}
+              >
+                Reset Account
+              </Button>
+            </div>
           )}
         </div>
 

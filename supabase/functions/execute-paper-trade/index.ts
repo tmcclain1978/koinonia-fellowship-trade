@@ -105,6 +105,35 @@ serve(async (req) => {
 
     if (tradeError) throw tradeError;
 
+    // Log to bot performance for learning (both opens and closes)
+    // This helps train the bot with real user trading behavior
+    const performanceLog: any = {
+      user_id: user.id,
+      trade_id: trade.id,
+      symbol,
+      strategy: action === 'buy' ? 'paper_buy' : 'paper_sell',
+      entry_price: Number(price),
+      quantity: Number(quantity),
+      trade_opened_at: new Date().toISOString(),
+    };
+
+    // If it's a sell (close), calculate performance metrics
+    if (action === 'sell' && profitLoss !== null) {
+      performanceLog.exit_price = Number(price);
+      performanceLog.trade_closed_at = new Date().toISOString();
+      performanceLog.profit_factor = profitLoss > 0 ? (profitLoss / totalValue) * 100 : null;
+      performanceLog.actual_rr = profitLoss / totalValue; // Risk-reward ratio
+      
+      // Simple execution quality score based on profit
+      performanceLog.execution_quality_score = profitLoss > 0 ? 85 : 50;
+      performanceLog.discipline_score = 75; // Default for paper trades
+    }
+
+    // Insert into bot_performance_log for learning
+    await supabase
+      .from('bot_performance_log')
+      .insert(performanceLog);
+
     return new Response(
       JSON.stringify({ 
         success: true, 
