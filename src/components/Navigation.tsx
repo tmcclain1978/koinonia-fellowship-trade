@@ -261,21 +261,21 @@ const Navigation = () => {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-8">
-            <a href="#home" className="text-foreground hover:text-primary transition-colors">
+            <Link to="/#home" className="text-foreground hover:text-primary transition-colors">
               Home
-            </a>
-            <a href="#services" className="text-foreground hover:text-primary transition-colors">
+            </Link>
+            <Link to="/#services" className="text-foreground hover:text-primary transition-colors">
               Services
-            </a>
+            </Link>
             <Link to="/pricing" className="text-foreground hover:text-primary transition-colors">
               Pricing
             </Link>
-            <a href="#about" className="text-foreground hover:text-primary transition-colors">
+            <Link to="/#about" className="text-foreground hover:text-primary transition-colors">
               About
-            </a>
-            <a href="#contact" className="text-foreground hover:text-primary transition-colors">
+            </Link>
+            <Link to="/#contact" className="text-foreground hover:text-primary transition-colors">
               Contact
-            </a>
+            </Link>
             <Button variant="hero" size="sm" asChild>
               <Link to="/auth">Get Started</Link>
             </Button>
@@ -294,21 +294,21 @@ const Navigation = () => {
         {isMenuOpen && (
           <div className="md:hidden mt-4 py-4 border-t border-border">
             <div className="flex flex-col space-y-4">
-              <a href="#home" className="text-foreground hover:text-primary transition-colors">
+              <Link to="/#home" className="text-foreground hover:text-primary transition-colors">
                 Home
-              </a>
-              <a href="#services" className="text-foreground hover:text-primary transition-colors">
+              </Link>
+              <Link to="/#services" className="text-foreground hover:text-primary transition-colors">
                 Services
-              </a>
+              </Link>
               <Link to="/pricing" className="text-foreground hover:text-primary transition-colors">
                 Pricing
               </Link>
-              <a href="#about" className="text-foreground hover:text-primary transition-colors">
+              <Link to="/#about" className="text-foreground hover:text-primary transition-colors">
                 About
-              </a>
-              <a href="#contact" className="text-foreground hover:text-primary transition-colors">
+              </Link>
+              <Link to="/#contact" className="text-foreground hover:text-primary transition-colors">
                 Contact
-              </a>
+              </Link>
               <Button variant="hero" size="sm" className="self-start" asChild>
                 <Link to="/auth">Get Started</Link>
               </Button>
