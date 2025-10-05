@@ -36,18 +36,31 @@ const Settings = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from("user_api_credentials")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (data) {
-      setCredentials({
-        schwab_client_id: data.schwab_client_id || "",
-        schwab_client_secret: data.schwab_client_secret || "",
-        trading_mode: data.trading_mode || "paper",
+    try {
+      // Use the encryption edge function to load credentials
+      const { data, error } = await supabase.functions.invoke("encrypt-credentials", {
+        body: { operation: "load" },
       });
+
+      if (error) {
+        console.error("Error loading credentials:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load credentials",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data?.credentials) {
+        setCredentials({
+          schwab_client_id: data.credentials.schwab_client_id || "",
+          schwab_client_secret: data.credentials.schwab_client_secret || "",
+          trading_mode: data.credentials.trading_mode || "paper",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching credentials:", error);
     }
   };
 
@@ -56,27 +69,40 @@ const Settings = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error } = await supabase
-      .from("user_api_credentials")
-      .upsert({
-        user_id: user.id,
-        schwab_client_id: credentials.schwab_client_id,
-        schwab_client_secret: credentials.schwab_client_secret,
-        trading_mode: credentials.trading_mode,
+    try {
+      // Use the encryption edge function to save credentials
+      const { data, error } = await supabase.functions.invoke("encrypt-credentials", {
+        body: {
+          operation: "save",
+          credentials: {
+            schwab_client_id: credentials.schwab_client_id,
+            schwab_client_secret: credentials.schwab_client_secret,
+            trading_mode: credentials.trading_mode,
+          },
+        },
       });
 
-    if (error) {
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to save credentials",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Credentials encrypted and saved successfully",
+        });
+      }
+    } catch (error) {
+      console.error("Error saving credentials:", error);
       toast({
         title: "Error",
         description: "Failed to save credentials",
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Credentials saved successfully",
-      });
     }
+    
     setLoading(false);
   };
 

@@ -18,12 +18,16 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get user's Schwab credentials
-    const { data: credentials } = await supabase
-      .from("user_api_credentials")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
+    // Get user's Schwab credentials (decrypt using the encrypt-credentials function)
+    const { data: credentialsData, error: credError } = await supabase.functions.invoke(
+      "encrypt-credentials",
+      {
+        body: { operation: "load" },
+        headers: { Authorization: `Bearer ${supabaseKey}` },
+      }
+    );
+    
+    const credentials = credentialsData?.credentials;
 
     if (!credentials || !credentials.schwab_client_id) {
       throw new Error("Schwab API credentials not configured");

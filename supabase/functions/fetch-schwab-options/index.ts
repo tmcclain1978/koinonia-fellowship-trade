@@ -37,12 +37,16 @@ serve(async (req) => {
       throw new Error('Invalid user token');
     }
 
-    // Fetch user's Schwab credentials
-    const { data: credentials, error: credError } = await supabase
-      .from('user_api_credentials')
-      .select('schwab_client_id, schwab_client_secret, schwab_refresh_token')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Fetch user's Schwab credentials (decrypt using the encrypt-credentials function)
+    const { data: credentialsData, error: credError } = await supabase.functions.invoke(
+      "encrypt-credentials",
+      {
+        body: { operation: "load" },
+        headers: { Authorization: `Bearer ${authHeader}` },
+      }
+    );
+    
+    const credentials = credentialsData?.credentials;
 
     if (credError || !credentials) {
       return new Response(

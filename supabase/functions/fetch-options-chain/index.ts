@@ -37,12 +37,16 @@ serve(async (req) => {
       );
     }
 
-    // Fetch user's API credentials
-    const { data: credentials, error: credError } = await supabase
-      .from('user_api_credentials')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Fetch user's API credentials (decrypt using the encrypt-credentials function)
+    const { data: credentialsData, error: credError } = await supabase.functions.invoke(
+      "encrypt-credentials",
+      {
+        body: { operation: "load" },
+        headers: { Authorization: authHeader },
+      }
+    );
+    
+    const credentials = credentialsData?.credentials;
 
     if (credError) {
       console.error('Error fetching credentials:', credError);
