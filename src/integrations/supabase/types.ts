@@ -155,6 +155,86 @@ export type Database = {
         }
         Relationships: []
       }
+      paper_trades: {
+        Row: {
+          account_id: string
+          action: string
+          created_at: string
+          executed_at: string
+          id: string
+          notes: string | null
+          price: number
+          profit_loss: number | null
+          quantity: number
+          symbol: string
+          total_value: number
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          action: string
+          created_at?: string
+          executed_at?: string
+          id?: string
+          notes?: string | null
+          price: number
+          profit_loss?: number | null
+          quantity: number
+          symbol: string
+          total_value: number
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          action?: string
+          created_at?: string
+          executed_at?: string
+          id?: string
+          notes?: string | null
+          price?: number
+          profit_loss?: number | null
+          quantity?: number
+          symbol?: string
+          total_value?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paper_trades_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "paper_trading_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paper_trading_accounts: {
+        Row: {
+          balance: number
+          created_at: string
+          id: string
+          starting_balance: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          id?: string
+          starting_balance?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          id?: string
+          starting_balance?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           account_status: string
@@ -247,6 +327,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      trading_journal: {
+        Row: {
+          ai_analysis: string | null
+          ai_suggestions: string[] | null
+          analyzed_at: string | null
+          content: string
+          created_at: string
+          emotions: string[] | null
+          entry_date: string
+          entry_type: string
+          id: string
+          symbol: string | null
+          trade_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: string | null
+          ai_suggestions?: string[] | null
+          analyzed_at?: string | null
+          content: string
+          created_at?: string
+          emotions?: string[] | null
+          entry_date?: string
+          entry_type: string
+          id?: string
+          symbol?: string | null
+          trade_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: string | null
+          ai_suggestions?: string[] | null
+          analyzed_at?: string | null
+          content?: string
+          created_at?: string
+          emotions?: string[] | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          symbol?: string | null
+          trade_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trading_journal_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "paper_trades"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trading_signals: {
         Row: {

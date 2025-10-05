@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -36,10 +36,59 @@ const PaperTrading = () => {
     duration: "DAY",
   });
   
+  const [account, setAccount] = useState<any>(null);
+  const [trades, setTrades] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
-  const [simData, setSimData] = useState<any>(null);
-  const [logData, setLogData] = useState<any>(null);
-  const [statsData, setStatsData] = useState<any>(null);
+
+  useEffect(() => {
+    loadAccount();
+    loadTrades();
+  }, []);
+
+  const loadAccount = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('paper_trading_accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      setAccount(data);
+    } catch (error: any) {
+      toast({
+        title: "Error loading account",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadTrades = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('paper_trades')
+        .select('*')
+        .order('executed_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setTrades(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Error loading trades",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
 
   const mockChartData = [
     { time: '9:30', open: 175, high: 177, low: 174, close: 176.5, volume: 1200 },
@@ -70,39 +119,59 @@ const PaperTrading = () => {
     });
   };
 
-  const handleSimulate = () => {
-    const simulation = {
-      ...formData,
-      status: "SIMULATED",
-      profitLoss: (Math.random() * 500 - 250).toFixed(2),
-      fillPrice: (parseFloat(formData.strike || "180") * 1.02).toFixed(2),
-      timestamp: new Date().toISOString(),
+  const handleExecuteTrade = async (action: 'buy' | 'sell') => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
+        body: {
+          symbol: formData.symbol,
+          action,
+          quantity: formData.quantity,
+          price: formData.price,
+          strike: formData.strike,
+          side: formData.side,
+          expiration: formData.expiration,
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: `Trade ${action.toUpperCase()} Executed`,
+        description: `${formData.quantity} contracts of ${formData.symbol}`,
+      });
+
+      loadAccount();
+      loadTrades();
+      setFormData({
+        symbol: "AAPL",
+        side: "CALL",
+        expiration: "",
+        strike: "",
+        quantity: "1",
+        price: "",
+        orderType: "LIMIT",
+        duration: "DAY",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Trade failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateStats = () => {
+    const profitable = trades.filter(t => t.profit_loss && t.profit_loss > 0).length;
+    const totalPL = trades.reduce((sum, t) => sum + (Number(t.profit_loss) || 0), 0);
+    return {
+      totalTrades: trades.length,
+      winRate: trades.length > 0 ? ((profitable / trades.length) * 100).toFixed(1) : '0',
+      totalPL: totalPL.toFixed(2),
     };
-    setSimData(simulation);
-    toast({
-      title: "Simulation Complete",
-      description: "Trade simulation executed successfully",
-    });
-  };
-
-  const handleLoadLog = () => {
-    setLogData({
-      trades: [
-        { id: 1, symbol: "AAPL", side: "CALL", strike: 180, quantity: 1, timestamp: new Date().toISOString() },
-        { id: 2, symbol: "TSLA", side: "PUT", strike: 250, quantity: 2, timestamp: new Date().toISOString() },
-      ],
-    });
-  };
-
-  const handleLoadStats = () => {
-    setStatsData({
-      totalTrades: 45,
-      winRate: "62.5%",
-      avgProfit: "$127.50",
-      totalPL: "+$2,450.00",
-      bestTrade: "+$890.00",
-      worstTrade: "-$340.00",
-    });
   };
 
   return (
@@ -110,10 +179,27 @@ const PaperTrading = () => {
       <Navigation />
       <div className="min-h-screen bg-background pt-16">
         <div className="container mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">Paper Trading Platform</h1>
-        <p className="text-muted-foreground mb-6">
-          Test your trading strategies with simulated options trading
-        </p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Paper Trading Platform</h1>
+            <p className="text-muted-foreground">
+              Test your trading strategies with simulated options trading
+            </p>
+          </div>
+          {account && (
+            <Card className="p-4">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Account Balance</p>
+                <p className="text-2xl font-bold text-primary">
+                  ${Number(account.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Starting: ${Number(account.starting_balance).toLocaleString()}
+                </p>
+              </div>
+            </Card>
+          )}
+        </div>
 
         {/* Chart Options */}
         <Card className="mb-6">
@@ -296,26 +382,26 @@ const PaperTrading = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={handlePreview} size="sm" variant="outline">
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    Preview
-                  </Button>
-                  <Button onClick={handleSimulate} size="sm" variant="default">
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => handleExecuteTrade('buy')} 
+                    size="sm" 
+                    variant="default"
+                    disabled={loading}
+                    className="flex-1"
+                  >
                     <TrendingUp className="w-4 h-4 mr-2" />
-                    Simulate
+                    {loading ? 'Processing...' : 'BUY'}
                   </Button>
-                  <Button size="sm" variant="outline">
-                    <Download className="w-4 h-4 mr-2" />
-                    Export CSV
-                  </Button>
-                  <Button onClick={handleLoadLog} size="sm" variant="outline">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Load Log
-                  </Button>
-                  <Button onClick={handleLoadStats} size="sm" variant="outline">
-                    <BarChart2 className="w-4 h-4 mr-2" />
-                    Stats
+                  <Button 
+                    onClick={() => handleExecuteTrade('sell')} 
+                    size="sm" 
+                    variant="destructive"
+                    disabled={loading}
+                    className="flex-1"
+                  >
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    {loading ? 'Processing...' : 'SELL'}
                   </Button>
                 </div>
 
@@ -327,40 +413,69 @@ const PaperTrading = () => {
                     </pre>
                   </div>
                 )}
-
-                {simData && (
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2">Simulation</h3>
-                    <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-32">
-                      {JSON.stringify(simData, null, 2)}
-                    </pre>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Audit & Stats */}
+        {/* Recent Trades & Stats */}
+        <div className="grid md:grid-cols-3 gap-6 mb-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Total Trades</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{calculateStats().totalTrades}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Win Rate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-primary">{calculateStats().winRate}%</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Total P/L</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={`text-2xl font-bold ${Number(calculateStats().totalPL) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                ${calculateStats().totalPL}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
-            <CardTitle>Audit & Stats</CardTitle>
+            <CardTitle>Recent Trades</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <h3 className="font-semibold mb-2">Recent Log</h3>
-                <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64">
-                  {logData ? JSON.stringify(logData, null, 2) : "{}"}
-                </pre>
+            {trades.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No trades yet. Start trading!</p>
+            ) : (
+              <div className="space-y-2">
+                {trades.map(trade => (
+                  <div key={trade.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div>
+                      <p className="font-semibold">{trade.symbol}</p>
+                      <p className="text-sm text-muted-foreground">{trade.notes}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold capitalize">{trade.action}</p>
+                      <p className="text-sm">{trade.quantity} @ ${trade.price}</p>
+                      {trade.profit_loss && (
+                        <p className={`text-sm font-semibold ${trade.profit_loss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {trade.profit_loss >= 0 ? '+' : ''}${trade.profit_loss.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <h3 className="font-semibold mb-2">Stats</h3>
-                <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64">
-                  {statsData ? JSON.stringify(statsData, null, 2) : "{}"}
-                </pre>
-              </div>
-            </div>
+            )}
             </CardContent>
           </Card>
         </div>

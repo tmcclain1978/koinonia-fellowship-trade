@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
-import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot } from "lucide-react";
+import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot, BookOpen } from "lucide-react";
 import AIAnalysis from "@/components/AIAnalysis";
 import TradeSuggestionsCard from "@/components/TradeSuggestionsCard";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -176,6 +176,32 @@ const Dashboard = () => {
             <h3 className="font-semibold text-foreground mb-2">Live Podcast</h3>
             <p className="text-sm text-muted-foreground">
               Watch live trading discussions and Q&A
+            </p>
+          </button>
+
+          <button 
+            onClick={() => navigate("/paper-trading")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-primary/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Paper Trading</h3>
+            <p className="text-sm text-muted-foreground">
+              Practice trading with virtual money
+            </p>
+          </button>
+
+          <button 
+            onClick={() => navigate("/trading-journal")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-accent/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <BookOpen className="w-6 h-6 text-accent" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Trading Journal</h3>
+            <p className="text-sm text-muted-foreground">
+              Track and analyze your trades with AI
             </p>
           </button>
         </div>

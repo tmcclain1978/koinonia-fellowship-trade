@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Trading from "./pages/Trading";
 import PaperTrading from "./pages/PaperTrading";
+import TradingJournal from "./pages/TradingJournal";
 import Analytics from "./pages/Analytics";
 import Education from "./pages/Education";
 import Podcast from "./pages/Podcast";
@@ -34,7 +35,8 @@ const App = () => (
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/trading" element={<Trading />} />
-          <Route path="/paper-trading" element={<PaperTrading />} />
+        <Route path="/paper-trading" element={<PaperTrading />} />
+        <Route path="/trading-journal" element={<TradingJournal />} />
           <Route path="/trading-bot" element={<TradingBot />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/education" element={<Education />} />

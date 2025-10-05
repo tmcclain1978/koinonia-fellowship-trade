@@ -32,3 +32,12 @@ verify_jwt = false
 
 [functions.run-trading-bot]
 verify_jwt = false
+
+[functions.check-pdt-status]
+verify_jwt = false
+
+[functions.execute-paper-trade]
+verify_jwt = true
+
+[functions.analyze-journal]
+verify_jwt = true
