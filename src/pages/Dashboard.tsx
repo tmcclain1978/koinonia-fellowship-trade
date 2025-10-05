@@ -4,8 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
-import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle } from "lucide-react";
+import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot } from "lucide-react";
 import AIAnalysis from "@/components/AIAnalysis";
+import TradeSuggestionsCard from "@/components/TradeSuggestionsCard";
+import { useSubscription } from "@/hooks/useSubscription";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -13,6 +15,7 @@ const Dashboard = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { subscription } = useSubscription();
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -122,7 +125,21 @@ const Dashboard = () => {
         </div>
 
         {/* Quick Access Cards */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
+          {subscription?.tier === "enterprise" && (
+            <button 
+              onClick={() => navigate("/trading-bot")}
+              className="bg-gradient-card rounded-xl p-6 border border-border hover:border-primary/50 transition-all text-left group"
+            >
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <Bot className="w-6 h-6 text-primary" />
+              </div>
+              <h3 className="font-semibold text-foreground mb-2">AI Trading Bot</h3>
+              <p className="text-sm text-muted-foreground">
+                Automated trading powered by AI
+              </p>
+            </button>
+          )}
           <button 
             onClick={() => navigate("/trading")}
             className="bg-gradient-card rounded-xl p-6 border border-border hover:border-primary/50 transition-all text-left group"
@@ -202,8 +219,11 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* AI Analysis Section */}
-        <AIAnalysis />
+        {/* Trade Suggestions and AI Analysis */}
+        <div className="grid lg:grid-cols-2 gap-6">
+          <TradeSuggestionsCard />
+          <AIAnalysis />
+        </div>
       </div>
     </div>
   );

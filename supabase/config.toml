@@ -23,3 +23,12 @@ verify_jwt = false
 
 [functions.auto-trading-bot]
 verify_jwt = false
+
+[functions.generate-trade-suggestions]
+verify_jwt = false
+
+[functions.execute-trade]
+verify_jwt = false
+
+[functions.run-trading-bot]
+verify_jwt = false

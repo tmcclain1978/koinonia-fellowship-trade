@@ -16,6 +16,7 @@ import Admin from "./pages/Admin";
 import Help from "./pages/Help";
 import PendingApproval from "./pages/PendingApproval";
 import Pricing from "./pages/Pricing";
+import TradingBot from "./pages/TradingBot";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/trading" element={<Trading />} />
           <Route path="/paper-trading" element={<PaperTrading />} />
+          <Route path="/trading-bot" element={<TradingBot />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/education" element={<Education />} />
           <Route path="/podcast" element={<Podcast />} />
