@@ -46,6 +46,11 @@ interface PodcastData {
   show_notes: string;
   status: string;
   publish_date: string;
+  episode_type: string;
+  youtube_live_url?: string;
+  is_live_now: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const Admin = () => {
@@ -394,6 +399,9 @@ const Admin = () => {
         show_notes: formData.get("show_notes") as string,
         status: formData.get("status") as string,
         publish_date: formData.get("publish_date") as string,
+        episode_type: formData.get("episode_type") as string,
+        youtube_live_url: formData.get("youtube_live_url") as string || null,
+        is_live_now: formData.get("is_live_now") === "on",
       };
 
       if (editingPodcast) {
@@ -824,8 +832,36 @@ const Admin = () => {
                           <Textarea id="description" name="description" defaultValue={editingPodcast?.description} required />
                         </div>
                         <div className="grid gap-2">
-                          <Label htmlFor="audio_url">Audio URL</Label>
+                          <Label htmlFor="episode_type">Episode Type</Label>
+                          <Select name="episode_type" defaultValue={editingPodcast?.episode_type || "recorded"}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="recorded">Recorded</SelectItem>
+                              <SelectItem value="live">Live Stream</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="audio_url">Audio/Video URL</Label>
                           <Input id="audio_url" name="audio_url" type="url" defaultValue={editingPodcast?.audio_url} required />
+                          <p className="text-xs text-muted-foreground">For recorded: audio file URL. For live: YouTube embed URL</p>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="youtube_live_url">YouTube Live Stream URL (Optional)</Label>
+                          <Input id="youtube_live_url" name="youtube_live_url" type="url" defaultValue={editingPodcast?.youtube_live_url} placeholder="https://youtube.com/watch?v=..." />
+                          <p className="text-xs text-muted-foreground">Use for live streaming episodes</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="checkbox" 
+                            id="is_live_now" 
+                            name="is_live_now" 
+                            defaultChecked={editingPodcast?.is_live_now}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                          <Label htmlFor="is_live_now" className="cursor-pointer">Currently Live</Label>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="grid gap-2">

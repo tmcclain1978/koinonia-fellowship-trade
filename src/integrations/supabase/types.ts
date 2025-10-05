@@ -423,6 +423,41 @@ export type Database = {
         }
         Relationships: []
       }
+      podcast_chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          podcast_id: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          podcast_id: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          podcast_id?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "podcast_chat_messages_podcast_id_fkey"
+            columns: ["podcast_id"]
+            isOneToOne: false
+            referencedRelation: "podcasts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       podcasts: {
         Row: {
           audio_url: string
@@ -430,12 +465,15 @@ export type Database = {
           description: string | null
           duration: string | null
           episode_number: number
+          episode_type: string
           id: string
+          is_live_now: boolean | null
           publish_date: string | null
           show_notes: string | null
           status: string
           title: string
           updated_at: string | null
+          youtube_live_url: string | null
         }
         Insert: {
           audio_url: string
@@ -443,12 +481,15 @@ export type Database = {
           description?: string | null
           duration?: string | null
           episode_number: number
+          episode_type?: string
           id?: string
+          is_live_now?: boolean | null
           publish_date?: string | null
           show_notes?: string | null
           status?: string
           title: string
           updated_at?: string | null
+          youtube_live_url?: string | null
         }
         Update: {
           audio_url?: string
@@ -456,12 +497,15 @@ export type Database = {
           description?: string | null
           duration?: string | null
           episode_number?: number
+          episode_type?: string
           id?: string
+          is_live_now?: boolean | null
           publish_date?: string | null
           show_notes?: string | null
           status?: string
           title?: string
           updated_at?: string | null
+          youtube_live_url?: string | null
         }
         Relationships: []
       }
