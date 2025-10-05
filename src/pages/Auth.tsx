@@ -5,15 +5,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { PrivacyPolicyModal } from "@/components/PrivacyPolicyModal";
+import { Label } from "@/components/ui/label";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(false); // Default to signup for new users
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const calculateAge = (birthDate: string) => {
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
 
   useEffect(() => {
     // Check if user is already logged in
@@ -37,6 +51,30 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      // Age verification for signup
+      if (!isLogin) {
+        if (!dateOfBirth) {
+          toast({
+            title: "Date of Birth Required",
+            description: "Please enter your date of birth.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+
+        const age = calculateAge(dateOfBirth);
+        if (age < 18) {
+          toast({
+            title: "Age Requirement Not Met",
+            description: "You must be at least 18 years old to create an account.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -57,6 +95,7 @@ const Auth = () => {
             emailRedirectTo: `${window.location.origin}/dashboard`,
             data: {
               full_name: fullName,
+              date_of_birth: dateOfBirth,
             },
           },
         });
@@ -112,25 +151,39 @@ const Auth = () => {
 
           <form onSubmit={handleAuth} className="space-y-4">
             {!isLogin && (
-              <div>
-                <label className="block text-sm font-medium text-card-foreground mb-2">
-                  Full Name
-                </label>
-                <Input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                  placeholder="John Doe"
-                />
-              </div>
+              <>
+                <div>
+                  <Label htmlFor="fullName" className="text-card-foreground">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    placeholder="John Doe"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="dob" className="text-card-foreground">Date of Birth</Label>
+                  <Input
+                    id="dob"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    required
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You must be 18 or older to create an account
+                  </p>
+                </div>
+              </>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-2">
-                Email
-              </label>
+              <Label htmlFor="email" className="text-card-foreground">Email</Label>
               <Input
+                id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -140,10 +193,9 @@ const Auth = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-2">
-                Password
-              </label>
+              <Label htmlFor="password" className="text-card-foreground">Password</Label>
               <Input
+                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -152,6 +204,16 @@ const Auth = () => {
                 minLength={6}
               />
             </div>
+
+            {!isLogin && (
+              <div className="text-xs text-muted-foreground border border-border rounded-lg p-3 bg-muted/30">
+                <p className="font-medium mb-1">🔒 Your Privacy Matters</p>
+                <p>
+                  Your ID and personal information are encrypted and never shared. 
+                  Read our <PrivacyPolicyModal trigger={<span className="text-primary cursor-pointer underline">Privacy Policy</span>} />
+                </p>
+              </div>
+            )}
 
             <Button
               type="submit"
@@ -179,6 +241,7 @@ const Auth = () => {
                 setEmail("");
                 setPassword("");
                 setFullName("");
+                setDateOfBirth("");
               }}
               className="text-primary hover:text-primary-glow transition-colors font-medium"
             >

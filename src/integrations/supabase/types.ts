@@ -512,30 +512,48 @@ export type Database = {
       profiles: {
         Row: {
           account_status: string
+          country_code: string | null
           created_at: string | null
+          date_of_birth: string | null
           full_name: string | null
           id: string
+          id_verification_status: string | null
+          id_verified_at: string | null
           trading_experience: string | null
           updated_at: string | null
           user_id: string
+          verification_provider: string | null
+          verification_session_id: string | null
         }
         Insert: {
           account_status?: string
+          country_code?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
           full_name?: string | null
           id?: string
+          id_verification_status?: string | null
+          id_verified_at?: string | null
           trading_experience?: string | null
           updated_at?: string | null
           user_id: string
+          verification_provider?: string | null
+          verification_session_id?: string | null
         }
         Update: {
           account_status?: string
+          country_code?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
           full_name?: string | null
           id?: string
+          id_verification_status?: string | null
+          id_verified_at?: string | null
           trading_experience?: string | null
           updated_at?: string | null
           user_id?: string
+          verification_provider?: string | null
+          verification_session_id?: string | null
         }
         Relationships: []
       }
