@@ -14,6 +14,7 @@ import Navigation from "@/components/Navigation";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
+  const [tradingMode, setTradingMode] = useState<string>("paper");
   const [symbol, setSymbol] = useState("AAPL");
   const [accountId, setAccountId] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -137,9 +138,44 @@ const Trading = () => {
         navigate("/auth");
       } else {
         setUser(session.user);
+        fetchTradingMode();
       }
     });
+
+    // Set up realtime subscription for trading mode changes
+    const channel = supabase
+      .channel('trading-mode-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_api_credentials'
+        },
+        () => {
+          fetchTradingMode();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [navigate]);
+
+  const fetchTradingMode = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("encrypt-credentials", {
+        body: { operation: "load" },
+      });
+
+      if (!error && data?.credentials?.trading_mode) {
+        setTradingMode(data.credentials.trading_mode);
+      }
+    } catch (error) {
+      console.error("Error fetching trading mode:", error);
+    }
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -174,7 +210,7 @@ const Trading = () => {
     }
     
     toast({
-      title: "Order Placed (Paper Trading)",
+      title: `Order Placed (${tradingMode === 'live' ? 'Live Trading' : 'Paper Trading'})`,
       description: orderDetails,
     });
   };
@@ -184,9 +220,18 @@ const Trading = () => {
       <Navigation />
       <div className="min-h-screen bg-background pt-16">
         <div className="container mx-auto px-6 py-8">
-        <p className="text-muted-foreground mb-6">
-          Build, validate, and preview orders. Currently in paper trading mode.
-        </p>
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-muted-foreground">
+            Build, validate, and preview orders.
+          </p>
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+            tradingMode === 'live' 
+              ? 'bg-destructive/10 text-destructive' 
+              : 'bg-primary/10 text-primary'
+          }`}>
+            {tradingMode === 'live' ? '🔴 Live Trading' : '📝 Paper Trading'}
+          </span>
+        </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Order Builder */}
