@@ -519,6 +519,8 @@ export type Database = {
           id: string
           id_verification_status: string | null
           id_verified_at: string | null
+          stripe_verification_session_id: string | null
+          stripe_verified_at: string | null
           trading_experience: string | null
           updated_at: string | null
           user_id: string
@@ -534,6 +536,8 @@ export type Database = {
           id?: string
           id_verification_status?: string | null
           id_verified_at?: string | null
+          stripe_verification_session_id?: string | null
+          stripe_verified_at?: string | null
           trading_experience?: string | null
           updated_at?: string | null
           user_id: string
@@ -549,6 +553,8 @@ export type Database = {
           id?: string
           id_verification_status?: string | null
           id_verified_at?: string | null
+          stripe_verification_session_id?: string | null
+          stripe_verified_at?: string | null
           trading_experience?: string | null
           updated_at?: string | null
           user_id?: string
@@ -752,11 +758,24 @@ export type Database = {
         Row: {
           account_type: string | null
           account_value: number | null
+          alpaca_api_key: string | null
+          alpaca_paper_mode: boolean | null
+          alpaca_secret_key: string | null
+          broker_type: string | null
           created_at: string
+          etrade_access_secret: string | null
+          etrade_access_token: string | null
+          etrade_consumer_key: string | null
+          etrade_consumer_secret: string | null
+          ib_access_token: string | null
+          ib_account_id: string | null
           id: string
           schwab_client_id: string | null
           schwab_client_secret: string | null
           schwab_refresh_token: string | null
+          td_client_id: string | null
+          td_client_secret: string | null
+          td_refresh_token: string | null
           trading_mode: string | null
           updated_at: string
           user_id: string
@@ -764,11 +783,24 @@ export type Database = {
         Insert: {
           account_type?: string | null
           account_value?: number | null
+          alpaca_api_key?: string | null
+          alpaca_paper_mode?: boolean | null
+          alpaca_secret_key?: string | null
+          broker_type?: string | null
           created_at?: string
+          etrade_access_secret?: string | null
+          etrade_access_token?: string | null
+          etrade_consumer_key?: string | null
+          etrade_consumer_secret?: string | null
+          ib_access_token?: string | null
+          ib_account_id?: string | null
           id?: string
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
           schwab_refresh_token?: string | null
+          td_client_id?: string | null
+          td_client_secret?: string | null
+          td_refresh_token?: string | null
           trading_mode?: string | null
           updated_at?: string
           user_id: string
@@ -776,11 +808,24 @@ export type Database = {
         Update: {
           account_type?: string | null
           account_value?: number | null
+          alpaca_api_key?: string | null
+          alpaca_paper_mode?: boolean | null
+          alpaca_secret_key?: string | null
+          broker_type?: string | null
           created_at?: string
+          etrade_access_secret?: string | null
+          etrade_access_token?: string | null
+          etrade_consumer_key?: string | null
+          etrade_consumer_secret?: string | null
+          ib_access_token?: string | null
+          ib_account_id?: string | null
           id?: string
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
           schwab_refresh_token?: string | null
+          td_client_id?: string | null
+          td_client_secret?: string | null
+          td_refresh_token?: string | null
           trading_mode?: string | null
           updated_at?: string
           user_id?: string

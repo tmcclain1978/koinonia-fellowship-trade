@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Shield } from "lucide-react";
 import { PrivacyPolicyModal } from "@/components/PrivacyPolicyModal";
 import { Label } from "@/components/ui/label";
 
@@ -15,6 +15,8 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verificationStep, setVerificationStep] = useState<'signup' | 'identity' | 'complete'>('signup');
+  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -104,8 +106,37 @@ const Auth = () => {
 
         toast({
           title: "Account created!",
-          description: "Welcome to Koinonia trading fellowship.",
+          description: "Now let's verify your identity with Stripe.",
         });
+
+        // Get current user
+        const { data: { user: newUser } } = await supabase.auth.getUser();
+        
+        if (newUser) {
+          // Create Stripe Identity verification session
+          const { data: stripeData, error: stripeError } = await supabase.functions.invoke(
+            'create-stripe-identity-session',
+            {
+              body: {
+                userId: newUser.id,
+                returnUrl: `${window.location.origin}/dashboard`,
+              },
+            }
+          );
+
+          if (stripeError || !stripeData?.url) {
+            console.error('Stripe verification error:', stripeError);
+            toast({
+              title: "Verification Setup Failed",
+              description: "Please contact support to complete identity verification.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          setVerificationUrl(stripeData.url);
+          setVerificationStep('identity');
+        }
       }
     } catch (error: any) {
       console.error("Auth error:", error);
@@ -128,6 +159,42 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+  // Render identity verification step
+  if (verificationStep === 'identity' && verificationUrl) {
+    return (
+      <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-6">
+        <div className="w-full max-w-md">
+          <div className="bg-card rounded-2xl p-8 shadow-elegant border border-border text-center">
+            <div className="inline-block p-4 bg-primary/10 rounded-full mb-6">
+              <Shield className="w-12 h-12 text-primary" />
+            </div>
+            <h1 className="font-display text-3xl font-bold text-foreground mb-4">
+              Identity Verification
+            </h1>
+            <p className="text-muted-foreground mb-6">
+              To comply with trading regulations, we need to verify your identity. 
+              This process is secure and powered by Stripe Identity.
+            </p>
+            <div className="space-y-4">
+              <Button
+                onClick={() => window.location.href = verificationUrl}
+                variant="hero"
+                size="lg"
+                className="w-full"
+              >
+                Start Verification
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                You'll be redirected to Stripe's secure verification page. 
+                Have a government-issued ID ready (driver's license, passport, or state ID).
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center px-6">
