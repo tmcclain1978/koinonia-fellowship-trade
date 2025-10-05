@@ -76,21 +76,42 @@ export const useSubscription = () => {
         return "free_user";
       };
 
+      // Check if subscription is expired
+      const isSubscriptionActive = (sub: any): boolean => {
+        if (!sub) return false;
+        if (sub.status !== "active") return false;
+        if (!sub.end_date) return true; // No end date means active forever
+        return new Date(sub.end_date) > new Date();
+      };
+
+      // Determine final tier based on role and active subscription
+      let finalTier: SubscriptionTier = mapRoleToTier(roleData?.role);
+      let finalStatus: "active" | "cancelled" | "expired" = "active";
+      let finalEndDate: string | null = null;
+
       if (subData) {
-        setSubscription({
-          tier: mapRoleToTier(roleData?.role),
-          status: (subData.status === "active" || subData.status === "cancelled" || subData.status === "expired") 
-            ? subData.status 
-            : "active",
-          endDate: subData.end_date,
-        });
-      } else {
-        setSubscription({
-          tier: mapRoleToTier(roleData?.role),
-          status: "active",
-          endDate: null,
-        });
+        const subIsActive = isSubscriptionActive(subData);
+        
+        // If subscription is expired, downgrade to free_user unless they're admin
+        if (!subIsActive && roleData?.role !== "admin") {
+          finalTier = "free_user";
+          finalStatus = "expired";
+        } else {
+          // Use subscription's plan name if active
+          if (subData.plan_name === "basic" || subData.plan_name === "pro" || subData.plan_name === "enterprise") {
+            finalTier = subData.plan_name;
+          }
+          finalStatus = subIsActive ? "active" : "expired";
+        }
+        
+        finalEndDate = subData.end_date;
       }
+
+      setSubscription({
+        tier: finalTier,
+        status: finalStatus,
+        endDate: finalEndDate,
+      });
     } catch (error) {
       console.error("Error loading subscription:", error);
     } finally {
