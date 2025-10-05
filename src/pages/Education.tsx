@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Play, BookOpen, LogOut } from "lucide-react";
+import Navigation from "@/components/Navigation";
 
 const Education = () => {
   const [selectedVideo, setSelectedVideo] = useState(0);
@@ -66,8 +67,10 @@ const Education = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background pt-16">
-      <div className="container mx-auto px-6 py-8">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto px-6 py-8">
         <p className="text-muted-foreground mb-8">
           Learn the fundamentals of options trading with our curated video library
         </p>
@@ -142,14 +145,15 @@ const Education = () => {
                       <span>{video.duration}</span>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default Education;
+                 </div>
+               ))}
+             </div>
+           </div>
+         </div>
+       </div>
+       </div>
+     </>
+   );
+ };
+ 
+ export default Education;

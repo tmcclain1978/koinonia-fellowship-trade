@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, Cell } from 'recharts';
 import { TrendingUp, Activity, BarChart3, GitBranch } from "lucide-react";
+import Navigation from "@/components/Navigation";
 
 const Analytics = () => {
   const [symbol, setSymbol] = useState("AAPL");
@@ -67,8 +68,10 @@ const Analytics = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pt-16">
-      <div className="container mx-auto px-6 py-8">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold text-foreground mb-2">Advanced Analytics</h1>
         <p className="text-muted-foreground mb-6">
           Deep market analysis with heat maps, IV/OI charts, and technical indicators
@@ -323,7 +326,8 @@ const Analytics = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

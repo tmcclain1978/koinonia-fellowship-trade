@@ -10,6 +10,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import Navigation from "@/components/Navigation";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -179,9 +180,10 @@ const Trading = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pt-16">{/* pt-16 for fixed nav */}
-
-      <div className="container mx-auto px-6 py-8">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto px-6 py-8">
         <p className="text-muted-foreground mb-6">
           Build, validate, and preview orders. Currently in paper trading mode.
         </p>
@@ -655,7 +657,8 @@ const Trading = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

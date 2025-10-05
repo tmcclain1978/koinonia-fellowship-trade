@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Radio, LogOut, Play } from "lucide-react";
+import Navigation from "@/components/Navigation";
 
 const Podcast = () => {
   const navigate = useNavigate();
@@ -44,8 +45,10 @@ const Podcast = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pt-16">
-      <div className="container mx-auto px-6 py-8">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto px-6 py-8">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Live Stream */}
           <div className="lg:col-span-2">
@@ -157,7 +160,8 @@ const Podcast = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

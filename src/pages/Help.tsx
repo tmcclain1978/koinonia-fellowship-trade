@@ -4,13 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, BookOpen, Settings as SettingsIcon, LineChart, Shield } from "lucide-react";
+import Navigation from "@/components/Navigation";
 
 const Help = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background pt-16">
-      <div className="container mx-auto p-6 max-w-4xl">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto p-6 max-w-4xl">
         <Button
           variant="ghost"
           onClick={() => navigate("/dashboard")}
@@ -259,7 +262,8 @@ const Help = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

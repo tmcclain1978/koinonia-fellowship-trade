@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save } from "lucide-react";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
+import Navigation from "@/components/Navigation";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -80,8 +81,10 @@ const Settings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-6 max-w-2xl">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto p-6 max-w-2xl">
         <Button
           variant="ghost"
           onClick={() => navigate("/dashboard")}
@@ -180,7 +183,8 @@ const Settings = () => {
         <AutoTradingSettings />
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

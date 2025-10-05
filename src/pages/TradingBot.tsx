@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, DollarSign, ArrowLeft } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
+import Navigation from "@/components/Navigation";
 
 interface Trade {
   id: string;
@@ -169,7 +170,9 @@ const TradingBot = () => {
 
   if (subscription?.tier !== "enterprise") {
     return (
-      <div className="min-h-screen bg-background p-6">
+      <>
+        <Navigation />
+        <div className="min-h-screen bg-background pt-16 p-6">
         <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-6">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Dashboard
@@ -192,12 +195,15 @@ const TradingBot = () => {
           </CardContent>
         </Card>
       </div>
+    </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16 p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" onClick={() => navigate("/dashboard")}>
@@ -356,7 +362,8 @@ const TradingBot = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

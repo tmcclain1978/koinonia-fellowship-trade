@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { BarChart3, TrendingUp, Download, FileText, BarChart2 } from "lucide-react";
+import Navigation from "@/components/Navigation";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -105,8 +106,10 @@ const PaperTrading = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pt-16">
-      <div className="container mx-auto px-6 py-8">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pt-16">
+        <div className="container mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold text-foreground mb-2">Paper Trading Platform</h1>
         <p className="text-muted-foreground mb-6">
           Test your trading strategies with simulated options trading
@@ -358,10 +361,11 @@ const PaperTrading = () => {
                 </pre>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
