@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2 } from "lucide-react";
+import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown } from "lucide-react";
 
 interface UserData {
   id: string;
@@ -198,11 +198,11 @@ const Admin = () => {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: "admin" | "user" | "free_user") => {
+  const updateUserRole = async (userId: string, newRole: string) => {
     try {
       const { error } = await supabase
         .from("user_roles")
-        .update({ role: newRole })
+        .update({ role: newRole as any })
         .eq("user_id", userId);
 
       if (error) throw error;
@@ -217,6 +217,43 @@ const Admin = () => {
       toast({
         title: "Error",
         description: "Failed to update user role",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const grantFreeEnterprise = async (userId: string) => {
+    try {
+      // Update role to enterprise
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .update({ role: "enterprise" as any })
+        .eq("user_id", userId);
+
+      if (roleError) throw roleError;
+
+      // Create/update subscription
+      const { error: subError } = await supabase
+        .from("subscriptions")
+        .upsert({
+          user_id: userId,
+          plan_name: "enterprise",
+          status: "active",
+          start_date: new Date().toISOString(),
+        });
+
+      if (subError) throw subError;
+
+      toast({
+        title: "Success",
+        description: "User upgraded to Free Enterprise access!",
+      });
+      fetchUsers();
+    } catch (error) {
+      console.error("Error granting enterprise:", error);
+      toast({
+        title: "Error",
+        description: "Failed to grant enterprise access",
         variant: "destructive",
       });
     }
@@ -529,7 +566,7 @@ const Admin = () => {
                       <TableHead>Role</TableHead>
                       <TableHead>Subscription</TableHead>
                       <TableHead>Joined</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>Quick Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -567,15 +604,17 @@ const Admin = () => {
                         <TableCell>
                           <Select
                             value={user.role}
-                            onValueChange={(value) => updateUserRole(user.id, value as "admin" | "user" | "free_user")}
+                            onValueChange={(value) => updateUserRole(user.id, value as any)}
                             disabled={user.account_status !== "active"}
                           >
-                            <SelectTrigger className="w-32">
+                            <SelectTrigger className="w-36">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="admin">Admin</SelectItem>
-                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="enterprise">Enterprise</SelectItem>
+                              <SelectItem value="pro">Pro</SelectItem>
+                              <SelectItem value="basic">Basic</SelectItem>
                               <SelectItem value="free_user">Free User</SelectItem>
                             </SelectContent>
                           </Select>
@@ -601,14 +640,27 @@ const Admin = () => {
                           {new Date(user.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          {user.account_status === "pending" && (
-                            <Button 
-                              size="sm" 
-                              onClick={() => updateAccountStatus(user.id, "active")}
-                            >
-                              Approve
-                            </Button>
-                          )}
+                          <div className="flex gap-2">
+                            {user.account_status === "pending" && (
+                              <Button 
+                                size="sm" 
+                                onClick={() => updateAccountStatus(user.id, "active")}
+                              >
+                                Approve
+                              </Button>
+                            )}
+                            {user.account_status === "active" && user.role !== "enterprise" && (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => grantFreeEnterprise(user.id)}
+                                className="gap-2"
+                              >
+                                <Crown className="w-4 h-4" />
+                                Grant Enterprise
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
