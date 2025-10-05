@@ -66,6 +66,10 @@ export const useSubscription = () => {
 
       // Map role to subscription tier
       const mapRoleToTier = (role: string | undefined): SubscriptionTier => {
+        // Admins get enterprise-level access
+        if (role === "admin") {
+          return "enterprise";
+        }
         if (role === "basic" || role === "pro" || role === "enterprise") {
           return role;
         }
