@@ -12,11 +12,29 @@ serve(async (req) => {
   }
 
   try {
-    const { code, userId } = await req.json();
-    
+    // Get authorization header
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      throw new Error("Missing authorization header");
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Verify the user's JWT and get their user ID
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      throw new Error("Invalid authentication token");
+    }
+
+    const userId = user.id;
+
+    // Get promo code from request body
+    const { code } = await req.json();
 
     // Validate promo code
     const { data: promoData, error: promoError } = await supabase
