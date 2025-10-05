@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, TrendingUp, LogOut, User, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+const scrollToSection = (sectionId: string) => {
+  const element = document.getElementById(sectionId);
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+};
+
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -25,6 +32,18 @@ const Navigation = () => {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/");
+  };
+
+  const handleSectionClick = (e: React.MouseEvent<HTMLAnchorElement>, sectionId: string) => {
+    e.preventDefault();
+    if (location.pathname !== '/') {
+      navigate('/');
+      // Wait for navigation to complete, then scroll
+      setTimeout(() => scrollToSection(sectionId), 100);
+    } else {
+      scrollToSection(sectionId);
+    }
+    setIsMenuOpen(false);
   };
 
   // Don't show navigation on auth page
@@ -261,21 +280,37 @@ const Navigation = () => {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-8">
-            <Link to="/#home" className="text-foreground hover:text-primary transition-colors">
+            <a 
+              href="#home" 
+              onClick={(e) => handleSectionClick(e, 'home')}
+              className="text-foreground hover:text-primary transition-colors cursor-pointer"
+            >
               Home
-            </Link>
-            <Link to="/#services" className="text-foreground hover:text-primary transition-colors">
+            </a>
+            <a 
+              href="#services" 
+              onClick={(e) => handleSectionClick(e, 'services')}
+              className="text-foreground hover:text-primary transition-colors cursor-pointer"
+            >
               Services
-            </Link>
+            </a>
             <Link to="/pricing" className="text-foreground hover:text-primary transition-colors">
               Pricing
             </Link>
-            <Link to="/#about" className="text-foreground hover:text-primary transition-colors">
+            <a 
+              href="#about" 
+              onClick={(e) => handleSectionClick(e, 'about')}
+              className="text-foreground hover:text-primary transition-colors cursor-pointer"
+            >
               About
-            </Link>
-            <Link to="/#contact" className="text-foreground hover:text-primary transition-colors">
+            </a>
+            <a 
+              href="#contact" 
+              onClick={(e) => handleSectionClick(e, 'contact')}
+              className="text-foreground hover:text-primary transition-colors cursor-pointer"
+            >
               Contact
-            </Link>
+            </a>
             <Button variant="hero" size="sm" asChild>
               <Link to="/auth">Get Started</Link>
             </Button>
@@ -294,21 +329,41 @@ const Navigation = () => {
         {isMenuOpen && (
           <div className="md:hidden mt-4 py-4 border-t border-border">
             <div className="flex flex-col space-y-4">
-              <Link to="/#home" className="text-foreground hover:text-primary transition-colors">
+              <a 
+                href="#home" 
+                onClick={(e) => handleSectionClick(e, 'home')}
+                className="text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
                 Home
-              </Link>
-              <Link to="/#services" className="text-foreground hover:text-primary transition-colors">
+              </a>
+              <a 
+                href="#services" 
+                onClick={(e) => handleSectionClick(e, 'services')}
+                className="text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
                 Services
-              </Link>
-              <Link to="/pricing" className="text-foreground hover:text-primary transition-colors">
+              </a>
+              <Link 
+                to="/pricing" 
+                onClick={() => setIsMenuOpen(false)}
+                className="text-foreground hover:text-primary transition-colors"
+              >
                 Pricing
               </Link>
-              <Link to="/#about" className="text-foreground hover:text-primary transition-colors">
+              <a 
+                href="#about" 
+                onClick={(e) => handleSectionClick(e, 'about')}
+                className="text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
                 About
-              </Link>
-              <Link to="/#contact" className="text-foreground hover:text-primary transition-colors">
+              </a>
+              <a 
+                href="#contact" 
+                onClick={(e) => handleSectionClick(e, 'contact')}
+                className="text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
                 Contact
-              </Link>
+              </a>
               <Button variant="hero" size="sm" className="self-start" asChild>
                 <Link to="/auth">Get Started</Link>
               </Button>
