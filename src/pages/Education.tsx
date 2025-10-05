@@ -67,13 +67,15 @@ const Education = () => {
   }
 
   return (
-    <>
+    <div className="min-h-screen bg-background">
       <Navigation />
-      <div className="min-h-screen bg-background pt-16">
-        <div className="container mx-auto px-6 py-8">
-        <p className="text-muted-foreground mb-8">
-          Learn the fundamentals of options trading with our curated video library
-        </p>
+      <div className="container mx-auto px-6 py-24">
+        <div className="mb-8">
+          <h1 className="text-4xl font-display font-bold mb-2">Education Hub</h1>
+          <p className="text-muted-foreground">
+            Learn the fundamentals of options trading with our curated video library
+          </p>
+        </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Video Player */}
@@ -151,8 +153,7 @@ const Education = () => {
            </div>
          </div>
        </div>
-       </div>
-     </>
+     </div>
    );
  };
  
