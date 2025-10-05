@@ -224,15 +224,7 @@ const Admin = () => {
 
   const grantFreeEnterprise = async (userId: string) => {
     try {
-      // Update role to enterprise
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .update({ role: "enterprise" as any })
-        .eq("user_id", userId);
-
-      if (roleError) throw roleError;
-
-      // Create/update subscription
+      // Create/update subscription to enterprise (don't change role)
       const { error: subError } = await supabase
         .from("subscriptions")
         .upsert({
@@ -240,13 +232,14 @@ const Admin = () => {
           plan_name: "enterprise",
           status: "active",
           start_date: new Date().toISOString(),
+          end_date: null, // No end date for free enterprise
         });
 
       if (subError) throw subError;
 
       toast({
         title: "Success",
-        description: "User upgraded to Free Enterprise access!",
+        description: "User granted Free Enterprise access!",
       });
       fetchUsers();
     } catch (error) {
