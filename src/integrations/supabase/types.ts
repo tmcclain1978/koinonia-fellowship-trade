@@ -86,6 +86,194 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_learning_insights: {
+        Row: {
+          avg_discipline_score: number | null
+          avg_profit_factor: number | null
+          avg_slippage: number | null
+          created_at: string
+          id: string
+          insight_date: string
+          iv_regime_accuracy: number | null
+          key_insights: string[] | null
+          risk_observations: string | null
+          strategy_adjustments: string | null
+          trades_analyzed: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_discipline_score?: number | null
+          avg_profit_factor?: number | null
+          avg_slippage?: number | null
+          created_at?: string
+          id?: string
+          insight_date?: string
+          iv_regime_accuracy?: number | null
+          key_insights?: string[] | null
+          risk_observations?: string | null
+          strategy_adjustments?: string | null
+          trades_analyzed?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avg_discipline_score?: number | null
+          avg_profit_factor?: number | null
+          avg_slippage?: number | null
+          created_at?: string
+          id?: string
+          insight_date?: string
+          iv_regime_accuracy?: number | null
+          key_insights?: string[] | null
+          risk_observations?: string | null
+          strategy_adjustments?: string | null
+          trades_analyzed?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      bot_performance_log: {
+        Row: {
+          actual_rr: number | null
+          created_at: string
+          discipline_score: number | null
+          entry_price: number
+          execution_quality_score: number | null
+          exit_price: number | null
+          expected_rr: number | null
+          id: string
+          iv_rank_entry: number | null
+          iv_rank_exit: number | null
+          pop_predicted: number | null
+          pop_realized: number | null
+          profit_factor: number | null
+          quantity: number
+          regime_classification: string | null
+          regime_correct: boolean | null
+          slippage: number | null
+          strategy: string
+          symbol: string
+          trade_closed_at: string | null
+          trade_id: string | null
+          trade_opened_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_rr?: number | null
+          created_at?: string
+          discipline_score?: number | null
+          entry_price: number
+          execution_quality_score?: number | null
+          exit_price?: number | null
+          expected_rr?: number | null
+          id?: string
+          iv_rank_entry?: number | null
+          iv_rank_exit?: number | null
+          pop_predicted?: number | null
+          pop_realized?: number | null
+          profit_factor?: number | null
+          quantity: number
+          regime_classification?: string | null
+          regime_correct?: boolean | null
+          slippage?: number | null
+          strategy: string
+          symbol: string
+          trade_closed_at?: string | null
+          trade_id?: string | null
+          trade_opened_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_rr?: number | null
+          created_at?: string
+          discipline_score?: number | null
+          entry_price?: number
+          execution_quality_score?: number | null
+          exit_price?: number | null
+          expected_rr?: number | null
+          id?: string
+          iv_rank_entry?: number | null
+          iv_rank_exit?: number | null
+          pop_predicted?: number | null
+          pop_realized?: number | null
+          profit_factor?: number | null
+          quantity?: number
+          regime_classification?: string | null
+          regime_correct?: boolean | null
+          slippage?: number | null
+          strategy?: string
+          symbol?: string
+          trade_closed_at?: string | null
+          trade_id?: string | null
+          trade_opened_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_performance_log_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "auto_trades_log"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_strategy_stats: {
+        Row: {
+          avg_profit_factor: number | null
+          avg_slippage: number | null
+          confidence_multiplier: number | null
+          created_at: string
+          enabled: boolean | null
+          id: string
+          losing_trades: number | null
+          strategy: string
+          total_pnl: number | null
+          total_trades: number | null
+          updated_at: string
+          user_id: string
+          win_rate: number | null
+          winning_trades: number | null
+        }
+        Insert: {
+          avg_profit_factor?: number | null
+          avg_slippage?: number | null
+          confidence_multiplier?: number | null
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          losing_trades?: number | null
+          strategy: string
+          total_pnl?: number | null
+          total_trades?: number | null
+          updated_at?: string
+          user_id: string
+          win_rate?: number | null
+          winning_trades?: number | null
+        }
+        Update: {
+          avg_profit_factor?: number | null
+          avg_slippage?: number | null
+          confidence_multiplier?: number | null
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          losing_trades?: number | null
+          strategy?: string
+          total_pnl?: number | null
+          total_trades?: number | null
+          updated_at?: string
+          user_id?: string
+          win_rate?: number | null
+          winning_trades?: number | null
+        }
+        Relationships: []
+      }
       contact_submissions: {
         Row: {
           created_at: string | null

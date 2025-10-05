@@ -204,6 +204,19 @@ const Dashboard = () => {
               Track and analyze your trades with AI
             </p>
           </button>
+
+          <button 
+            onClick={() => navigate("/bot-learning")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-primary/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <Bot className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Bot Learning</h3>
+            <p className="text-sm text-muted-foreground">
+              View AI bot performance and coaching insights
+            </p>
+          </button>
         </div>
 
         {/* Stats Grid */}
