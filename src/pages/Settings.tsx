@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save } from "lucide-react";
+import AutoTradingSettings from "@/components/AutoTradingSettings";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -175,6 +176,8 @@ const Settings = () => {
             </div>
           </CardContent>
         </Card>
+
+        <AutoTradingSettings />
         </div>
       </div>
     </div>

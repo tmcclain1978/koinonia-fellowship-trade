@@ -25,6 +25,14 @@ const AIAnalysis = () => {
     setAnalysis(null);
 
     try {
+      // Track usage
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await supabase.functions.invoke("track-usage", {
+          body: { feature: "ai_analyses", userId: session.user.id },
+        });
+      }
+
       const { data, error } = await supabase.functions.invoke("analyze-stock", {
         body: { symbol: symbol.toUpperCase(), timeframe: "day trading" },
       });

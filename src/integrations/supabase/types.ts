@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      auto_trades_log: {
+        Row: {
+          action: string
+          executed_at: string | null
+          id: string
+          price: number
+          quantity: number
+          reasoning: string | null
+          status: string | null
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          executed_at?: string | null
+          id?: string
+          price: number
+          quantity: number
+          reasoning?: string | null
+          status?: string | null
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          executed_at?: string | null
+          id?: string
+          price?: number
+          quantity?: number
+          reasoning?: string | null
+          status?: string | null
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      auto_trading_settings: {
+        Row: {
+          allowed_symbols: string[] | null
+          created_at: string | null
+          enabled: boolean | null
+          id: string
+          max_daily_trades: number | null
+          max_position_size: number | null
+          risk_tolerance: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed_symbols?: string[] | null
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          max_daily_trades?: number | null
+          max_position_size?: number | null
+          risk_tolerance?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed_symbols?: string[] | null
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          max_daily_trades?: number | null
+          max_position_size?: number | null
+          risk_tolerance?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       contact_submissions: {
         Row: {
           created_at: string | null
@@ -74,6 +146,36 @@ export type Database = {
           trading_experience?: string | null
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      promo_codes: {
+        Row: {
+          code: string
+          created_at: string | null
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          tier: string
+          uses_remaining: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          tier: string
+          uses_remaining?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          tier?: string
+          uses_remaining?: number | null
         }
         Relationships: []
       }
@@ -146,6 +248,39 @@ export type Database = {
           stop_loss?: number | null
           symbol?: string
           target_price?: number | null
+        }
+        Relationships: []
+      }
+      usage_tracking: {
+        Row: {
+          count: number | null
+          created_at: string | null
+          feature: string
+          id: string
+          period_end: string | null
+          period_start: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          count?: number | null
+          created_at?: string | null
+          feature: string
+          id?: string
+          period_end?: string | null
+          period_start?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          count?: number | null
+          created_at?: string | null
+          feature?: string
+          id?: string
+          period_end?: string | null
+          period_start?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
