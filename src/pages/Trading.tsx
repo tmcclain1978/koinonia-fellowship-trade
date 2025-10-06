@@ -253,7 +253,7 @@ const Trading = () => {
             </div>
             <TradingViewChart 
               symbol={symbol}
-              height={800}
+              height={600}
               interval={chartInterval}
               theme="dark"
             />
