@@ -73,16 +73,47 @@ serve(async (req) => {
     }
 
     // TODO: Implement Schwab OAuth flow and API call
-    // This will require:
-    // 1. Getting an access token using the refresh token
-    // 2. Calling Schwab's options chain API
-    // 3. Transforming the response to match the expected format
+    // For now, return mock options data for testing
+    const currentDate = new Date();
+    const mockExpirations = [
+      new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(currentDate.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(currentDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(currentDate.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    ];
 
-    // For now, return a message indicating OAuth setup is needed
+    const mockStrikes = [150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200];
+    const mockOptions = [];
+
+    for (const expiration of mockExpirations) {
+      for (const strike of mockStrikes) {
+        mockOptions.push({
+          type: 'CALL',
+          strike,
+          expiration,
+          bid: (strike * 0.05).toFixed(2),
+          ask: (strike * 0.06).toFixed(2),
+          volume: Math.floor(Math.random() * 1000),
+          openInterest: Math.floor(Math.random() * 5000),
+          impliedVolatility: (Math.random() * 0.5 + 0.2).toFixed(4),
+        });
+        mockOptions.push({
+          type: 'PUT',
+          strike,
+          expiration,
+          bid: (strike * 0.04).toFixed(2),
+          ask: (strike * 0.05).toFixed(2),
+          volume: Math.floor(Math.random() * 1000),
+          openInterest: Math.floor(Math.random() * 5000),
+          impliedVolatility: (Math.random() * 0.5 + 0.2).toFixed(4),
+        });
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
-        error: 'Schwab OAuth implementation in progress. You need to complete the OAuth flow first.',
-        credentials_configured: true
+        options: mockOptions,
+        note: 'Mock data - Schwab OAuth implementation in progress'
       }),
       { 
         status: 200, 
