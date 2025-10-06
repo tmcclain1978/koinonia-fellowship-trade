@@ -286,21 +286,23 @@ const PaperTrading = () => {
           </CardContent>
         </Card>
 
-        {/* Chart and Order Panel */}
-        <div className="grid lg:grid-cols-3 gap-6 mb-6">
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <TradingViewChart 
-                symbol={formData.symbol}
-                height={700}
-                interval={chartInterval}
-                theme="dark"
-              />
-            </CardContent>
-          </Card>
+        {/* Chart - Full Width */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <TradingViewChart 
+              symbol={formData.symbol}
+              height={700}
+              interval={chartInterval}
+              theme="dark"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Order Panel */}
+        <div className="grid gap-6 mb-6">
 
           <Card>
             <CardHeader>
