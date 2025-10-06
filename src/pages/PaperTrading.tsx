@@ -12,6 +12,7 @@ import { BarChart3, TrendingUp, Download, FileText, BarChart2 } from "lucide-rea
 import Navigation from "@/components/Navigation";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { OpenPositions } from "@/components/OpenPositions";
+import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -46,6 +47,7 @@ const PaperTrading = () => {
   const [previewData, setPreviewData] = useState<any>(null);
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
+  const [signalArrows, setSignalArrows] = useState<any[]>([]);
 
   useEffect(() => {
     loadAccount();
@@ -231,6 +233,22 @@ const PaperTrading = () => {
     };
   };
 
+  const handleKoinoniaSignal = (signal: any) => {
+    const arrows = [
+      { price: signal.entryPrice, type: 'entry' as const },
+      ...signal.exitPrices.map((price: number) => ({ price, type: 'exit' as const }))
+    ];
+    setSignalArrows(arrows);
+    
+    // Set entry price and stop loss on the form
+    if (signal.entryPrice) {
+      setFormData(prev => ({ ...prev, limitPrice: signal.entryPrice.toFixed(2) }));
+    }
+    if (signal.stopLoss) {
+      setFormData(prev => ({ ...prev, stopPrice: signal.stopLoss.toFixed(2) }));
+    }
+  };
+
   return (
     <>
       <Navigation />
@@ -329,6 +347,7 @@ const PaperTrading = () => {
                 theme="dark"
                 entryPrice={selectedPosition?.entryPrice || (formData.price ? Number(formData.price) : undefined)}
                 stopLoss={selectedPosition?.stopLoss || (formData.orderType === "STOP" ? Number(formData.stopPrice) : undefined)}
+                signalArrows={signalArrows}
               />
             </CardContent>
           </Card>
@@ -586,6 +605,14 @@ const PaperTrading = () => {
             setFormData({ ...formData, symbol: position.symbol });
           }}
         />
+
+        {/* Koinonia Indicator Section */}
+        <div className="mt-6">
+          <KoinoniaIndicator 
+            symbol={formData.symbol}
+            onSignalGenerated={handleKoinoniaSignal}
+          />
+        </div>
       </div>
     </>
   );

@@ -14,21 +14,25 @@ export const TIER_LIMITS = {
     ai_analyses: 0,
     trading_signals: 0,
     auto_trading: false,
+    koinonia_indicator: 0, // Requires $49 payment
   },
   basic: {
     ai_analyses: 50,
     trading_signals: 150, // 5 per day * 30 days
     auto_trading: false,
+    koinonia_indicator: 0, // Requires $49 payment
   },
   pro: {
     ai_analyses: -1, // unlimited
     trading_signals: -1, // unlimited
     auto_trading: false,
+    koinonia_indicator: 0, // Requires $49 payment
   },
   enterprise: {
     ai_analyses: -1, // unlimited
     trading_signals: -1, // unlimited
     auto_trading: true,
+    koinonia_indicator: -1, // FREE for enterprise
   },
 };
 

@@ -7,6 +7,12 @@ interface PriceLine {
   title: string;
 }
 
+interface SignalArrow {
+  price: number;
+  type: 'entry' | 'exit';
+  timestamp?: string;
+}
+
 interface TradingViewChartProps {
   symbol?: string;
   height?: number;
@@ -14,6 +20,7 @@ interface TradingViewChartProps {
   theme?: 'light' | 'dark';
   entryPrice?: number;
   stopLoss?: number;
+  signalArrows?: SignalArrow[];
 }
 
 export const TradingViewChart = memo(({ 
@@ -22,7 +29,8 @@ export const TradingViewChart = memo(({
   interval = 'D',
   theme = 'dark',
   entryPrice,
-  stopLoss
+  stopLoss,
+  signalArrows = []
 }: TradingViewChartProps) => {
   const container = useRef<HTMLDivElement>(null);
 
@@ -101,6 +109,34 @@ export const TradingViewChart = memo(({
               Stop Loss: ${stopLoss.toFixed(2)}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Koinonia Signal Arrows */}
+      {signalArrows.length > 0 && (
+        <div className="absolute left-4 top-20 space-y-2 z-10">
+          {signalArrows.map((arrow, idx) => (
+            <div 
+              key={idx}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg backdrop-blur-sm flex items-center gap-2 ${
+                arrow.type === 'entry' 
+                  ? 'bg-green-500/90 text-white' 
+                  : 'bg-purple-500/90 text-white'
+              }`}
+            >
+              <div className="text-lg">
+                {arrow.type === 'entry' ? '↑' : '↓'}
+              </div>
+              <div>
+                <div className="font-semibold">
+                  {arrow.type === 'entry' ? 'Entry Signal' : 'Exit Signal'}
+                </div>
+                <div className="text-xs opacity-90">
+                  ${arrow.price.toFixed(2)}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

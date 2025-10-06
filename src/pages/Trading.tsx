@@ -14,6 +14,7 @@ import { TradingViewChart } from "@/components/TradingViewChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { OpenPositions } from "@/components/OpenPositions";
+import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -39,6 +40,7 @@ const Trading = () => {
   const [accountDetails, setAccountDetails] = useState<any>(null);
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
+  const [signalArrows, setSignalArrows] = useState<any[]>([]);
 
   // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {
@@ -259,6 +261,22 @@ const Trading = () => {
     });
   };
 
+  const handleKoinoniaSignal = (signal: any) => {
+    const arrows = [
+      { price: signal.entryPrice, type: 'entry' as const },
+      ...signal.exitPrices.map((price: number) => ({ price, type: 'exit' as const }))
+    ];
+    setSignalArrows(arrows);
+    
+    // Set entry price and stop loss on the chart
+    if (signal.entryPrice) {
+      setLimitPrice(signal.entryPrice.toFixed(2));
+    }
+    if (signal.stopLoss) {
+      setStopPrice(signal.stopLoss.toFixed(2));
+    }
+  };
+
   return (
     <>
       <Navigation />
@@ -370,6 +388,7 @@ const Trading = () => {
                 theme="dark"
                 entryPrice={selectedPosition?.entryPrice}
                 stopLoss={selectedPosition?.stopLoss || (entryType === "STOP" || entryType === "STOPLIMIT" ? Number(stopPrice) : undefined)}
+                signalArrows={signalArrows}
               />
             </CardContent>
           </Card>
@@ -702,6 +721,14 @@ const Trading = () => {
               setSelectedPosition(position);
               setSymbol(position.symbol);
             }}
+          />
+        </div>
+
+        {/* Koinonia Indicator Section */}
+        <div className="mb-6">
+          <KoinoniaIndicator 
+            symbol={symbol}
+            onSignalGenerated={handleKoinoniaSignal}
           />
         </div>
         </div>
