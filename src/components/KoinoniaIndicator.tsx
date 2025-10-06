@@ -81,6 +81,7 @@ export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicat
       }
 
       setSignal(data.signals);
+      
       if (onSignalGenerated) {
         onSignalGenerated({
           entryPrice: data.signals.entrySignal.price,
@@ -90,8 +91,9 @@ export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicat
       }
 
       toast({
-        title: "Signal Generated",
-        description: `Koinonia Indicator analyzed ${symbol} with ${data.signals.overallConfidence}% confidence`,
+        title: "✨ Signals Added to Chart",
+        description: `${symbol} analyzed with ${data.signals.overallConfidence}% confidence. Check the chart indicators!`,
+        duration: 5000,
       });
     } catch (error: any) {
       console.error('Error generating signal:', error);
