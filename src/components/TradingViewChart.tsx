@@ -66,8 +66,16 @@ export const TradingViewChart = memo(({
       details: true,
       hotlist: true,
       calendar: false,
-      studies_overrides: {},
-      disabled_features: ["header_symbol_search"],
+      studies: [
+        "MASimple@tv-basicstudies",
+        "RSI@tv-basicstudies",
+        "VWAP@tv-basicstudies"
+      ],
+      studies_overrides: {
+        "volume.volume.color.0": "rgba(255,82,82,0.7)",
+        "volume.volume.color.1": "rgba(0,230,118,0.7)",
+      },
+      disabled_features: [],
       enabled_features: [
         "study_templates",
         "use_localstorage_for_settings",
@@ -84,7 +92,7 @@ export const TradingViewChart = memo(({
         "items_favoriting",
         "show_hide_button_in_legend",
         "border_around_the_chart",
-        "remove_library_container_border"
+        "create_volume_indicator_by_default"
       ]
     });
 
@@ -114,16 +122,20 @@ export const TradingViewChart = memo(({
         </PopoverTrigger>
         <PopoverContent className="w-80" align="end">
           <div className="space-y-3">
-            <h4 className="font-semibold text-sm">How to Add Indicators</h4>
-            <ol className="text-sm space-y-2 text-muted-foreground list-decimal list-inside">
-              <li>Click the <strong>"Indicators"</strong> button at the top of the chart (looks like fx icon)</li>
-              <li>Search for your desired indicator (EMA, RSI, MACD, etc.)</li>
-              <li>Click on the indicator to add it to your chart</li>
-              <li>Click the settings icon next to the indicator name to customize it</li>
-            </ol>
+            <h4 className="font-semibold text-sm">How to Use Chart Indicators</h4>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>📊 <strong>Pre-loaded indicators:</strong> Moving Average, RSI, VWAP, and Volume are automatically added to your chart.</p>
+              <p>🔧 <strong>Customize indicators:</strong></p>
+              <ul className="list-disc list-inside ml-2 space-y-1">
+                <li>Click indicator name in chart legend</li>
+                <li>Adjust settings, colors, and parameters</li>
+                <li>Hide/show by clicking the eye icon</li>
+              </ul>
+              <p>➕ <strong>Add more indicators:</strong> Click the "Indicators" button (fx) at the top toolbar to search and add EMA, MACD, Bollinger Bands, and 100+ more.</p>
+            </div>
             <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground">
-                <strong>Popular indicators:</strong> EMA (9, 20, 50), RSI, MACD, Bollinger Bands, VWAP, Volume
+              <p className="text-xs text-muted-foreground italic">
+                Note: TradingView's free widget may have some limitations on advanced indicators.
               </p>
             </div>
           </div>
