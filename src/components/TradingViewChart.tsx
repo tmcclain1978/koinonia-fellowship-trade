@@ -37,14 +37,6 @@ export const TradingViewChart = memo(({
       allow_symbol_change: true,
       support_host: "https://www.tradingview.com",
       calendar: false,
-      studies: [
-        "STD;SMA",
-        "STD;EMA",
-        "STD;Volume",
-        "STD;MACD",
-        "STD;RSI",
-        "STD;Bollinger_Bands"
-      ],
       show_popup_button: true,
       popup_width: "1000",
       popup_height: "650",
@@ -52,16 +44,20 @@ export const TradingViewChart = memo(({
       hide_side_toolbar: false,
       withdateranges: true,
       hide_top_toolbar: false,
+      toolbar_bg: "#131722",
       save_image: true,
       details: true,
       hotlist: true,
       news: ["headlines"],
       studies_overrides: {},
-      disabled_features: [],
+      disabled_features: ["header_widget"],
       enabled_features: [
         "study_templates",
         "use_localstorage_for_settings",
-        "save_chart_properties_to_local_storage"
+        "save_chart_properties_to_local_storage",
+        "left_toolbar",
+        "control_bar",
+        "timeframes_toolbar"
       ]
     });
 
