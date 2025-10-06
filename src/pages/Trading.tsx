@@ -4,13 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, TrendingUp, Activity } from "lucide-react";
+import { CalendarIcon, TrendingUp, Activity, BarChart2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import Navigation from "@/components/Navigation";
 import { TradingViewChart } from "@/components/TradingViewChart";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -226,23 +228,43 @@ const Trading = () => {
           </span>
         </div>
 
-        {/* Chart - Full Width */}
-        <div className="mb-6">
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Advanced Chart - {symbol}</h3>
-              <div className="flex gap-2">
+        {/* Indicators & Chart Intervals */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Indicators & Chart Intervals</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="default"
+                size="lg"
+                onClick={() => toast({
+                  title: "Using Indicators",
+                  description: "Click the chart toolbar buttons to add technical indicators, drawing tools, and change chart settings.",
+                })}
+              >
+                <BarChart2 className="w-4 h-4 mr-2" />
+                How to Add Indicators
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Use the toolbar on the chart to add indicators, drawing tools, and customize your view
+              </p>
+            </div>
+            
+            <div>
+              <Label className="mb-2 block">Chart Interval</Label>
+              <div className="flex flex-wrap gap-2">
                 {[
                   { label: "1 Min", value: "1" },
                   { label: "5 Min", value: "5" },
                   { label: "15 Min", value: "15" },
-                  { label: "1H", value: "60" },
-                  { label: "1D", value: "D" },
-                  { label: "1W", value: "W" },
+                  { label: "1 Hour", value: "60" },
+                  { label: "Daily", value: "D" },
+                  { label: "Weekly", value: "W" },
                 ].map((interval) => (
-                  <Button 
+                  <Button
                     key={interval.value}
-                    variant={chartInterval === interval.value ? "default" : "ghost"}
+                    variant={chartInterval === interval.value ? "default" : "outline"}
                     size="sm"
                     onClick={() => setChartInterval(interval.value)}
                   >
@@ -251,14 +273,23 @@ const Trading = () => {
                 ))}
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Chart - Full Width */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Advanced Chart - {symbol}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
             <TradingViewChart 
               symbol={symbol}
-              height={700}
+              height={900}
               interval={chartInterval}
               theme="dark"
             />
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Order Builder */}
         <div className="space-y-6">
