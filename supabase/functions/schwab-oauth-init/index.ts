@@ -43,6 +43,7 @@ serve(async (req) => {
     }
 
     // Build Schwab OAuth URL
+    // Note: The callback URL must be registered in your Schwab Developer Portal app
     const redirectUri = `${supabaseUrl}/functions/v1/schwab-oauth-callback`;
     const state = user.id; // Use user ID as state for verification
     
@@ -51,7 +52,6 @@ serve(async (req) => {
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', state);
-    authUrl.searchParams.set('scope', 'AccountsTrading OptionChains');
 
     return new Response(
       JSON.stringify({ 

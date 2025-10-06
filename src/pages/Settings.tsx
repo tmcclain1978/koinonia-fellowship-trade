@@ -308,8 +308,14 @@ const Settings = () => {
                         <>
                           <AlertCircle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
                           <div>
-                            <p className="font-medium">OAuth Required</p>
-                            <p className="text-sm text-muted-foreground mb-2">Complete the OAuth flow to authorize trading with your Schwab account.</p>
+                            <p className="font-medium">OAuth Setup Required</p>
+                            <div className="text-sm text-muted-foreground space-y-2 mb-3">
+                              <p><strong>Before connecting</strong>, register this callback URL in your Schwab Developer Portal:</p>
+                              <code className="block bg-muted p-2 rounded text-xs break-all">
+                                https://cxsfpxsbejzpukrdrulu.supabase.co/functions/v1/schwab-oauth-callback
+                              </code>
+                              <p className="mt-2">Then click the button below to authorize trading with your Schwab account.</p>
+                            </div>
                             <Button 
                               size="sm" 
                               variant="outline"
