@@ -1,4 +1,7 @@
 import { useEffect, useRef, memo } from 'react';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Info } from "lucide-react";
 
 interface PriceLine {
   price: number;
@@ -64,7 +67,7 @@ export const TradingViewChart = memo(({
       hotlist: true,
       calendar: false,
       studies_overrides: {},
-      disabled_features: [],
+      disabled_features: ["header_symbol_search"],
       enabled_features: [
         "study_templates",
         "use_localstorage_for_settings",
@@ -77,7 +80,11 @@ export const TradingViewChart = memo(({
         "left_toolbar",
         "control_bar",
         "timeframes_toolbar",
-        "display_market_status"
+        "display_market_status",
+        "items_favoriting",
+        "show_hide_button_in_legend",
+        "border_around_the_chart",
+        "remove_library_container_border"
       ]
     });
 
@@ -93,6 +100,35 @@ export const TradingViewChart = memo(({
   return (
     <div className="tradingview-widget-container w-full h-full relative" ref={container}>
       <div id="tradingview_chart" className="w-full h-full" />
+      
+      {/* Instructions Popover */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button 
+            variant="outline" 
+            size="icon"
+            className="absolute top-4 right-4 z-50 bg-background/95 backdrop-blur-sm shadow-lg"
+          >
+            <Info className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80" align="end">
+          <div className="space-y-3">
+            <h4 className="font-semibold text-sm">How to Add Indicators</h4>
+            <ol className="text-sm space-y-2 text-muted-foreground list-decimal list-inside">
+              <li>Click the <strong>"Indicators"</strong> button at the top of the chart (looks like fx icon)</li>
+              <li>Search for your desired indicator (EMA, RSI, MACD, etc.)</li>
+              <li>Click on the indicator to add it to your chart</li>
+              <li>Click the settings icon next to the indicator name to customize it</li>
+            </ol>
+            <div className="pt-2 border-t">
+              <p className="text-xs text-muted-foreground">
+                <strong>Popular indicators:</strong> EMA (9, 20, 50), RSI, MACD, Bollinger Bands, VWAP, Volume
+              </p>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
       
       {/* Price Line Indicators */}
       {(entryPrice || stopLoss) && (
