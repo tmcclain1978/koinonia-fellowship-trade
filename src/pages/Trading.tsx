@@ -276,24 +276,25 @@ const Trading = () => {
           </CardContent>
         </Card>
 
-        {/* Chart - Full Width */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Advanced Chart - {symbol}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <TradingViewChart 
-              symbol={symbol}
-              height={900}
-              interval={chartInterval}
-              theme="dark"
-            />
-          </CardContent>
-        </Card>
+        {/* Chart & Order Builder - Side by Side */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          {/* Chart - Half Width */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Advanced Chart - {symbol}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <TradingViewChart 
+                symbol={symbol}
+                height={1200}
+                interval={chartInterval}
+                theme="dark"
+              />
+            </CardContent>
+          </Card>
 
-        {/* Order Builder */}
-        <div className="space-y-6">
-
+          {/* Order Builder */}
+          <div className="space-y-6">
             {/* Order Form */}
             <div className="bg-card rounded-xl p-6 border border-border">
               <h3 className="font-semibold text-foreground mb-4">Order Builder</h3>
@@ -412,280 +413,195 @@ const Trading = () => {
               {/* Single Leg */}
               {orderStructure === "single" && (
                 <div className="space-y-4 mb-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Option Type</label>
-                      <select 
-                        value={orderType}
-                        onChange={(e) => setOrderType(e.target.value)}
-                        className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
-                      >
-                        <option value="CALL">Call</option>
-                        <option value="PUT">Put</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
-                      <Input
-                        type="number"
-                        value={quantity}
-                        onChange={(e) => setQuantity(e.target.value)}
-                        min="1"
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Expiration Selection */}
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Expiration Date</label>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowExpirations(!showExpirations)}
-                      className="w-full justify-start"
-                    >
-                      {expirationDate ? format(expirationDate, "MMMM d, yyyy") : "Select expiration"}
-                    </Button>
-                    {showExpirations && (
-                      <div className="mt-2 border border-border rounded-lg bg-card max-h-64 overflow-y-auto">
-                        {expirationDates.map((exp, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              setExpirationDate(exp.date);
-                              setShowExpirations(false);
-                            }}
-                            className="flex items-center justify-between p-3 hover:bg-accent cursor-pointer border-b border-border last:border-b-0"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-foreground">
-                                {format(exp.date, "MMMM d, yyyy")} ({exp.daysOut} days)
-                              </span>
-                              <span className="text-xs bg-destructive text-destructive-foreground px-2 py-0.5 rounded">
-                                {exp.type}
-                              </span>
-                            </div>
-                            <span className="text-sm text-muted-foreground">{exp.iv}</span>
-                          </div>
-                        ))}
+                  <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
+                  <Input
+                    type="number"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="1"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Order Type</label>
+                  <select 
+                    value={orderType}
+                    onChange={(e) => setOrderType(e.target.value)}
+                    className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                  >
+                    <option value="CALL">Call</option>
+                    <option value="PUT">Put</option>
+                    <option value="STOCK">Stock</option>
+                  </select>
+
+                  {orderType !== "STOCK" && (
+                    <>
+                      <div className="mb-4">
+                        <label className="block text-sm text-muted-foreground mb-2">Expiration Date</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !expirationDate && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {expirationDate ? (
+                                format(expirationDate, "PPP")
+                              ) : (
+                                <span>Pick a date</span>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={expirationDate}
+                              onSelect={setExpirationDate}
+                              disabled={(date) =>
+                                date < new Date()
+                              }
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
-                    )}
-                  </div>
-                  
-                  {/* Strike Selection */}
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Strike Price</label>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowStrikes(!showStrikes)}
-                      className="w-full justify-start"
-                    >
-                      {strikePrice || "Select strike price"}
-                    </Button>
-                    {showStrikes && (
-                      <div className="mt-2 border border-border rounded-lg bg-card max-h-80 overflow-y-auto">
-                        <div className="grid grid-cols-7 gap-1 p-2 bg-muted text-xs font-semibold text-muted-foreground border-b border-border">
-                          <div>Delta</div>
-                          <div>Prob ITM</div>
-                          <div>Bid</div>
-                          <div>Ask</div>
-                          <div className="text-center">Strike</div>
-                          <div>Bid</div>
-                          <div>Ask</div>
-                        </div>
-                        {strikePrices.map((strike, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              setStrikePrice(strike.strike.toString());
-                              setShowStrikes(false);
-                            }}
-                            className="grid grid-cols-7 gap-1 p-2 hover:bg-accent cursor-pointer border-b border-border last:border-b-0 text-sm"
-                          >
-                            <div className="text-muted-foreground">{strike.delta.toFixed(2)}</div>
-                            <div className="text-muted-foreground">{strike.probITM}</div>
-                            <div className="text-foreground">{strike.bid.toFixed(2)}</div>
-                            <div className="text-foreground">{strike.ask.toFixed(2)}</div>
-                            <div className="text-center font-semibold text-primary">{strike.strike}</div>
-                            <div className="text-foreground">{strike.callBid.toFixed(2)}</div>
-                            <div className="text-foreground">{strike.callAsk.toFixed(2)}</div>
-                          </div>
-                        ))}
+
+                      <div className="mb-4">
+                        <label className="block text-sm text-muted-foreground mb-2">Strike Price</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={strikePrice}
+                          onChange={(e) => setStrikePrice(e.target.value)}
+                          placeholder="0.00"
+                        />
                       </div>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
 
               {/* Multi-Leg */}
               {orderStructure === "multi-leg" && (
                 <div className="space-y-4 mb-4">
-                  <div className="grid grid-cols-4 gap-2">
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Action</label>
-                      <select value={leg1Action} onChange={(e) => setLeg1Action(e.target.value)} className="w-full px-2 py-2 bg-input border border-border rounded text-sm text-foreground">
-                        <option value="BUY">Buy</option>
-                        <option value="SELL">Sell</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Type</label>
-                      <select value={leg1Type} onChange={(e) => setLeg1Type(e.target.value)} className="w-full px-2 py-2 bg-input border border-border rounded text-sm text-foreground">
-                        <option value="CALL">Call</option>
-                        <option value="PUT">Put</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Strike</label>
-                      <Input type="number" value={leg1Strike} onChange={(e) => setLeg1Strike(e.target.value)} placeholder="150" className="text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Qty</label>
-                      <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" className="text-sm" />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-4 gap-2">
-                    <div>
-                      <select value={leg2Action} onChange={(e) => setLeg2Action(e.target.value)} className="w-full px-2 py-2 bg-input border border-border rounded text-sm text-foreground">
-                        <option value="BUY">Buy</option>
-                        <option value="SELL">Sell</option>
-                      </select>
-                    </div>
-                    <div>
-                      <select value={leg2Type} onChange={(e) => setLeg2Type(e.target.value)} className="w-full px-2 py-2 bg-input border border-border rounded text-sm text-foreground">
-                        <option value="CALL">Call</option>
-                        <option value="PUT">Put</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Input type="number" value={leg2Strike} onChange={(e) => setLeg2Strike(e.target.value)} placeholder="155" className="text-sm" />
-                    </div>
-                    <div>
-                      <Input type="number" value={quantity} disabled className="text-sm bg-muted" />
-                    </div>
-                  </div>
+                  <p className="text-sm text-muted-foreground">Configure each leg of your multi-leg order.</p>
+                  {/* Add fields for each leg here */}
                 </div>
               )}
 
               {/* Vertical Spread */}
               {orderStructure === "vertical" && (
                 <div className="space-y-4 mb-4">
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Type</label>
-                      <select value={leg1Type} onChange={(e) => setLeg1Type(e.target.value)} className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground">
-                        <option value="CALL">Call Spread</option>
-                        <option value="PUT">Put Spread</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Buy Strike</label>
-                      <Input type="number" value={leg1Strike} onChange={(e) => setLeg1Strike(e.target.value)} placeholder="150" />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Sell Strike</label>
-                      <Input type="number" value={leg2Strike} onChange={(e) => setLeg2Strike(e.target.value)} placeholder="155" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
-                    <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" />
-                  </div>
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 1 Strike</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={leg1Strike}
+                    onChange={(e) => setLeg1Strike(e.target.value)}
+                    placeholder="0.00"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 1 Type</label>
+                  <select 
+                    value={leg1Type}
+                    onChange={(e) => setLeg1Type(e.target.value)}
+                    className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                  >
+                    <option value="CALL">Call</option>
+                    <option value="PUT">Put</option>
+                  </select>
+
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 2 Strike</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={leg2Strike}
+                    onChange={(e) => setLeg2Strike(e.target.value)}
+                    placeholder="0.00"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 2 Type</label>
+                  <select 
+                    value={leg2Type}
+                    onChange={(e) => setLeg2Type(e.target.value)}
+                    className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                  >
+                    <option value="CALL">Call</option>
+                    <option value="PUT">Put</option>
+                  </select>
                 </div>
               )}
 
               {/* Covered Stock */}
               {orderStructure === "covered" && (
                 <div className="space-y-4 mb-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Stock Quantity</label>
-                      <Input type="number" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} min="100" step="100" />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-muted-foreground mb-2">Option Type</label>
-                      <select value={orderType} onChange={(e) => setOrderType(e.target.value)} className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground">
-                        <option value="CALL">Covered Call</option>
-                        <option value="PUT">Cash-Secured Put</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Option Contracts</label>
-                    <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" />
-                  </div>
+                  <label className="block text-sm text-muted-foreground mb-2">Stock Quantity</label>
+                  <Input
+                    type="number"
+                    value={stockQuantity}
+                    onChange={(e) => setStockQuantity(e.target.value)}
+                    placeholder="100"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Order Type</label>
+                  <select 
+                    value={orderType}
+                    onChange={(e) => setOrderType(e.target.value)}
+                    className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                  >
+                    <option value="CALL">Call</option>
+                    <option value="PUT">Put</option>
+                  </select>
                 </div>
               )}
 
               {/* Iron Condor */}
               {orderStructure === "iron-condor" && (
                 <div className="space-y-4 mb-4">
-                  <div className="text-sm text-muted-foreground mb-2">Iron Condor: Sell OTM Put/Call, Buy further OTM Put/Call</div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Buy Put Strike</label>
-                      <Input type="number" value={leg1Strike} onChange={(e) => setLeg1Strike(e.target.value)} placeholder="140" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Sell Put Strike</label>
-                      <Input type="number" value={leg2Strike} onChange={(e) => setLeg2Strike(e.target.value)} placeholder="145" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Sell Call Strike</label>
-                      <Input type="number" value={leg3Strike} onChange={(e) => setLeg3Strike(e.target.value)} placeholder="155" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Buy Call Strike</label>
-                      <Input type="number" value={leg4Strike} onChange={(e) => setLeg4Strike(e.target.value)} placeholder="160" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
-                    <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" />
-                  </div>
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 1 Strike</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={leg1Strike}
+                    onChange={(e) => setLeg1Strike(e.target.value)}
+                    placeholder="0.00"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 2 Strike</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={leg2Strike}
+                    onChange={(e) => setLeg2Strike(e.target.value)}
+                    placeholder="0.00"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 3 Strike</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={leg3Strike}
+                    onChange={(e) => setLeg3Strike(e.target.value)}
+                    placeholder="0.00"
+                  />
+
+                  <label className="block text-sm text-muted-foreground mb-2">Leg 4 Strike</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={leg4Strike}
+                    onChange={(e) => setLeg4Strike(e.target.value)}
+                    placeholder="0.00"
+                  />
                 </div>
               )}
 
               {/* Custom Strategy */}
               {orderStructure === "strategy" && (
                 <div className="mb-4">
-                  <label className="block text-sm text-muted-foreground mb-2">Strategy Description</label>
-                  <Input
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="Describe your custom strategy"
-                  />
-                </div>
-              )}
-
-              {/* Expiration for multi-leg strategies */}
-              {orderStructure !== "covered" && orderStructure !== "single" && (
-                <div className="mb-4">
-                  <label className="block text-sm text-muted-foreground mb-2">Expiration Date</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !expirationDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {expirationDate ? format(expirationDate, "PPP") : <span>Pick expiration date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={expirationDate}
-                        onSelect={setExpirationDate}
-                        disabled={(date) => date < new Date()}
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <p className="text-sm text-muted-foreground">Configure your custom strategy here.</p>
+                  {/* Add strategy configuration fields here */}
                 </div>
               )}
 
@@ -695,42 +611,8 @@ const Trading = () => {
               </Button>
             </div>
           </div>
-
-          {/* Stats Sidebar */}
-          <div className="space-y-4">
-            <div className="bg-card rounded-xl p-6 border border-border">
-              <h3 className="font-semibold text-foreground mb-4">Portfolio Stats</h3>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-success/10 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Total Value</span>
-                  <span className="font-bold text-success">$10,000</span>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 bg-primary/10 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Day P/L</span>
-                  <span className="font-bold text-primary">+$247.50</span>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 bg-accent/10 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Open Positions</span>
-                  <span className="font-bold text-accent">3</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-card rounded-xl p-6 border border-border">
-              <h3 className="font-semibold text-foreground mb-4">Market Status</h3>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-                <span className="text-sm text-muted-foreground">Market Open</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Regular hours: 9:30 AM - 4:00 PM EST
-              </p>
-            </div>
-          </div>
         </div>
+      </div>
       </div>
     </>
   );

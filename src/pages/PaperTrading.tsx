@@ -306,155 +306,158 @@ const PaperTrading = () => {
           </CardContent>
         </Card>
 
-        {/* Chart - Full Width */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <TradingViewChart 
-              symbol={formData.symbol}
-              height={900}
-              interval={chartInterval}
-              theme="dark"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Order Panel */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Paper Trade — Options
-            </CardTitle>
-          </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Symbol</Label>
-                    <Input
-                      value={formData.symbol}
-                      onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Side</Label>
-                    <Select value={formData.side} onValueChange={(v) => setFormData({ ...formData, side: v })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CALL">CALL</SelectItem>
-                        <SelectItem value="PUT">PUT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Expiration</Label>
-                    <Input
-                      type="date"
-                      value={formData.expiration}
-                      onChange={(e) => setFormData({ ...formData, expiration: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Strike</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={formData.strike}
-                      onChange={(e) => setFormData({ ...formData, strike: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Quantity</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formData.quantity}
-                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Limit Price</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Order Type</Label>
-                    <Select value={formData.orderType} onValueChange={(v) => setFormData({ ...formData, orderType: v })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="LIMIT">LIMIT</SelectItem>
-                        <SelectItem value="MARKET">MARKET</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Duration</Label>
-                    <Select value={formData.duration} onValueChange={(v) => setFormData({ ...formData, duration: v })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="DAY">DAY</SelectItem>
-                        <SelectItem value="GTC">GTC</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={() => handleExecuteTrade('buy')} 
-                    size="sm" 
-                    variant="default"
-                    disabled={loading}
-                    className="flex-1"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    {loading ? 'Processing...' : 'BUY'}
-                  </Button>
-                  <Button 
-                    onClick={() => handleExecuteTrade('sell')} 
-                    size="sm" 
-                    variant="destructive"
-                    disabled={loading}
-                    className="flex-1"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    {loading ? 'Processing...' : 'SELL'}
-                  </Button>
-                </div>
-
-                {previewData && (
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2">Preview Result</h3>
-                    <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-32">
-                      {JSON.stringify(previewData, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
+        {/* Chart - Half Width */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <TradingViewChart 
+                symbol={formData.symbol}
+                height={1200}
+                interval={chartInterval}
+                theme="dark"
+              />
             </CardContent>
           </Card>
+          <div className="space-y-6">
+            {/* Order Panel */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Paper Trade — Options
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Symbol</Label>
+                      <Input
+                        value={formData.symbol}
+                        onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Side</Label>
+                      <Select value={formData.side} onValueChange={(v) => setFormData({ ...formData, side: v })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CALL">CALL</SelectItem>
+                          <SelectItem value="PUT">PUT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Expiration</Label>
+                      <Input
+                        type="date"
+                        value={formData.expiration}
+                        onChange={(e) => setFormData({ ...formData, expiration: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Strike</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.strike}
+                        onChange={(e) => setFormData({ ...formData, strike: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Quantity</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Limit Price</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Order Type</Label>
+                      <Select value={formData.orderType} onValueChange={(v) => setFormData({ ...formData, orderType: v })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LIMIT">LIMIT</SelectItem>
+                          <SelectItem value="MARKET">MARKET</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Duration</Label>
+                      <Select value={formData.duration} onValueChange={(v) => setFormData({ ...formData, duration: v })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DAY">DAY</SelectItem>
+                          <SelectItem value="GTC">GTC</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => handleExecuteTrade('buy')} 
+                      size="sm" 
+                      variant="default"
+                      disabled={loading}
+                      className="flex-1"
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      {loading ? 'Processing...' : 'BUY'}
+                    </Button>
+                    <Button 
+                      onClick={() => handleExecuteTrade('sell')} 
+                      size="sm" 
+                      variant="destructive"
+                      disabled={loading}
+                      className="flex-1"
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      {loading ? 'Processing...' : 'SELL'}
+                    </Button>
+                  </div>
+
+                  {previewData && (
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2">Preview Result</h3>
+                      <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-32">
+                        {JSON.stringify(previewData, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         {/* Recent Trades & Stats */}
         <div className="grid md:grid-cols-3 gap-6 mb-6">
