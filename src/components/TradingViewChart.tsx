@@ -24,6 +24,7 @@ interface TradingViewChartProps {
   entryPrice?: number;
   stopLoss?: number;
   signalArrows?: SignalArrow[];
+  indicators?: string[];
 }
 
 export const TradingViewChart = memo(({ 
@@ -33,7 +34,8 @@ export const TradingViewChart = memo(({
   theme = 'dark',
   entryPrice,
   stopLoss,
-  signalArrows = []
+  signalArrows = [],
+  indicators = []
 }: TradingViewChartProps) => {
   const container = useRef<HTMLDivElement>(null);
 
@@ -66,10 +68,9 @@ export const TradingViewChart = memo(({
       details: true,
       hotlist: true,
       calendar: false,
-      studies: [
+      studies: indicators.length > 0 ? indicators : [
         "MASimple@tv-basicstudies",
-        "RSI@tv-basicstudies",
-        "VWAP@tv-basicstudies"
+        "Volume@tv-basicstudies"
       ],
       studies_overrides: {
         "volume.volume.color.0": "rgba(255,82,82,0.7)",
@@ -103,7 +104,7 @@ export const TradingViewChart = memo(({
         container.current.innerHTML = '';
       }
     };
-  }, [symbol, interval, theme]);
+  }, [symbol, interval, theme, indicators]);
 
   return (
     <div className="tradingview-widget-container w-full h-full relative" ref={container}>

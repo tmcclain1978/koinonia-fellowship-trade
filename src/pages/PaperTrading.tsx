@@ -13,6 +13,7 @@ import Navigation from "@/components/Navigation";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
+import { IndicatorSelector } from "@/components/IndicatorSelector";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -48,6 +49,7 @@ const PaperTrading = () => {
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
+  const [chartIndicators, setChartIndicators] = useState<string[]>([]);
 
   useEffect(() => {
     loadAccount();
@@ -348,6 +350,7 @@ const PaperTrading = () => {
                 entryPrice={selectedPosition?.entryPrice || (formData.price ? Number(formData.price) : undefined)}
                 stopLoss={selectedPosition?.stopLoss || (formData.orderType === "STOP" ? Number(formData.stopPrice) : undefined)}
                 signalArrows={signalArrows}
+                indicators={chartIndicators}
               />
             </CardContent>
           </Card>
@@ -612,6 +615,11 @@ const PaperTrading = () => {
             symbol={formData.symbol}
             onSignalGenerated={handleKoinoniaSignal}
           />
+        </div>
+
+        {/* Indicator Selector */}
+        <div className="mt-6">
+          <IndicatorSelector onIndicatorsChange={setChartIndicators} />
         </div>
       </div>
     </>

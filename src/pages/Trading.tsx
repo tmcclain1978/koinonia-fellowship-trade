@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
+import { IndicatorSelector } from "@/components/IndicatorSelector";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -41,6 +42,7 @@ const Trading = () => {
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
+  const [chartIndicators, setChartIndicators] = useState<string[]>([]);
 
   // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {
@@ -389,6 +391,7 @@ const Trading = () => {
                 entryPrice={selectedPosition?.entryPrice}
                 stopLoss={selectedPosition?.stopLoss || (entryType === "STOP" || entryType === "STOPLIMIT" ? Number(stopPrice) : undefined)}
                 signalArrows={signalArrows}
+                indicators={chartIndicators}
               />
             </CardContent>
           </Card>
@@ -730,6 +733,11 @@ const Trading = () => {
             symbol={symbol}
             onSignalGenerated={handleKoinoniaSignal}
           />
+        </div>
+
+        {/* Indicator Selector */}
+        <div className="mb-6">
+          <IndicatorSelector onIndicatorsChange={setChartIndicators} />
         </div>
         </div>
       </div>
