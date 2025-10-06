@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { BarChart3, TrendingUp, Download, FileText, BarChart2 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { TradingViewChart } from "@/components/TradingViewChart";
+import { OpenPositions } from "@/components/OpenPositions";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -43,6 +44,8 @@ const PaperTrading = () => {
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
+  const [selectedPosition, setSelectedPosition] = useState<any>(null);
+  const [openPositions, setOpenPositions] = useState<any[]>([]);
 
   useEffect(() => {
     loadAccount();
@@ -324,6 +327,8 @@ const PaperTrading = () => {
                 height={800}
                 interval={chartInterval}
                 theme="dark"
+                entryPrice={selectedPosition?.entryPrice || (formData.price ? Number(formData.price) : undefined)}
+                stopLoss={selectedPosition?.stopLoss || (formData.orderType === "STOP" ? Number(formData.stopPrice) : undefined)}
               />
             </CardContent>
           </Card>
@@ -563,7 +568,7 @@ const PaperTrading = () => {
                         <p className={`text-sm font-semibold ${trade.profit_loss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {trade.profit_loss >= 0 ? '+' : ''}${trade.profit_loss.toFixed(2)}
                         </p>
-                      )}
+                       )}
                     </div>
                   </div>
                 ))}
@@ -572,6 +577,15 @@ const PaperTrading = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Open Positions Section */}
+        <OpenPositions 
+          positions={openPositions}
+          onPositionClick={(position) => {
+            setSelectedPosition(position);
+            setFormData({ ...formData, symbol: position.symbol });
+          }}
+        />
       </div>
     </>
   );

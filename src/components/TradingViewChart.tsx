@@ -1,17 +1,28 @@
 import { useEffect, useRef, memo } from 'react';
 
+interface PriceLine {
+  price: number;
+  color: string;
+  lineStyle: number;
+  title: string;
+}
+
 interface TradingViewChartProps {
   symbol?: string;
   height?: number;
   interval?: string;
   theme?: 'light' | 'dark';
+  entryPrice?: number;
+  stopLoss?: number;
 }
 
 export const TradingViewChart = memo(({ 
   symbol = 'AAPL', 
   height = 500,
   interval = 'D',
-  theme = 'dark'
+  theme = 'dark',
+  entryPrice,
+  stopLoss
 }: TradingViewChartProps) => {
   const container = useRef<HTMLDivElement>(null);
 
@@ -72,8 +83,26 @@ export const TradingViewChart = memo(({
   }, [symbol, interval, theme]);
 
   return (
-    <div className="tradingview-widget-container w-full h-full" ref={container}>
+    <div className="tradingview-widget-container w-full h-full relative" ref={container}>
       <div id="tradingview_chart" className="w-full h-full" />
+      
+      {/* Price Line Indicators */}
+      {(entryPrice || stopLoss) && (
+        <div className="absolute right-4 top-20 space-y-2 z-10">
+          {entryPrice && (
+            <div className="bg-blue-500/90 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg backdrop-blur-sm flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-white" />
+              Entry: ${entryPrice.toFixed(2)}
+            </div>
+          )}
+          {stopLoss && (
+            <div className="bg-red-500/90 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg backdrop-blur-sm flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-white" />
+              Stop Loss: ${stopLoss.toFixed(2)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 });

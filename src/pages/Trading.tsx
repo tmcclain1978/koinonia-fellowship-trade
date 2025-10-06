@@ -13,6 +13,7 @@ import Navigation from "@/components/Navigation";
 import { TradingViewChart } from "@/components/TradingViewChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { OpenPositions } from "@/components/OpenPositions";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -36,6 +37,8 @@ const Trading = () => {
   const [strikePrices, setStrikePrices] = useState<any[]>([]);
   const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [accountDetails, setAccountDetails] = useState<any>(null);
+  const [selectedPosition, setSelectedPosition] = useState<any>(null);
+  const [openPositions, setOpenPositions] = useState<any[]>([]);
 
   // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {
@@ -365,6 +368,8 @@ const Trading = () => {
                 height={800}
                 interval={chartInterval}
                 theme="dark"
+                entryPrice={selectedPosition?.entryPrice}
+                stopLoss={selectedPosition?.stopLoss || (entryType === "STOP" || entryType === "STOPLIMIT" ? Number(stopPrice) : undefined)}
               />
             </CardContent>
           </Card>
@@ -688,7 +693,18 @@ const Trading = () => {
             </div>
           </div>
         </div>
-      </div>
+
+        {/* Open Positions Section */}
+        <div className="mb-6">
+          <OpenPositions 
+            positions={openPositions}
+            onPositionClick={(position) => {
+              setSelectedPosition(position);
+              setSymbol(position.symbol);
+            }}
+          />
+        </div>
+        </div>
       </div>
     </>
   );
