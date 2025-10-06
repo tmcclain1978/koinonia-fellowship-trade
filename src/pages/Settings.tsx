@@ -35,7 +35,9 @@ const Settings = () => {
   useEffect(() => {
     checkAuth();
     fetchCredentials();
-    
+  }, []);
+
+  useEffect(() => {
     // Check for OAuth callback status
     const oauthStatus = searchParams.get('oauth');
     if (oauthStatus === 'success') {
@@ -43,8 +45,9 @@ const Settings = () => {
         title: "OAuth Success",
         description: "Schwab account connected successfully!",
       });
-      // Clear the query params
+      // Clear the query params and refresh credentials
       setSearchParams({});
+      fetchCredentials();
     } else if (oauthStatus === 'error') {
       const message = searchParams.get('message') || 'OAuth failed';
       toast({
@@ -54,7 +57,7 @@ const Settings = () => {
       });
       setSearchParams({});
     }
-  }, []);
+  }, [searchParams]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
