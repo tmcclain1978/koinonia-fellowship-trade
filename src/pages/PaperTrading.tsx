@@ -34,6 +34,9 @@ const PaperTrading = () => {
     price: "",
     orderType: "LIMIT",
     duration: "DAY",
+    limitPrice: "",
+    stopPrice: "",
+    trailAmount: "",
   });
   
   const [account, setAccount] = useState<any>(null);
@@ -166,6 +169,9 @@ const PaperTrading = () => {
         price: "",
         orderType: "LIMIT",
         duration: "DAY",
+        limitPrice: "",
+        stopPrice: "",
+        trailAmount: "",
       });
     } catch (error: any) {
       toast({
@@ -385,7 +391,7 @@ const PaperTrading = () => {
                       />
                     </div>
                     <div>
-                      <Label>Limit Price</Label>
+                      <Label>Price</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -397,14 +403,20 @@ const PaperTrading = () => {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label>Order Type</Label>
+                      <Label>Entry Type</Label>
                       <Select value={formData.orderType} onValueChange={(v) => setFormData({ ...formData, orderType: v })}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="LIMIT">LIMIT</SelectItem>
-                          <SelectItem value="MARKET">MARKET</SelectItem>
+                          <SelectItem value="MARKET">Market</SelectItem>
+                          <SelectItem value="LIMIT">Limit</SelectItem>
+                          <SelectItem value="MOC">Market on Close (MOC)</SelectItem>
+                          <SelectItem value="LOC">Limit on Close (LOC)</SelectItem>
+                          <SelectItem value="STOP">Stop</SelectItem>
+                          <SelectItem value="STOPLIMIT">Stop Limit</SelectItem>
+                          <SelectItem value="TRAILSTOP">Trailing Stop</SelectItem>
+                          <SelectItem value="WLK_LMT">Walk Limit</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -421,6 +433,46 @@ const PaperTrading = () => {
                       </Select>
                     </div>
                   </div>
+
+                  {/* Conditional Price Fields */}
+                  {(formData.orderType === "LIMIT" || formData.orderType === "LOC" || formData.orderType === "STOPLIMIT") && (
+                    <div>
+                      <Label>Limit Price</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.limitPrice}
+                        onChange={(e) => setFormData({ ...formData, limitPrice: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+
+                  {(formData.orderType === "STOP" || formData.orderType === "STOPLIMIT") && (
+                    <div>
+                      <Label>Stop Price</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.stopPrice}
+                        onChange={(e) => setFormData({ ...formData, stopPrice: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+
+                  {formData.orderType === "TRAILSTOP" && (
+                    <div>
+                      <Label>Trail Amount ($)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.trailAmount}
+                        onChange={(e) => setFormData({ ...formData, trailAmount: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <Button 
