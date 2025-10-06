@@ -34,6 +34,8 @@ const Trading = () => {
   const [optionsData, setOptionsData] = useState<any[]>([]);
   const [expirationDates, setExpirationDates] = useState<any[]>([]);
   const [strikePrices, setStrikePrices] = useState<any[]>([]);
+  const [isMarketOpen, setIsMarketOpen] = useState(false);
+  const [accountDetails, setAccountDetails] = useState<any>(null);
 
   // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {
@@ -102,12 +104,56 @@ const Trading = () => {
     }
   };
 
+  // Check if market is open
+  const checkMarketStatus = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const timeInMinutes = hours * 60 + minutes;
+    
+    // Market is open Mon-Fri, 9:30 AM - 4:00 PM ET
+    const isWeekday = day >= 1 && day <= 5;
+    const marketOpen = 9 * 60 + 30; // 9:30 AM
+    const marketClose = 16 * 60; // 4:00 PM
+    
+    setIsMarketOpen(isWeekday && timeInMinutes >= marketOpen && timeInMinutes < marketClose);
+  };
+
+  // Fetch account details
+  const fetchAccountDetails = async () => {
+    try {
+      const { data: credentials } = await supabase.functions.invoke("encrypt-credentials", {
+        body: { operation: "load" },
+      });
+
+      if (credentials?.credentials) {
+        const creds = credentials.credentials;
+        setAccountDetails({
+          accountType: creds.account_type,
+          accountValue: creds.account_value || 0,
+          tradingMode: creds.trading_mode,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching account details:", error);
+    }
+  };
+
   // Fetch options when symbol changes
   useEffect(() => {
     if (symbol && symbol.length >= 1) {
       fetchOptionsChain();
     }
   }, [symbol]);
+
+  // Check market status on mount and every minute
+  useEffect(() => {
+    checkMarketStatus();
+    fetchAccountDetails();
+    const interval = setInterval(checkMarketStatus, 60000);
+    return () => clearInterval(interval);
+  }, []);
   
   // Multi-leg options
   const [leg1Strike, setLeg1Strike] = useState("");
@@ -216,16 +262,46 @@ const Trading = () => {
       <div className="min-h-screen bg-background pt-16">
         <div className="container mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
-          <p className="text-muted-foreground">
-            Build, validate, and preview orders.
-          </p>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-            tradingMode === 'live' 
-              ? 'bg-destructive/10 text-destructive' 
-              : 'bg-primary/10 text-primary'
-          }`}>
-            {tradingMode === 'live' ? '🔴 Live Trading' : '📝 Paper Trading'}
-          </span>
+          <div>
+            <p className="text-muted-foreground">
+              Build, validate, and preview orders.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Market Status Indicator */}
+            <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
+              isMarketOpen 
+                ? 'bg-green-500/10 text-green-500' 
+                : 'bg-red-500/10 text-red-500'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${isMarketOpen ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+              {isMarketOpen ? 'Market Open' : 'Market Closed'}
+            </span>
+            
+            {/* Trading Mode */}
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              tradingMode === 'live' 
+                ? 'bg-destructive/10 text-destructive' 
+                : 'bg-primary/10 text-primary'
+            }`}>
+              {tradingMode === 'live' ? '🔴 Live Trading' : '📝 Paper Trading'}
+            </span>
+
+            {/* Account Details */}
+            {accountDetails && (
+              <Card className="p-3">
+                <div className="text-center min-w-[150px]">
+                  <p className="text-xs text-muted-foreground">Account Value</p>
+                  <p className="text-lg font-bold text-primary">
+                    ${Number(accountDetails.accountValue).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-muted-foreground capitalize">
+                    {accountDetails.accountType} Account
+                  </p>
+                </div>
+              </Card>
+            )}
+          </div>
         </div>
 
         {/* Indicators & Chart Intervals */}
