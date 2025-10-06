@@ -258,30 +258,27 @@ const PaperTrading = () => {
           )}
         </div>
 
-        {/* Chart Options */}
+        {/* Indicators */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Chart Interval</CardTitle>
+            <CardTitle>Indicators</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: "1 Min", value: "1" },
-                { label: "5 Min", value: "5" },
-                { label: "15 Min", value: "15" },
-                { label: "1 Hour", value: "60" },
-                { label: "Daily", value: "D" },
-                { label: "Weekly", value: "W" },
-              ].map((interval) => (
-                <Button
-                  key={interval.value}
-                  variant={chartInterval === interval.value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setChartInterval(interval.value)}
-                >
-                  {interval.label}
-                </Button>
-              ))}
+            <div className="flex items-center gap-4">
+              <Button
+                variant="default"
+                size="lg"
+                onClick={() => toast({
+                  title: "Using Indicators",
+                  description: "Click the chart toolbar buttons to add technical indicators, drawing tools, and change chart settings.",
+                })}
+              >
+                <BarChart2 className="w-4 h-4 mr-2" />
+                How to Add Indicators
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Use the toolbar on the chart to add indicators, drawing tools, and customize your view
+              </p>
             </div>
           </CardContent>
         </Card>
