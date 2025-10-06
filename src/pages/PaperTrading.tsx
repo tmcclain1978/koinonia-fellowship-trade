@@ -8,9 +8,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { BarChart3, TrendingUp, Download, FileText, BarChart2 } from "lucide-react";
 import Navigation from "@/components/Navigation";
+import { TradingViewChart } from "@/components/TradingViewChart";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -111,14 +111,7 @@ const PaperTrading = () => {
     }
   };
 
-  const mockChartData = [
-    { time: '9:30', open: 175, high: 177, low: 174, close: 176.5, volume: 1200 },
-    { time: '10:00', open: 176.5, high: 178, low: 175, close: 174.2, volume: 1500 },
-    { time: '10:30', open: 174.2, high: 176, low: 173, close: 177.8, volume: 1800 },
-    { time: '11:00', open: 177.8, high: 180, low: 177, close: 179.3, volume: 2100 },
-    { time: '11:30', open: 179.3, high: 180.5, low: 178, close: 178.5, volume: 1900 },
-    { time: '12:00', open: 178.5, high: 179, low: 177.5, close: 178, volume: 1600 },
-  ];
+  const [chartInterval, setChartInterval] = useState("D");
 
   const handlePreview = () => {
     const preview = {
@@ -268,53 +261,27 @@ const PaperTrading = () => {
         {/* Chart Options */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Chart Options</CardTitle>
+            <CardTitle>Chart Interval</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-4 items-center">
-              <div className="flex gap-2 items-center">
-                <Label className="text-muted-foreground">Timeframe:</Label>
-                {["1m", "5m", "15m", "1h", "1d"].map((tf) => (
-                  <Button
-                    key={tf}
-                    variant={timeframe === tf ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setTimeframe(tf)}
-                  >
-                    {tf}
-                  </Button>
-                ))}
-              </div>
-
-              <div className="flex gap-2 items-center">
-                <Label className="text-muted-foreground">Type:</Label>
-                <Select value={chartType} onValueChange={setChartType}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="candles">Candles</SelectItem>
-                    <SelectItem value="bars">Bars</SelectItem>
-                    <SelectItem value="line">Line</SelectItem>
-                    <SelectItem value="heikin">Heikin-Ashi</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex gap-3 items-center">
-                <Label className="text-muted-foreground">Overlays:</Label>
-                {Object.entries(overlays).map(([key, value]) => (
-                  <Label key={key} className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={value}
-                      onCheckedChange={(checked) =>
-                        setOverlays({ ...overlays, [key]: checked as boolean })
-                      }
-                    />
-                    <span className="text-sm">{key.toUpperCase()}</span>
-                  </Label>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "1 Min", value: "1" },
+                { label: "5 Min", value: "5" },
+                { label: "15 Min", value: "15" },
+                { label: "1 Hour", value: "60" },
+                { label: "Daily", value: "D" },
+                { label: "Weekly", value: "W" },
+              ].map((interval) => (
+                <Button
+                  key={interval.value}
+                  variant={chartInterval === interval.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setChartInterval(interval.value)}
+                >
+                  {interval.label}
+                </Button>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -323,27 +290,15 @@ const PaperTrading = () => {
         <div className="grid lg:grid-cols-3 gap-6 mb-6">
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Price Chart - {formData.symbol}</CardTitle>
+              <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={420}>
-                <LineChart data={mockChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" />
-                  <YAxis stroke="hsl(var(--muted-foreground))" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Line type="monotone" dataKey="close" stroke="hsl(var(--primary))" strokeWidth={2} />
-                  {overlays.ema20 && (
-                    <Line type="monotone" dataKey="close" stroke="hsl(var(--accent))" strokeWidth={1} />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
+            <CardContent className="p-0">
+              <TradingViewChart 
+                symbol={formData.symbol}
+                height={500}
+                interval={chartInterval}
+                theme="dark"
+              />
             </CardContent>
           </Card>
 

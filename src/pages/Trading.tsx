@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarIcon, TrendingUp, Activity } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import Navigation from "@/components/Navigation";
+import { TradingViewChart } from "@/components/TradingViewChart";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -121,14 +121,7 @@ const Trading = () => {
   const [leg4Type, setLeg4Type] = useState("PUT");
   const [leg4Action, setLeg4Action] = useState("BUY");
   const [stockQuantity, setStockQuantity] = useState("100");
-  const [chartData, setChartData] = useState([
-    { time: '9:30', price: 175, volume: 1200 },
-    { time: '10:00', price: 176.5, volume: 1500 },
-    { time: '10:30', price: 174.2, volume: 1800 },
-    { time: '11:00', price: 177.8, volume: 2100 },
-    { time: '11:30', price: 179.3, volume: 1900 },
-    { time: '12:00', price: 178.5, volume: 1600 },
-  ]);
+  const [chartInterval, setChartInterval] = useState("D");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -237,31 +230,35 @@ const Trading = () => {
           {/* Order Builder */}
           <div className="lg:col-span-2 space-y-6">
             {/* Chart */}
-            <div className="bg-card rounded-xl p-6 border border-border">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-foreground">Price Chart - {symbol}</h3>
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h3 className="font-semibold text-foreground">Advanced Chart - {symbol}</h3>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm">1D</Button>
-                  <Button variant="ghost" size="sm">1W</Button>
-                  <Button variant="ghost" size="sm">1M</Button>
+                  {[
+                    { label: "1 Min", value: "1" },
+                    { label: "5 Min", value: "5" },
+                    { label: "15 Min", value: "15" },
+                    { label: "1H", value: "60" },
+                    { label: "1D", value: "D" },
+                    { label: "1W", value: "W" },
+                  ].map((interval) => (
+                    <Button 
+                      key={interval.value}
+                      variant={chartInterval === interval.value ? "default" : "ghost"}
+                      size="sm"
+                      onClick={() => setChartInterval(interval.value)}
+                    >
+                      {interval.label}
+                    </Button>
+                  ))}
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis dataKey="time" stroke="#9ca3af" />
-                  <YAxis stroke="#9ca3af" />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#111827', 
-                      border: '1px solid #1f2937',
-                      borderRadius: '8px'
-                    }} 
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+              <TradingViewChart 
+                symbol={symbol}
+                height={400}
+                interval={chartInterval}
+                theme="dark"
+              />
             </div>
 
             {/* Order Form */}
