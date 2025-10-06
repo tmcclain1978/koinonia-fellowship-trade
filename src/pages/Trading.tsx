@@ -226,40 +226,42 @@ const Trading = () => {
           </span>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Order Builder */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Chart */}
-            <div className="bg-card rounded-xl border border-border overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h3 className="font-semibold text-foreground">Advanced Chart - {symbol}</h3>
-                <div className="flex gap-2">
-                  {[
-                    { label: "1 Min", value: "1" },
-                    { label: "5 Min", value: "5" },
-                    { label: "15 Min", value: "15" },
-                    { label: "1H", value: "60" },
-                    { label: "1D", value: "D" },
-                    { label: "1W", value: "W" },
-                  ].map((interval) => (
-                    <Button 
-                      key={interval.value}
-                      variant={chartInterval === interval.value ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setChartInterval(interval.value)}
-                    >
-                      {interval.label}
-                    </Button>
-                  ))}
-                </div>
+        {/* Chart - Full Width */}
+        <div className="mb-6">
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="font-semibold text-foreground">Advanced Chart - {symbol}</h3>
+              <div className="flex gap-2">
+                {[
+                  { label: "1 Min", value: "1" },
+                  { label: "5 Min", value: "5" },
+                  { label: "15 Min", value: "15" },
+                  { label: "1H", value: "60" },
+                  { label: "1D", value: "D" },
+                  { label: "1W", value: "W" },
+                ].map((interval) => (
+                  <Button 
+                    key={interval.value}
+                    variant={chartInterval === interval.value ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setChartInterval(interval.value)}
+                  >
+                    {interval.label}
+                  </Button>
+                ))}
               </div>
-              <TradingViewChart 
-                symbol={symbol}
-                height={650}
-                interval={chartInterval}
-                theme="dark"
-              />
             </div>
+            <TradingViewChart 
+              symbol={symbol}
+              height={800}
+              interval={chartInterval}
+              theme="dark"
+            />
+          </div>
+        </div>
+
+        {/* Order Builder */}
+        <div className="space-y-6">
 
             {/* Order Form */}
             <div className="bg-card rounded-xl p-6 border border-border">
@@ -698,7 +700,6 @@ const Trading = () => {
             </div>
           </div>
         </div>
-      </div>
       </div>
     </>
   );

@@ -295,7 +295,7 @@ const PaperTrading = () => {
             <CardContent className="p-0">
               <TradingViewChart 
                 symbol={formData.symbol}
-                height={700}
+                height={800}
                 interval={chartInterval}
                 theme="dark"
               />
