@@ -36,28 +36,29 @@ export const TradingViewChart = memo(({
       enable_publishing: false,
       allow_symbol_change: true,
       support_host: "https://www.tradingview.com",
-      calendar: false,
-      show_popup_button: true,
-      popup_width: "1000",
-      popup_height: "650",
       container_id: "tradingview_chart",
       hide_side_toolbar: false,
       withdateranges: true,
       hide_top_toolbar: false,
-      toolbar_bg: "#131722",
       save_image: true,
       details: true,
       hotlist: true,
-      news: ["headlines"],
+      calendar: false,
       studies_overrides: {},
-      disabled_features: ["header_widget"],
+      disabled_features: [],
       enabled_features: [
         "study_templates",
         "use_localstorage_for_settings",
-        "save_chart_properties_to_local_storage",
+        "header_indicators",
+        "header_compare",
+        "header_undo_redo",
+        "header_screenshot",
+        "header_chart_type",
+        "header_settings",
         "left_toolbar",
         "control_bar",
-        "timeframes_toolbar"
+        "timeframes_toolbar",
+        "display_market_status"
       ]
     });
 
