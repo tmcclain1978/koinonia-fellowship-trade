@@ -294,7 +294,7 @@ const PaperTrading = () => {
           <CardContent className="p-0">
             <TradingViewChart 
               symbol={formData.symbol}
-              height={600}
+              height={700}
               interval={chartInterval}
               theme="dark"
             />
@@ -302,15 +302,13 @@ const PaperTrading = () => {
         </Card>
 
         {/* Order Panel */}
-        <div className="grid gap-6 mb-6">
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Paper Trade — Options
-              </CardTitle>
-            </CardHeader>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Paper Trade — Options
+            </CardTitle>
+          </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -437,7 +435,6 @@ const PaperTrading = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
 
         {/* Recent Trades & Stats */}
         <div className="grid md:grid-cols-3 gap-6 mb-6">
