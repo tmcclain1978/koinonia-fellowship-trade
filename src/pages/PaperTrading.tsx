@@ -258,12 +258,12 @@ const PaperTrading = () => {
           )}
         </div>
 
-        {/* Indicators */}
+        {/* Indicators & Chart Intervals */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Indicators</CardTitle>
+            <CardTitle>Indicators & Chart Intervals</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="flex items-center gap-4">
               <Button
                 variant="default"
@@ -279,6 +279,29 @@ const PaperTrading = () => {
               <p className="text-sm text-muted-foreground">
                 Use the toolbar on the chart to add indicators, drawing tools, and customize your view
               </p>
+            </div>
+            
+            <div>
+              <Label className="mb-2 block">Chart Interval</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "1 Min", value: "1" },
+                  { label: "5 Min", value: "5" },
+                  { label: "15 Min", value: "15" },
+                  { label: "1 Hour", value: "60" },
+                  { label: "Daily", value: "D" },
+                  { label: "Weekly", value: "W" },
+                ].map((interval) => (
+                  <Button
+                    key={interval.value}
+                    variant={chartInterval === interval.value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setChartInterval(interval.value)}
+                  >
+                    {interval.label}
+                  </Button>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
