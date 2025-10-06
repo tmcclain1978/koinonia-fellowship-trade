@@ -1,19 +1,23 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle2, AlertCircle, Link as LinkIcon } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
 
 const Settings = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [hasRefreshToken, setHasRefreshToken] = useState(false);
   const [brokerType, setBrokerType] = useState("schwab");
   const [credentials, setCredentials] = useState({
     schwab_client_id: "",
@@ -31,6 +35,25 @@ const Settings = () => {
   useEffect(() => {
     checkAuth();
     fetchCredentials();
+    
+    // Check for OAuth callback status
+    const oauthStatus = searchParams.get('oauth');
+    if (oauthStatus === 'success') {
+      toast({
+        title: "OAuth Success",
+        description: "Schwab account connected successfully!",
+      });
+      // Clear the query params
+      setSearchParams({});
+    } else if (oauthStatus === 'error') {
+      const message = searchParams.get('message') || 'OAuth failed';
+      toast({
+        title: "OAuth Error",
+        description: message,
+        variant: "destructive",
+      });
+      setSearchParams({});
+    }
   }, []);
 
   const checkAuth = async () => {
@@ -62,6 +85,7 @@ const Settings = () => {
 
       if (data?.credentials) {
         setBrokerType(data.credentials.broker_type || "schwab");
+        setHasRefreshToken(!!data.credentials.schwab_refresh_token);
         setCredentials({
           schwab_client_id: data.credentials.schwab_client_id || "",
           schwab_client_secret: data.credentials.schwab_client_secret || "",
@@ -128,6 +152,37 @@ const Settings = () => {
     }
     
     setLoading(false);
+  };
+
+  const handleSchwabOAuth = async () => {
+    if (!credentials.schwab_client_id || !credentials.schwab_client_secret) {
+      toast({
+        title: "Missing Credentials",
+        description: "Please save your Schwab Client ID and Secret first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setOauthLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('schwab-oauth-init');
+
+      if (error) throw error;
+
+      if (data?.authUrl) {
+        // Redirect to Schwab OAuth page
+        window.location.href = data.authUrl;
+      }
+    } catch (error: any) {
+      console.error('OAuth init error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start OAuth flow",
+        variant: "destructive",
+      });
+      setOauthLoading(false);
+    }
   };
 
   return (
@@ -235,6 +290,37 @@ const Settings = () => {
                       placeholder="Enter your Schwab Client Secret"
                     />
                   </div>
+
+                  <Alert>
+                    <AlertDescription className="flex items-start gap-2">
+                      {hasRefreshToken ? (
+                        <>
+                          <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-medium">OAuth Connected</p>
+                            <p className="text-sm text-muted-foreground">Your Schwab account is authorized and ready for trading.</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-medium">OAuth Required</p>
+                            <p className="text-sm text-muted-foreground mb-2">Complete the OAuth flow to authorize trading with your Schwab account.</p>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={handleSchwabOAuth}
+                              disabled={oauthLoading}
+                            >
+                              <LinkIcon className="mr-2 h-4 w-4" />
+                              {oauthLoading ? "Connecting..." : "Connect Schwab Account"}
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </AlertDescription>
+                  </Alert>
                 </>
               )}
 

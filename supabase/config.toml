@@ -44,3 +44,9 @@ verify_jwt = true
 
 [functions.bot-learning-analysis]
 verify_jwt = false
+
+[functions.schwab-oauth-init]
+verify_jwt = true
+
+[functions.schwab-oauth-callback]
+verify_jwt = false
