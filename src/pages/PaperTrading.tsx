@@ -308,14 +308,14 @@ const PaperTrading = () => {
 
         {/* Chart - Half Width */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          <Card>
+          <Card className="h-full">
             <CardHeader>
               <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 h-[800px]">
               <TradingViewChart 
                 symbol={formData.symbol}
-                height={1200}
+                height={800}
                 interval={chartInterval}
                 theme="dark"
               />

@@ -72,8 +72,8 @@ export const TradingViewChart = memo(({
   }, [symbol, interval, theme]);
 
   return (
-    <div className="tradingview-widget-container" ref={container} style={{ height: `${height}px`, width: '100%' }}>
-      <div id="tradingview_chart" style={{ height: '100%', width: '100%' }} />
+    <div className="tradingview-widget-container w-full h-full" ref={container}>
+      <div id="tradingview_chart" className="w-full h-full" />
     </div>
   );
 });
