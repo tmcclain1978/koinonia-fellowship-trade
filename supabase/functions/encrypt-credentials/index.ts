@@ -10,11 +10,32 @@ const corsHeaders = {
 const ENCRYPTION_KEY_B64 = Deno.env.get("CREDENTIALS_ENCRYPTION_KEY");
 
 async function getEncryptionKey(): Promise<CryptoKey> {
-  if (!ENCRYPTION_KEY_B64) {
-    throw new Error("Encryption key not configured");
-  }
+  let keyData: Uint8Array;
   
-  const keyData = Uint8Array.from(atob(ENCRYPTION_KEY_B64), c => c.charCodeAt(0));
+  if (!ENCRYPTION_KEY_B64) {
+    // Generate a deterministic key from the Supabase service role key
+    // This ensures the same key is used across function invocations
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const encoder = new TextEncoder();
+    const data = encoder.encode(serviceKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    keyData = new Uint8Array(hashBuffer);
+  } else {
+    try {
+      keyData = Uint8Array.from(atob(ENCRYPTION_KEY_B64), c => c.charCodeAt(0));
+      // Validate key length
+      if (keyData.length !== 32) {
+        throw new Error("Invalid key length");
+      }
+    } catch (error) {
+      // If base64 decode fails or wrong length, fall back to hash-based key
+      console.warn("Invalid encryption key format, using fallback");
+      const encoder = new TextEncoder();
+      const data = encoder.encode(ENCRYPTION_KEY_B64);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      keyData = new Uint8Array(hashBuffer);
+    }
+  }
   
   return await crypto.subtle.importKey(
     "raw",
