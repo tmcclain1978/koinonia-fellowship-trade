@@ -6,6 +6,55 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Decryption helper (same as encrypt-credentials)
+async function getEncryptionKey(): Promise<CryptoKey> {
+  const ENCRYPTION_KEY_B64 = Deno.env.get("CREDENTIALS_ENCRYPTION_KEY");
+  let keyData: Uint8Array;
+  
+  if (!ENCRYPTION_KEY_B64) {
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const encoder = new TextEncoder();
+    const data = encoder.encode(serviceKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    keyData = new Uint8Array(hashBuffer);
+  } else {
+    try {
+      keyData = Uint8Array.from(atob(ENCRYPTION_KEY_B64), c => c.charCodeAt(0));
+      if (keyData.length !== 32) {
+        throw new Error("Invalid key length");
+      }
+    } catch (error) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(ENCRYPTION_KEY_B64);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      keyData = new Uint8Array(hashBuffer);
+    }
+  }
+  
+  return await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function decryptText(encrypted: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const combined = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    key,
+    ciphertext
+  );
+  
+  return new TextDecoder().decode(decrypted);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -29,14 +78,31 @@ serve(async (req) => {
     const userId = state;
 
     // Get user's Schwab credentials
-    const { data: credentials } = await supabase
+    const { data, error: dbError } = await supabase
       .from('user_api_credentials')
       .select('schwab_client_id, schwab_client_secret')
       .eq('user_id', userId)
       .single();
 
-    if (!credentials) {
+    if (dbError || !data) {
+      console.error('Failed to load credentials:', dbError);
       throw new Error('No Schwab credentials found');
+    }
+
+    // Decrypt credentials
+    let clientId = data.schwab_client_id;
+    let clientSecret = data.schwab_client_secret;
+    
+    try {
+      if (clientId) clientId = await decryptText(clientId);
+      if (clientSecret) clientSecret = await decryptText(clientSecret);
+    } catch (decryptError) {
+      console.error('Decryption failed, using plain text:', decryptError);
+      // If decryption fails, assume plain text (for backward compatibility)
+    }
+
+    if (!clientId || !clientSecret) {
+      throw new Error('Missing Schwab credentials');
     }
 
     // Exchange authorization code for tokens
@@ -47,7 +113,7 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${credentials.schwab_client_id}:${credentials.schwab_client_secret}`)}`,
+        'Authorization': `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
