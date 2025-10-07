@@ -516,7 +516,14 @@ const PaperTrading = () => {
                       {strikePrices.length > 0 ? (
                         <Select 
                           value={formData.strike} 
-                          onValueChange={(v) => setFormData({ ...formData, strike: v })}
+                          onValueChange={(v) => {
+                            setFormData({ ...formData, strike: v });
+                            // Auto-populate price with ask price when strike is selected
+                            const selectedStrike = strikePrices.find(s => s.strike.toString() === v);
+                            if (selectedStrike && !formData.price) {
+                              setFormData(prev => ({ ...prev, strike: v, price: selectedStrike.ask.toFixed(2) }));
+                            }
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select strike" />
@@ -551,13 +558,20 @@ const PaperTrading = () => {
                       />
                     </div>
                     <div>
-                      <Label>Price</Label>
+                      <Label>Price (per contract)</Label>
                       <Input
                         type="number"
                         step="0.01"
                         value={formData.price}
                         onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        placeholder="0.00"
+                        required
                       />
+                      {formData.price && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Total: ${(parseFloat(formData.price) * parseFloat(formData.quantity) * 100).toFixed(2)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -639,7 +653,7 @@ const PaperTrading = () => {
                       onClick={() => handleExecuteTrade('buy')} 
                       size="sm" 
                       variant="default"
-                      disabled={loading}
+                      disabled={loading || !formData.price || !formData.symbol || !formData.strike}
                       className="flex-1"
                     >
                       <TrendingUp className="w-4 h-4 mr-2" />
@@ -649,7 +663,7 @@ const PaperTrading = () => {
                       onClick={() => handleExecuteTrade('sell')} 
                       size="sm" 
                       variant="destructive"
-                      disabled={loading}
+                      disabled={loading || !formData.price || !formData.symbol || !formData.strike}
                       className="flex-1"
                     >
                       <TrendingUp className="w-4 h-4 mr-2" />
