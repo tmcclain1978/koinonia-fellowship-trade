@@ -20,35 +20,19 @@ serve(async (req) => {
       throw new Error('Missing authorization code or state');
     }
 
-    // Get the authorization header to identify the user
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
-    }
-
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get user from JWT
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
-
-    if (userError || !user) {
-      throw new Error('Invalid user token');
-    }
-
-    // Verify state matches user session
-    if (state !== user.id) {
-      throw new Error('Invalid state parameter');
-    }
+    // The state parameter contains the user ID
+    const userId = state;
 
     // Get user's Schwab credentials
     const { data: credentials } = await supabase
       .from('user_api_credentials')
       .select('schwab_client_id, schwab_client_secret')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
     if (!credentials) {
@@ -87,7 +71,7 @@ serve(async (req) => {
         schwab_refresh_token: tokens.refresh_token,
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (updateError) {
       console.error('Failed to store refresh token:', updateError);
