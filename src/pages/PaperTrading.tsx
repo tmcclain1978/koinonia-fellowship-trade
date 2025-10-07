@@ -706,11 +706,16 @@ const PaperTrading = () => {
                         <Select 
                           value={formData.strike} 
                           onValueChange={(v) => {
-                            setFormData({ ...formData, strike: v });
-                            // Auto-populate price with ask price when strike is selected
+                            // Always update price when strike changes
                             const selectedStrike = strikePrices.find(s => s.strike.toString() === v);
-                            if (selectedStrike && !formData.price) {
-                              setFormData(prev => ({ ...prev, strike: v, price: selectedStrike.ask.toFixed(2) }));
+                            if (selectedStrike) {
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                strike: v, 
+                                price: selectedStrike.ask.toFixed(2) 
+                              }));
+                            } else {
+                              setFormData({ ...formData, strike: v });
                             }
                           }}
                         >
@@ -752,20 +757,24 @@ const PaperTrading = () => {
                       </p>
                     </div>
                     <div>
-                      <Label>Price (per contract)</Label>
+                      <Label>Price (Premium per contract)</Label>
                       <Input
                         type="number"
                         step="0.01"
                         value={formData.price}
                         onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                        placeholder="0.00"
+                        placeholder="Auto-filled from market"
                         required
+                        className="font-mono"
                       />
                       {formData.price && (
                         <p className="text-xs text-muted-foreground mt-1">
                           Total: ${(parseFloat(formData.price) * parseFloat(formData.quantity) * 100).toFixed(2)}
                         </p>
                       )}
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        💡 This is the option premium (not strike price). Auto-filled when you select a strike.
+                      </p>
                     </div>
                   </div>
 
@@ -974,12 +983,19 @@ const PaperTrading = () => {
         </div>
 
         {/* Open Positions Section */}
-        {openPositions.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Open Positions</CardTitle>
-            </CardHeader>
-            <CardContent>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Open Positions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {openPositions.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground mb-2">No open positions</p>
+                <p className="text-xs text-muted-foreground">
+                  Buy a contract to open a position. You'll see it here with a "Close Position" button.
+                </p>
+              </div>
+            ) : (
               <div className="space-y-3">
                 {openPositions.map((position, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-muted rounded-lg border">
@@ -1066,12 +1082,12 @@ const PaperTrading = () => {
                         Close Position
                       </Button>
                     </div>
-                  </div>
-                ))}
+                   </div>
+                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         {/* Open Positions Component (for chart integration) */}
         <OpenPositions 
