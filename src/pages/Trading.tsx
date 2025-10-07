@@ -522,13 +522,20 @@ const Trading = () => {
               {/* Single Leg */}
               {orderStructure === "single" && (
                 <div className="space-y-4 mb-4">
-                  <label className="block text-sm text-muted-foreground mb-2">Quantity</label>
-                  <Input
-                    type="number"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="1"
-                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Quantity (Contracts)</Label>
+                      <Input
+                        type="number"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        placeholder="1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        1 contract = 100 shares
+                      </p>
+                    </div>
+                  </div>
 
                   <label className="block text-sm text-muted-foreground mb-2">Order Type</label>
                   <select 

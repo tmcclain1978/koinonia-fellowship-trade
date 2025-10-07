@@ -639,13 +639,16 @@ const PaperTrading = () => {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label>Quantity</Label>
+                      <Label>Quantity (Contracts)</Label>
                       <Input
                         type="number"
                         min="1"
                         value={formData.quantity}
                         onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        1 contract = 100 shares
+                      </p>
                     </div>
                     <div>
                       <Label>Price (per contract)</Label>
