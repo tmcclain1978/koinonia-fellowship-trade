@@ -475,6 +475,7 @@ const Trading = () => {
             </CardHeader>
             <CardContent className="p-0 h-[800px] overflow-hidden">
               <TradingViewChart 
+                key={`chart-${chartIndicators.join('-')}`}
                 symbol={symbol}
                 height={800}
                 interval={chartInterval}

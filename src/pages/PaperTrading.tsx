@@ -620,6 +620,7 @@ const PaperTrading = () => {
             </CardHeader>
             <CardContent className="overflow-hidden">
               <TradingViewChart 
+                key={`chart-${chartIndicators.join('-')}`}
                 symbol={formData.symbol}
                 height={1200}
                 interval={chartInterval}
