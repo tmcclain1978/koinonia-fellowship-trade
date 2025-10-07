@@ -47,13 +47,6 @@ export const TradingViewChart = memo(({
     container.current.innerHTML = '';
     widgetRef.current = null;
 
-    // Create container div for widget
-    const widgetContainer = document.createElement('div');
-    widgetContainer.id = 'tradingview_chart';
-    widgetContainer.style.height = `${height}px`;
-    widgetContainer.className = 'w-full';
-    container.current.appendChild(widgetContainer);
-
     // Default indicators if none specified
     const defaultStudies = [
       "MASimple@tv-basicstudies",
