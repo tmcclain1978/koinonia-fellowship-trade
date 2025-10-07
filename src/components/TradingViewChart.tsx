@@ -50,7 +50,9 @@ export const TradingViewChart = memo(({
     script.type = "text/javascript";
     script.async = true;
     script.innerHTML = JSON.stringify({
-      autosize: true,
+      autosize: false,
+      width: "100%",
+      height: height,
       symbol: symbol,
       interval: interval,
       timezone: "America/New_York",
@@ -104,11 +106,11 @@ export const TradingViewChart = memo(({
         container.current.innerHTML = '';
       }
     };
-  }, [symbol, interval, theme, indicators]);
+  }, [symbol, interval, theme, indicators, height]);
 
   return (
-    <div className="tradingview-widget-container w-full h-full relative" ref={container}>
-      <div id="tradingview_chart" className="w-full h-full" />
+    <div className="tradingview-widget-container w-full relative" style={{ height: `${height}px` }} ref={container}>
+      <div id="tradingview_chart" className="w-full" style={{ height: `${height}px` }} />
       
       {/* Instructions Popover */}
       <Popover>
