@@ -103,7 +103,7 @@ const PaperTrading = () => {
             : 'Complete Schwab OAuth in Settings for live data',
         });
         
-        // Extract unique expiration dates
+        // Extract unique expiration dates - filter to only Fridays for weekly options
         const uniqueExpirations = Array.from(
           new Set(data.options.map((opt: any) => opt.expiration))
         ).map((exp: any) => {
@@ -113,10 +113,13 @@ const PaperTrading = () => {
             date,
             formattedDate: exp,
             daysOut,
+            dayOfWeek: date.getDay(),
             type: "Weekly 100",
             iv: `${(Math.random() * 20 + 10).toFixed(2)}%`
           };
-        }).sort((a, b) => a.date.getTime() - b.date.getTime());
+        })
+        .filter(exp => exp.dayOfWeek === 5) // Only show Fridays (day 5)
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
         
         console.log("📅 Expiration Dates:", uniqueExpirations.map(e => `${e.formattedDate} (${e.daysOut}d)`));
         setExpirationDates(uniqueExpirations);
@@ -604,7 +607,7 @@ const PaperTrading = () => {
             <CardContent>
               <TradingViewChart 
                 symbol={formData.symbol}
-                height={800}
+                height={1200}
                 interval={chartInterval}
                 theme="dark"
                 entryPrice={selectedPosition?.entryPrice}
