@@ -37,23 +37,97 @@ serve(async (req) => {
       throw new Error('Invalid user token');
     }
 
-    // Try to fetch user's Schwab credentials (optional - will use mock data if not configured)
-    let credentials = null;
+    // Try to get Schwab access token
+    let accessToken = null;
     try {
-      const { data: credentialsData } = await supabase.functions.invoke(
-        "encrypt-credentials",
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke(
+        "schwab-get-access-token",
         {
-          body: { operation: "load" },
           headers: { Authorization: authHeader },
         }
       );
-      credentials = credentialsData?.credentials;
+      
+      if (!tokenError && tokenData?.access_token) {
+        accessToken = tokenData.access_token;
+        console.log('Successfully obtained Schwab access token');
+      }
     } catch (error) {
-      console.log('No credentials found, using mock data:', error);
+      console.log('Could not get Schwab access token, using mock data:', error);
     }
 
-    // For now, return mock options data for paper trading
-    // TODO: Implement actual Schwab OAuth and API call when credentials are available
+    // If we have an access token, call the real Schwab API
+    if (accessToken) {
+      try {
+        const schwabUrl = `https://api.schwabapi.com/marketdata/v1/chains?symbol=${symbol}`;
+        
+        const schwabResponse = await fetch(schwabUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (schwabResponse.ok) {
+          const schwabData = await schwabResponse.json();
+          
+          // Transform Schwab data to our format
+          const options = [];
+          
+          // Process call options
+          if (schwabData.callExpDateMap) {
+            for (const [expDate, strikes] of Object.entries(schwabData.callExpDateMap)) {
+              for (const [strike, contracts] of Object.entries(strikes as any)) {
+                const contract = (contracts as any[])[0];
+                options.push({
+                  type: 'CALL',
+                  strike: parseFloat(strike),
+                  expiration: expDate.split(':')[0],
+                  bid: contract.bid,
+                  ask: contract.ask,
+                  volume: contract.totalVolume,
+                  openInterest: contract.openInterest,
+                  impliedVolatility: contract.volatility,
+                });
+              }
+            }
+          }
+
+          // Process put options
+          if (schwabData.putExpDateMap) {
+            for (const [expDate, strikes] of Object.entries(schwabData.putExpDateMap)) {
+              for (const [strike, contracts] of Object.entries(strikes as any)) {
+                const contract = (contracts as any[])[0];
+                options.push({
+                  type: 'PUT',
+                  strike: parseFloat(strike),
+                  expiration: expDate.split(':')[0],
+                  bid: contract.bid,
+                  ask: contract.ask,
+                  volume: contract.totalVolume,
+                  openInterest: contract.openInterest,
+                  impliedVolatility: contract.volatility,
+                });
+              }
+            }
+          }
+
+          return new Response(
+            JSON.stringify({ 
+              options,
+              source: 'schwab',
+            }),
+            { 
+              status: 200, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+      } catch (schwabError) {
+        console.error('Schwab API error, falling back to mock data:', schwabError);
+      }
+    }
+
+    // Fallback to mock data for paper trading
     const currentDate = new Date();
     const mockExpirations = [
       new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -93,7 +167,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         options: mockOptions,
-        note: 'Mock data - Schwab OAuth implementation in progress'
+        source: 'mock',
+        note: 'Using mock data - complete Schwab OAuth in Settings for live data'
       }),
       { 
         status: 200, 
