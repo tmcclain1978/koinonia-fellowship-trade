@@ -105,11 +105,19 @@ serve(async (req) => {
     const redirectUri = `${supabaseUrl}/functions/v1/schwab-oauth-callback`;
     const state = user.id; // Use user ID as state for verification
     
+    console.log('Building OAuth URL with:', {
+      clientId: clientId.substring(0, 10) + '...', // Log partial for debugging
+      redirectUri,
+      state
+    });
+    
     const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', state);
+
+    console.log('Generated auth URL:', authUrl.toString());
 
     return new Response(
       JSON.stringify({ 
