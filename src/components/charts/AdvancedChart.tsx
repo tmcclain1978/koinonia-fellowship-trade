@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, CandlestickData, Time, CandlestickSeriesPartialOptions } from 'lightweight-charts';
+import { createChart, IChartApi, CandlestickData, Time, CandlestickSeries } from 'lightweight-charts';
 import { Button } from '@/components/ui/button';
 import { Settings, TrendingUp, Activity } from 'lucide-react';
 
@@ -63,14 +63,14 @@ export const AdvancedChart = ({
       },
     });
 
-    // Add candlestick series
-    const candleSeries = chart.addSeries({
-      type: 'Candlestick',
+    // Add candlestick series (v5.0 API)
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
-      borderVisible: true,
-      wickVisible: true,
-    } as any);
+      wickUpColor: '#10b981',
+      wickDownColor: '#ef4444',
+      borderVisible: false,
+    });
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
