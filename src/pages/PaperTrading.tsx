@@ -85,6 +85,15 @@ const PaperTrading = () => {
       if (data?.options) {
         setOptionsData(data.options);
         
+        // Show data source to user
+        const dataSource = data.source === 'schwab' ? 'Live Schwab Data' : 'Mock Data';
+        toast({
+          title: `Options Loaded: ${dataSource}`,
+          description: data.source === 'schwab' 
+            ? `Loaded ${data.options.length} real options from Schwab`
+            : 'Complete Schwab OAuth in Settings for live data',
+        });
+        
         // Extract unique expiration dates
         const uniqueExpirations = Array.from(
           new Set(data.options.map((opt: any) => opt.expiration))
@@ -102,19 +111,24 @@ const PaperTrading = () => {
         
         setExpirationDates(uniqueExpirations);
         
-        // Extract strike prices - filter to show strikes within reasonable range
-        const currentPrice = 256; // This should ideally come from real-time data
+        // Calculate current price from ATM options
+        const atmOptions = data.options.filter((opt: any) => opt.strike).sort((a: any, b: any) => 
+          Math.abs(a.strike - 256) - Math.abs(b.strike - 256)
+        );
+        const estimatedPrice = atmOptions[0]?.strike || 256;
+        
+        // Extract strike prices - show strikes within 10% of current price
         const strikes = data.options
           .filter((opt: any) => opt.strike)
           .filter((opt: any) => {
-            // Show strikes within 15% of current price
-            const priceDiff = Math.abs(opt.strike - currentPrice) / currentPrice;
-            return priceDiff <= 0.15;
+            // Show strikes within 10% of estimated current price
+            const priceDiff = Math.abs(opt.strike - estimatedPrice) / estimatedPrice;
+            return priceDiff <= 0.10;
           })
           .map((opt: any) => ({
             strike: opt.strike,
             delta: opt.delta || 0,
-            probITM: `${((opt.delta || 0) * 100).toFixed(2)}%`,
+            probITM: opt.delta ? `${(opt.delta * 100).toFixed(1)}%` : 'N/A',
             bid: opt.bid || 0,
             ask: opt.ask || 0,
             type: opt.type,
