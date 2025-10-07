@@ -667,9 +667,11 @@ const PaperTrading = () => {
                             <SelectValue placeholder="Select strike" />
                           </SelectTrigger>
                           <SelectContent>
-                            {strikePrices.map((strike) => (
-                              <SelectItem key={strike.strike} value={strike.strike.toString()}>
-                                ${strike.strike} - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
+                      {strikePrices
+                                .filter(s => !formData.side || s.type === formData.side)
+                                .map((strike) => (
+                              <SelectItem key={`${strike.strike}-${strike.type}`} value={strike.strike.toString()}>
+                                ${strike.strike} ({strike.type}) - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
                               </SelectItem>
                             ))}
                           </SelectContent>

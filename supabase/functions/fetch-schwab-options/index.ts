@@ -60,6 +60,7 @@ serve(async (req) => {
       try {
         const schwabUrl = `https://api.schwabapi.com/marketdata/v1/chains?symbol=${symbol}`;
         
+        console.log('Calling Schwab API for', symbol);
         const schwabResponse = await fetch(schwabUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -69,6 +70,8 @@ serve(async (req) => {
 
         if (schwabResponse.ok) {
           const schwabData = await schwabResponse.json();
+          console.log('Schwab API response status:', schwabResponse.status);
+          console.log('Sample Schwab data keys:', Object.keys(schwabData));
           
           // Transform Schwab data to our format
           const options = [];
@@ -78,15 +81,22 @@ serve(async (req) => {
             for (const [expDate, strikes] of Object.entries(schwabData.callExpDateMap)) {
               for (const [strike, contracts] of Object.entries(strikes as any)) {
                 const contract = (contracts as any[])[0];
+                
+                // Log a sample contract to see the structure
+                if (options.length === 0) {
+                  console.log('Sample CALL contract:', JSON.stringify(contract, null, 2));
+                }
+                
                 options.push({
                   type: 'CALL',
                   strike: parseFloat(strike),
                   expiration: expDate.split(':')[0],
-                  bid: contract.bid,
-                  ask: contract.ask,
-                  volume: contract.totalVolume,
-                  openInterest: contract.openInterest,
-                  impliedVolatility: contract.volatility,
+                  bid: contract.bid || 0,
+                  ask: contract.ask || 0,
+                  volume: contract.totalVolume || 0,
+                  openInterest: contract.openInterest || 0,
+                  impliedVolatility: contract.volatility || 0,
+                  delta: contract.delta || null,
                 });
               }
             }
@@ -94,37 +104,53 @@ serve(async (req) => {
 
           // Process put options
           if (schwabData.putExpDateMap) {
+            let putSampleLogged = false;
             for (const [expDate, strikes] of Object.entries(schwabData.putExpDateMap)) {
               for (const [strike, contracts] of Object.entries(strikes as any)) {
                 const contract = (contracts as any[])[0];
+                
+                // Log a sample PUT contract
+                if (!putSampleLogged) {
+                  console.log('Sample PUT contract:', JSON.stringify(contract, null, 2));
+                  putSampleLogged = true;
+                }
+                
                 options.push({
                   type: 'PUT',
                   strike: parseFloat(strike),
                   expiration: expDate.split(':')[0],
-                  bid: contract.bid,
-                  ask: contract.ask,
-                  volume: contract.totalVolume,
-                  openInterest: contract.openInterest,
-                  impliedVolatility: contract.volatility,
+                  bid: contract.bid || 0,
+                  ask: contract.ask || 0,
+                  volume: contract.totalVolume || 0,
+                  openInterest: contract.openInterest || 0,
+                  impliedVolatility: contract.volatility || 0,
+                  delta: contract.delta || null,
                 });
               }
             }
           }
 
+          console.log(`Processed ${options.length} total options from Schwab`);
+          
           return new Response(
             JSON.stringify({ 
               options,
               source: 'schwab',
+              underlyingPrice: schwabData.underlyingPrice || null,
             }),
             { 
               status: 200, 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
             }
           );
+        } else {
+          console.error('Schwab API returned non-OK status:', schwabResponse.status);
         }
       } catch (schwabError) {
         console.error('Schwab API error, falling back to mock data:', schwabError);
       }
+    } else {
+      console.log('No access token available, using mock data');
     }
 
     // Fallback to mock data for paper trading
