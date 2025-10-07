@@ -115,6 +115,8 @@ serve(async (req) => {
     const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('state', state);
 
     console.log('Initial auth URL:', authUrl.toString());
 
