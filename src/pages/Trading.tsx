@@ -572,13 +572,28 @@ const Trading = () => {
 
                       <div className="mb-4">
                         <label className="block text-sm text-muted-foreground mb-2">Strike Price</label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={strikePrice}
-                          onChange={(e) => setStrikePrice(e.target.value)}
-                          placeholder="0.00"
-                        />
+                        {strikePrices.length > 0 ? (
+                          <select
+                            value={strikePrice}
+                            onChange={(e) => setStrikePrice(e.target.value)}
+                            className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                          >
+                            <option value="">Select Strike</option>
+                            {strikePrices.map((strike) => (
+                              <option key={strike.strike} value={strike.strike}>
+                                ${strike.strike} - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={strikePrice}
+                            onChange={(e) => setStrikePrice(e.target.value)}
+                            placeholder="0.00"
+                          />
+                        )}
                       </div>
                     </>
                   )}
@@ -597,13 +612,28 @@ const Trading = () => {
               {orderStructure === "vertical" && (
                 <div className="space-y-4 mb-4">
                   <label className="block text-sm text-muted-foreground mb-2">Leg 1 Strike</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={leg1Strike}
-                    onChange={(e) => setLeg1Strike(e.target.value)}
-                    placeholder="0.00"
-                  />
+                  {strikePrices.length > 0 ? (
+                    <select
+                      value={leg1Strike}
+                      onChange={(e) => setLeg1Strike(e.target.value)}
+                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                    >
+                      <option value="">Select Strike</option>
+                      {strikePrices.map((strike) => (
+                        <option key={strike.strike} value={strike.strike}>
+                          ${strike.strike}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={leg1Strike}
+                      onChange={(e) => setLeg1Strike(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  )}
 
                   <label className="block text-sm text-muted-foreground mb-2">Leg 1 Type</label>
                   <select 
@@ -616,13 +646,28 @@ const Trading = () => {
                   </select>
 
                   <label className="block text-sm text-muted-foreground mb-2">Leg 2 Strike</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={leg2Strike}
-                    onChange={(e) => setLeg2Strike(e.target.value)}
-                    placeholder="0.00"
-                  />
+                  {strikePrices.length > 0 ? (
+                    <select
+                      value={leg2Strike}
+                      onChange={(e) => setLeg2Strike(e.target.value)}
+                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                    >
+                      <option value="">Select Strike</option>
+                      {strikePrices.map((strike) => (
+                        <option key={strike.strike} value={strike.strike}>
+                          ${strike.strike}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={leg2Strike}
+                      onChange={(e) => setLeg2Strike(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  )}
 
                   <label className="block text-sm text-muted-foreground mb-2">Leg 2 Type</label>
                   <select 
@@ -663,40 +708,100 @@ const Trading = () => {
               {orderStructure === "iron-condor" && (
                 <div className="space-y-4 mb-4">
                   <label className="block text-sm text-muted-foreground mb-2">Leg 1 Strike</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={leg1Strike}
-                    onChange={(e) => setLeg1Strike(e.target.value)}
-                    placeholder="0.00"
-                  />
+                  {strikePrices.length > 0 ? (
+                    <select
+                      value={leg1Strike}
+                      onChange={(e) => setLeg1Strike(e.target.value)}
+                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                    >
+                      <option value="">Select Strike</option>
+                      {strikePrices.map((strike) => (
+                        <option key={strike.strike} value={strike.strike}>
+                          ${strike.strike}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={leg1Strike}
+                      onChange={(e) => setLeg1Strike(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  )}
 
                   <label className="block text-sm text-muted-foreground mb-2">Leg 2 Strike</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={leg2Strike}
-                    onChange={(e) => setLeg2Strike(e.target.value)}
-                    placeholder="0.00"
-                  />
+                  {strikePrices.length > 0 ? (
+                    <select
+                      value={leg2Strike}
+                      onChange={(e) => setLeg2Strike(e.target.value)}
+                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                    >
+                      <option value="">Select Strike</option>
+                      {strikePrices.map((strike) => (
+                        <option key={strike.strike} value={strike.strike}>
+                          ${strike.strike}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={leg2Strike}
+                      onChange={(e) => setLeg2Strike(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  )}
 
                   <label className="block text-sm text-muted-foreground mb-2">Leg 3 Strike</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={leg3Strike}
-                    onChange={(e) => setLeg3Strike(e.target.value)}
-                    placeholder="0.00"
-                  />
+                  {strikePrices.length > 0 ? (
+                    <select
+                      value={leg3Strike}
+                      onChange={(e) => setLeg3Strike(e.target.value)}
+                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                    >
+                      <option value="">Select Strike</option>
+                      {strikePrices.map((strike) => (
+                        <option key={strike.strike} value={strike.strike}>
+                          ${strike.strike}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={leg3Strike}
+                      onChange={(e) => setLeg3Strike(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  )}
 
                   <label className="block text-sm text-muted-foreground mb-2">Leg 4 Strike</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={leg4Strike}
-                    onChange={(e) => setLeg4Strike(e.target.value)}
-                    placeholder="0.00"
-                  />
+                  {strikePrices.length > 0 ? (
+                    <select
+                      value={leg4Strike}
+                      onChange={(e) => setLeg4Strike(e.target.value)}
+                      className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
+                    >
+                      <option value="">Select Strike</option>
+                      {strikePrices.map((strike) => (
+                        <option key={strike.strike} value={strike.strike}>
+                          ${strike.strike}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={leg4Strike}
+                      onChange={(e) => setLeg4Strike(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  )}
                 </div>
               )}
 
