@@ -126,7 +126,9 @@ serve(async (req) => {
 
       const { error } = await supabase
         .from("user_api_credentials")
-        .upsert(encryptedData);
+        .upsert(encryptedData, {
+          onConflict: 'user_id'
+        });
 
       if (error) {
         console.error("Error saving credentials:", error);
