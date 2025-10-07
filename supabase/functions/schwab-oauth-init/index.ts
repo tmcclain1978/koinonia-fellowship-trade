@@ -80,6 +80,10 @@ serve(async (req) => {
       throw new Error('Invalid user token');
     }
 
+    // Get the origin from the request to use for redirect after OAuth
+    const referer = req.headers.get('referer') || req.headers.get('origin');
+    const appOrigin = referer ? new URL(referer).origin : '';
+
     // Get user's Schwab client ID
     const { data: credentials } = await supabase
       .from('user_api_credentials')
@@ -103,7 +107,12 @@ serve(async (req) => {
     // Build Schwab OAuth URL
     // Note: The callback URL must be registered in your Schwab Developer Portal app
     const redirectUri = `${supabaseUrl}/functions/v1/schwab-oauth-callback`;
-    const state = user.id; // Use user ID as state for verification
+    
+    // The state parameter contains the user ID and return URL
+    const state = JSON.stringify({
+      userId: user.id,
+      returnUrl: appOrigin
+    });
     
     console.log('Building OAuth URL with:', {
       clientId: clientId.substring(0, 10) + '...', // Log partial for debugging

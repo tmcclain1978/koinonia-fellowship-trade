@@ -74,8 +74,18 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // The state parameter contains the user ID
-    const userId = state;
+    // Parse the state parameter (contains user ID and return URL)
+    let userId: string;
+    let returnUrl: string;
+    try {
+      const stateData = JSON.parse(state);
+      userId = stateData.userId;
+      returnUrl = stateData.returnUrl || '';
+    } catch {
+      // Fallback for old format (just user ID)
+      userId = state;
+      returnUrl = '';
+    }
 
     // Get user's Schwab credentials
     const { data, error: dbError } = await supabase
@@ -145,7 +155,7 @@ serve(async (req) => {
     }
 
     // Redirect back to settings page with success
-    const redirectUrl = `${url.origin}/settings?oauth=success`;
+    const redirectUrl = returnUrl ? `${returnUrl}/settings?oauth=success` : '/settings?oauth=success';
     
     return new Response(null, {
       status: 302,
@@ -158,9 +168,21 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in schwab-oauth-callback:', error);
     
-    // Redirect back to settings with error
+    // Try to get returnUrl from state if available
     const url = new URL(req.url);
-    const redirectUrl = `${url.origin}/settings?oauth=error&message=${encodeURIComponent(error.message)}`;
+    const state = url.searchParams.get('state');
+    let returnUrl = '';
+    try {
+      if (state) {
+        const stateData = JSON.parse(state);
+        returnUrl = stateData.returnUrl || '';
+      }
+    } catch {}
+    
+    // Redirect back to settings with error
+    const redirectUrl = returnUrl 
+      ? `${returnUrl}/settings?oauth=error&message=${encodeURIComponent(error.message)}`
+      : `/settings?oauth=error&message=${encodeURIComponent(error.message)}`;
     
     return new Response(null, {
       status: 302,
