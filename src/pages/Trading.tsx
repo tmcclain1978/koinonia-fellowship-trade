@@ -464,11 +464,11 @@ const Trading = () => {
         {/* Chart & Order Builder - Side by Side */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
           {/* Chart - Half Width */}
-          <Card className="h-full">
+          <Card className="h-full overflow-hidden">
             <CardHeader>
               <CardTitle>Advanced Chart - {symbol}</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 h-[800px]">
+            <CardContent className="p-0 h-[800px] overflow-hidden">
               <TradingViewChart 
                 symbol={symbol}
                 height={800}

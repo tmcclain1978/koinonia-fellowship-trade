@@ -609,11 +609,11 @@ const PaperTrading = () => {
 
         {/* Chart - Half Width */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          <Card className="h-full">
+          <Card className="h-full overflow-hidden">
             <CardHeader>
               <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-hidden">
               <TradingViewChart 
                 symbol={formData.symbol}
                 height={1200}

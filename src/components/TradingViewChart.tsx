@@ -141,8 +141,8 @@ export const TradingViewChart = memo(({
   }, [symbol, interval, theme, indicators, height]);
 
   return (
-    <div className="tradingview-widget-container w-full relative" style={{ height: `${height}px` }} ref={container}>
-      <div id="tradingview_chart" className="w-full" style={{ height: `${height}px` }} />
+    <div className="tradingview-widget-container w-full relative overflow-hidden" style={{ height: `${height}px` }} ref={container}>
+      <div id="tradingview_chart" className="w-full h-full" />
       
       {/* Instructions Popover */}
       <Popover>
@@ -155,7 +155,7 @@ export const TradingViewChart = memo(({
             <Info className="h-4 w-4" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-80" align="end">
+        <PopoverContent className="w-80 z-[100] bg-background" align="end">
           <div className="space-y-3">
             <h4 className="font-semibold text-sm">How to Use Chart Indicators</h4>
             <div className="space-y-2 text-sm text-muted-foreground">
