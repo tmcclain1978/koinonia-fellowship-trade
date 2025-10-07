@@ -169,16 +169,25 @@ const Settings = () => {
 
     setOauthLoading(true);
     try {
+      console.log('Starting Schwab OAuth flow...');
       const { data, error } = await supabase.functions.invoke('schwab-oauth-init');
 
-      if (error) throw error;
+      console.log('OAuth init response:', { data, error });
+
+      if (error) {
+        console.error('OAuth init error:', error);
+        throw error;
+      }
 
       if (data?.authUrl) {
+        console.log('Redirecting to:', data.authUrl);
         // Redirect to Schwab OAuth page
         window.location.href = data.authUrl;
+      } else {
+        throw new Error('No authorization URL received');
       }
     } catch (error: any) {
-      console.error('OAuth init error:', error);
+      console.error('OAuth init caught error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to start OAuth flow",
