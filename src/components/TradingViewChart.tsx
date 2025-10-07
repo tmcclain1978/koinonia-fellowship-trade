@@ -163,92 +163,135 @@ export const TradingViewChart = memo(({
         </div>
       )}
 
-      {/* Koinonia Signal Triangles - Blue for Entry, Purple for Exit */}
-      {signalArrows.length > 0 && (
-        <>
-          {/* Triangle Markers overlaid on chart */}
-          <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center">
-            <div className="relative w-full h-full">
-              {signalArrows.map((arrow, idx) => (
-                <div
-                  key={idx}
-                  className="absolute pointer-events-auto animate-pulse"
-                  style={{
-                    left: `${20 + idx * 15}%`,
-                    top: arrow.type === 'entry' ? '70%' : '30%',
-                  }}
-                >
-                  {/* Triangle Shape */}
-                  <div className="relative group cursor-pointer">
-                    <svg
-                      width="40"
-                      height="40"
-                      viewBox="0 0 40 40"
-                      className="drop-shadow-2xl transition-transform hover:scale-125"
-                    >
-                      {arrow.type === 'entry' ? (
-                        // Blue upward triangle for entry
-                        <path
-                          d="M 20 5 L 35 35 L 5 35 Z"
-                          fill="#3b82f6"
-                          stroke="#1e40af"
-                          strokeWidth="2"
-                          className="drop-shadow-lg"
-                        />
-                      ) : (
-                        // Purple downward triangle for exit
-                        <path
-                          d="M 20 35 L 5 5 L 35 5 Z"
-                          fill="#a855f7"
-                          stroke="#7e22ce"
-                          strokeWidth="2"
-                          className="drop-shadow-lg"
-                        />
-                      )}
-                    </svg>
-                    
-                    {/* Tooltip on hover */}
-                    <div className="absolute left-1/2 -translate-x-1/2 -top-16 opacity-0 group-hover:opacity-100 transition-opacity bg-background/95 backdrop-blur-sm border border-border rounded-lg p-2 text-xs whitespace-nowrap shadow-xl">
-                      <div className={`font-semibold ${
-                        arrow.type === 'entry' ? 'text-blue-500' : 'text-purple-500'
-                      }`}>
-                        {arrow.type === 'entry' ? '🔵 Entry Signal' : '🟣 Exit Signal'}
-                      </div>
-                      <div className="font-mono font-bold text-foreground">
-                        ${arrow.price.toFixed(2)}
+      {/* Koinonia Signal Triangles - Positioned by timeframe */}
+      {signalArrows.length > 0 && (() => {
+        // Calculate time range based on interval
+        const getTimeRangeMs = (interval: string) => {
+          const now = Date.now();
+          switch(interval) {
+            case '1': return 6 * 60 * 60 * 1000; // 6 hours for 1min
+            case '5': return 24 * 60 * 60 * 1000; // 1 day for 5min
+            case '15': return 3 * 24 * 60 * 60 * 1000; // 3 days for 15min
+            case '60': return 7 * 24 * 60 * 60 * 1000; // 1 week for 1hr
+            case 'D': return 180 * 24 * 60 * 60 * 1000; // 6 months for daily
+            case 'W': return 365 * 24 * 60 * 60 * 1000; // 1 year for weekly
+            default: return 180 * 24 * 60 * 60 * 1000;
+          }
+        };
+
+        const timeRangeMs = getTimeRangeMs(interval);
+        const now = Date.now();
+        const chartStartTime = now - timeRangeMs;
+
+        // Calculate position for each signal
+        const positionedArrows = signalArrows.map((arrow) => {
+          // Use timestamp if provided, otherwise estimate based on current time
+          const signalTime = arrow.timestamp 
+            ? new Date(arrow.timestamp).getTime()
+            : now - (timeRangeMs * 0.1); // Default to 10% from right edge
+
+          // Calculate X position (0-100%)
+          const timeProgress = (signalTime - chartStartTime) / timeRangeMs;
+          const xPercent = Math.max(10, Math.min(90, timeProgress * 100));
+
+          return { ...arrow, xPercent };
+        });
+
+        return (
+          <>
+            {/* Triangle Markers overlaid on chart */}
+            <div className="absolute inset-0 pointer-events-none z-40">
+              <div className="relative w-full h-full">
+                {positionedArrows.map((arrow, idx) => (
+                  <div
+                    key={idx}
+                    className="absolute pointer-events-auto animate-pulse"
+                    style={{
+                      left: `${arrow.xPercent}%`,
+                      top: arrow.type === 'entry' ? '70%' : '30%',
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                  >
+                    {/* Triangle Shape */}
+                    <div className="relative group cursor-pointer">
+                      <svg
+                        width="40"
+                        height="40"
+                        viewBox="0 0 40 40"
+                        className="drop-shadow-2xl transition-transform hover:scale-125"
+                      >
+                        {arrow.type === 'entry' ? (
+                          // Blue upward triangle for entry
+                          <path
+                            d="M 20 5 L 35 35 L 5 35 Z"
+                            fill="#3b82f6"
+                            stroke="#1e40af"
+                            strokeWidth="2"
+                            className="drop-shadow-lg"
+                          />
+                        ) : (
+                          // Purple downward triangle for exit
+                          <path
+                            d="M 20 35 L 5 5 L 35 5 Z"
+                            fill="#a855f7"
+                            stroke="#7e22ce"
+                            strokeWidth="2"
+                            className="drop-shadow-lg"
+                          />
+                        )}
+                      </svg>
+                      
+                      {/* Tooltip on hover */}
+                      <div className="absolute left-1/2 -translate-x-1/2 -top-16 opacity-0 group-hover:opacity-100 transition-opacity bg-background/95 backdrop-blur-sm border border-border rounded-lg p-2 text-xs whitespace-nowrap shadow-xl z-10">
+                        <div className={`font-semibold ${
+                          arrow.type === 'entry' ? 'text-blue-500' : 'text-purple-500'
+                        }`}>
+                          {arrow.type === 'entry' ? '🔵 Entry Signal' : '🟣 Exit Signal'}
+                        </div>
+                        <div className="font-mono font-bold text-foreground">
+                          ${arrow.price.toFixed(2)}
+                        </div>
+                        {arrow.timestamp && (
+                          <div className="text-muted-foreground text-[10px] mt-1">
+                            {new Date(arrow.timestamp).toLocaleString()}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Signal Legend */}
-          <div className="absolute left-4 bottom-4 space-y-2 z-50">
-            <div className="bg-background/95 backdrop-blur-md border border-primary/30 rounded-lg p-3 shadow-2xl">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-xs font-semibold text-foreground">Koinonia Signals</span>
-              </div>
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 16 16">
-                    <path d="M 8 2 L 14 14 L 2 14 Z" fill="#3b82f6" />
-                  </svg>
-                  <span className="text-muted-foreground">Blue = Entry</span>
+            {/* Signal Legend */}
+            <div className="absolute left-4 bottom-4 space-y-2 z-50">
+              <div className="bg-background/95 backdrop-blur-md border border-primary/30 rounded-lg p-3 shadow-2xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  <span className="text-xs font-semibold text-foreground">Koinonia Signals</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 16 16">
-                    <path d="M 8 14 L 2 2 L 14 2 Z" fill="#a855f7" />
-                  </svg>
-                  <span className="text-muted-foreground">Purple = Exit</span>
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 16 16">
+                      <path d="M 8 2 L 14 14 L 2 14 Z" fill="#3b82f6" />
+                    </svg>
+                    <span className="text-muted-foreground">Blue = Entry</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 16 16">
+                      <path d="M 8 14 L 2 2 L 14 2 Z" fill="#a855f7" />
+                    </svg>
+                    <span className="text-muted-foreground">Purple = Exit</span>
+                  </div>
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-2 pt-2 border-t border-border">
+                  Timeframe: {interval === 'D' ? 'Daily' : interval === 'W' ? 'Weekly' : `${interval}min`}
                 </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        );
+      })()}
     </div>
   );
 });

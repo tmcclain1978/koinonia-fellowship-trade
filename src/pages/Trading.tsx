@@ -343,8 +343,16 @@ const Trading = () => {
 
   const handleKoinoniaSignal = (signal: any) => {
     const arrows = [
-      { price: signal.entryPrice, type: 'entry' as const },
-      ...signal.exitPrices.map((price: number) => ({ price, type: 'exit' as const }))
+      { 
+        price: signal.entryPrice, 
+        type: 'entry' as const,
+        timestamp: signal.entryTimestamp
+      },
+      ...signal.exitPrices.map((exit: any) => ({ 
+        price: exit.price, 
+        type: 'exit' as const,
+        timestamp: exit.timestamp
+      }))
     ];
     setSignalArrows(arrows);
     

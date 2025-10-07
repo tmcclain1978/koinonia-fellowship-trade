@@ -83,9 +83,17 @@ export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicat
       setSignal(data.signals);
       
       if (onSignalGenerated) {
+        // Generate timestamps for signals (entry now, exits in future)
+        const now = new Date();
+        const entryTimestamp = now.toISOString();
+        
         onSignalGenerated({
           entryPrice: data.signals.entrySignal.price,
-          exitPrices: data.signals.exitSignals.map((s: any) => s.price),
+          entryTimestamp,
+          exitPrices: data.signals.exitSignals.map((s: any, idx: number) => ({
+            price: s.price,
+            timestamp: new Date(now.getTime() + (idx + 1) * 24 * 60 * 60 * 1000).toISOString() // Each exit 1 day apart
+          })),
           stopLoss: data.signals.exitSignals.find((s: any) => s.type === 'stop_loss')?.price
         });
       }
