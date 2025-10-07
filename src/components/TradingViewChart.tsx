@@ -43,89 +43,92 @@ export const TradingViewChart = memo(({
   useEffect(() => {
     if (!container.current) return;
 
-    // Clear previous widget
+    console.log('🔄 Chart Re-initializing with indicators:', indicators);
+
+    // Clear previous widget completely
     container.current.innerHTML = '';
     widgetRef.current = null;
 
-    // Default indicators if none specified
-    const defaultStudies = [
-      "MASimple@tv-basicstudies",
-      "RSI@tv-basicstudies", 
-      "VWAP@tv-basicstudies",
-      "Volume@tv-basicstudies"
-    ];
+    // Small delay to ensure cleanup
+    const timer = setTimeout(() => {
+      if (!container.current) return;
 
-    const appliedStudies = indicators.length > 0 ? indicators : defaultStudies;
+      // Default indicators if none specified
+      const defaultStudies = [
+        "MASimple@tv-basicstudies",
+        "RSI@tv-basicstudies", 
+        "VWAP@tv-basicstudies",
+        "Volume@tv-basicstudies"
+      ];
 
-    console.log('📊 Initializing TradingView Chart:', {
-      symbol,
-      interval,
-      indicators: appliedStudies,
-      theme
-    });
+      const appliedStudies = indicators.length > 0 ? indicators : defaultStudies;
 
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.type = "text/javascript";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      autosize: false,
-      width: "100%",
-      height: height,
-      symbol: symbol,
-      interval: interval,
-      timezone: "America/New_York",
-      theme: theme,
-      style: "1",
-      locale: "en",
-      enable_publishing: false,
-      allow_symbol_change: true,
-      support_host: "https://www.tradingview.com",
-      container_id: "tradingview_chart",
-      hide_side_toolbar: false,
-      withdateranges: true,
-      hide_top_toolbar: false,
-      save_image: true,
-      details: true,
-      hotlist: true,
-      calendar: false,
-      studies: appliedStudies,
-      studies_overrides: {
-        "volume.volume.color.0": "rgba(255,82,82,0.7)",
-        "volume.volume.color.1": "rgba(0,230,118,0.7)",
-        "moving average.ma.color": "#2962FF",
-        "moving average.ma.linewidth": 2,
-      },
-      disabled_features: [],
-      enabled_features: [
-        "study_templates",
-        "use_localstorage_for_settings",
-        "save_chart_properties_to_local_storage",
-        "header_indicators",
-        "header_compare",
-        "header_undo_redo",
-        "header_screenshot",
-        "header_chart_type",
-        "header_settings",
-        "left_toolbar",
-        "control_bar",
-        "timeframes_toolbar",
-        "display_market_status",
-        "items_favoriting",
-        "show_hide_button_in_legend",
-        "border_around_the_chart",
-        "create_volume_indicator_by_default"
-      ],
-      load_last_chart: true,
-      save_load_adapter: {
-        charts: [],
-        studyTemplates: []
-      }
-    });
+      console.log('📊 Applying studies to chart:', appliedStudies);
 
-    container.current.appendChild(script);
+      const script = document.createElement("script");
+      script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+      script.type = "text/javascript";
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        autosize: false,
+        width: "100%",
+        height: height,
+        symbol: symbol,
+        interval: interval,
+        timezone: "America/New_York",
+        theme: theme,
+        style: "1",
+        locale: "en",
+        enable_publishing: false,
+        allow_symbol_change: true,
+        support_host: "https://www.tradingview.com",
+        container_id: "tradingview_chart",
+        hide_side_toolbar: false,
+        withdateranges: true,
+        hide_top_toolbar: false,
+        save_image: true,
+        details: true,
+        hotlist: true,
+        calendar: false,
+        studies: appliedStudies,
+        studies_overrides: {
+          "volume.volume.color.0": "rgba(255,82,82,0.7)",
+          "volume.volume.color.1": "rgba(0,230,118,0.7)",
+          "moving average.ma.color": "#2962FF",
+          "moving average.ma.linewidth": 2,
+        },
+        disabled_features: [],
+        enabled_features: [
+          "study_templates",
+          "use_localstorage_for_settings",
+          "save_chart_properties_to_local_storage",
+          "header_indicators",
+          "header_compare",
+          "header_undo_redo",
+          "header_screenshot",
+          "header_chart_type",
+          "header_settings",
+          "left_toolbar",
+          "control_bar",
+          "timeframes_toolbar",
+          "display_market_status",
+          "items_favoriting",
+          "show_hide_button_in_legend",
+          "border_around_the_chart",
+          "create_volume_indicator_by_default"
+        ],
+        load_last_chart: false, // Changed to false to force fresh load
+        save_load_adapter: {
+          charts: [],
+          studyTemplates: []
+        }
+      });
+
+      container.current.appendChild(script);
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       if (container.current) {
         container.current.innerHTML = '';
       }

@@ -79,6 +79,12 @@ export const IndicatorSelector = ({ onIndicatorsChange }: IndicatorSelectorProps
       ? selectedIndicators.filter(s => s !== study)
       : [...selectedIndicators, study];
     
+    console.log('📊 Indicator Selection Changed:', {
+      previous: selectedIndicators,
+      new: newSelected,
+      toggled: study
+    });
+    
     setSelectedIndicators(newSelected);
     onIndicatorsChange(newSelected);
   };
