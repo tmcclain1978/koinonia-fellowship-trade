@@ -195,12 +195,73 @@ const PaperTrading = () => {
 
       if (error) throw error;
       setTrades(data || []);
+      
+      // Calculate open positions
+      await loadOpenPositions();
     } catch (error: any) {
       toast({
         title: "Error loading trades",
         description: error.message,
         variant: "destructive",
       });
+    }
+  };
+
+  const loadOpenPositions = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: allTrades, error } = await supabase
+        .from('paper_trades')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('executed_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Group trades by symbol+strike+expiration to calculate net positions
+      const positionMap = new Map();
+      
+      allTrades?.forEach(trade => {
+        const key = `${trade.symbol}-${trade.notes}`;
+        if (!positionMap.has(key)) {
+          positionMap.set(key, {
+            symbol: trade.symbol,
+            details: trade.notes,
+            quantity: 0,
+            avgEntryPrice: 0,
+            totalCost: 0,
+            trades: []
+          });
+        }
+        
+        const position = positionMap.get(key);
+        position.trades.push(trade);
+        
+        if (trade.action === 'buy') {
+          position.quantity += Number(trade.quantity);
+          position.totalCost += Number(trade.total_value);
+        } else {
+          position.quantity -= Number(trade.quantity);
+          position.totalCost -= Number(trade.total_value);
+        }
+      });
+
+      // Filter to only open positions (quantity > 0)
+      const openPos = Array.from(positionMap.values())
+        .filter(pos => pos.quantity > 0)
+        .map(pos => ({
+          symbol: pos.symbol,
+          details: pos.details,
+          quantity: pos.quantity,
+          entryPrice: pos.totalCost / (pos.quantity * 100),
+          totalCost: pos.totalCost,
+        }));
+
+      setOpenPositions(openPos);
+    } catch (error: any) {
+      console.error('Error loading positions:', error);
     }
   };
 
@@ -331,6 +392,35 @@ const PaperTrading = () => {
     }
     if (signal.stopLoss) {
       setFormData(prev => ({ ...prev, stopPrice: signal.stopLoss.toFixed(2) }));
+    }
+  };
+
+  const handleClosePosition = async (position: any) => {
+    if (!confirm(`Close ${position.quantity} contracts of ${position.symbol}?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Get current market price (use ask price for closing)
+      const currentPrice = position.entryPrice * 1.05; // Simulate 5% profit for demo
+      
+      await handleExecuteTrade('sell');
+      
+      toast({
+        title: "Position Closed",
+        description: `Closed ${position.quantity} contracts of ${position.symbol}`,
+      });
+      
+      await loadOpenPositions();
+    } catch (error: any) {
+      toast({
+        title: "Error closing position",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -748,6 +838,77 @@ const PaperTrading = () => {
         </div>
 
         {/* Open Positions Section */}
+        {openPositions.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Open Positions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {openPositions.map((position, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 bg-muted rounded-lg border">
+                    <div className="flex-1">
+                      <p className="font-semibold text-lg">{position.symbol}</p>
+                      <p className="text-sm text-muted-foreground">{position.details}</p>
+                      <p className="text-sm mt-1">
+                        Quantity: <span className="font-semibold">{position.quantity}</span> contracts
+                      </p>
+                      <p className="text-sm">
+                        Entry: <span className="font-semibold">${position.entryPrice.toFixed(2)}</span> per contract
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Total Cost: ${position.totalCost.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            symbol: position.symbol,
+                            quantity: position.quantity.toString(),
+                            price: (position.entryPrice * 1.05).toFixed(2), // Suggest 5% profit
+                          });
+                        }}
+                      >
+                        Load to Form
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setFormData({
+                            symbol: position.symbol,
+                            side: formData.side,
+                            expiration: formData.expiration,
+                            strike: formData.strike,
+                            quantity: position.quantity.toString(),
+                            price: (position.entryPrice * 1.05).toFixed(2),
+                            orderType: "MARKET",
+                            duration: "DAY",
+                            limitPrice: "",
+                            stopPrice: "",
+                            trailAmount: "",
+                          });
+                          setTimeout(() => {
+                            handleExecuteTrade('sell');
+                          }, 100);
+                        }}
+                        disabled={loading}
+                      >
+                        Close Position
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Open Positions Component (for chart integration) */}
         <OpenPositions 
           positions={openPositions}
           onPositionClick={(position) => {
