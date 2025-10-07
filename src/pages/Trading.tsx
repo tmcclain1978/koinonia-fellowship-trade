@@ -60,12 +60,12 @@ const Trading = () => {
         throw new Error(data.error);
       }
 
-      if (data?.results) {
-        setOptionsData(data.results);
+      if (data?.options) {
+        setOptionsData(data.options);
         
         // Extract unique expiration dates
         const uniqueExpirations = Array.from(
-          new Set(data.results.map((opt: any) => opt.expiration))
+          new Set(data.options.map((opt: any) => opt.expiration))
         ).map((exp: any) => {
           const date = new Date(exp);
           const daysOut = Math.ceil((date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
@@ -80,7 +80,7 @@ const Trading = () => {
         setExpirationDates(uniqueExpirations);
         
         // Extract strike prices
-        const strikes = data.results
+        const strikes = data.options
           .filter((opt: any) => opt.strike)
           .map((opt: any) => ({
             strike: opt.strike,
