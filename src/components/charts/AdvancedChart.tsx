@@ -105,11 +105,23 @@ export const AdvancedChart = ({
   const fetchMarketData = async (sym: string, int: string) => {
     setIsLoading(true);
     try {
-      // Mock data for now - will integrate with real API
-      const mockData = generateMockData();
+      const { supabase } = await import('@/integrations/supabase/client');
       
-      if (candleSeriesRef.current) {
-        candleSeriesRef.current.setData(mockData);
+      const { data, error } = await supabase.functions.invoke('fetch-market-data', {
+        body: { symbol: sym, interval: int }
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        console.error('API Error:', data.error);
+        // Fall back to mock data on error
+        const mockData = generateMockData();
+        if (candleSeriesRef.current) {
+          candleSeriesRef.current.setData(mockData);
+        }
+      } else if (data?.data && candleSeriesRef.current) {
+        candleSeriesRef.current.setData(data.data);
       }
 
       // Fit content
@@ -118,6 +130,14 @@ export const AdvancedChart = ({
       }
     } catch (error) {
       console.error('Error fetching market data:', error);
+      // Fall back to mock data on error
+      const mockData = generateMockData();
+      if (candleSeriesRef.current) {
+        candleSeriesRef.current.setData(mockData);
+      }
+      if (chartRef.current) {
+        chartRef.current.timeScale().fitContent();
+      }
     } finally {
       setIsLoading(false);
     }
