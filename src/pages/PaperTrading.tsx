@@ -158,7 +158,8 @@ const PaperTrading = () => {
       side: formData.side,
       totalOptions: optionsData.length,
       matchingOptions: filtered.length,
-      sampleStrikes: filtered.slice(0, 5).map(o => `${o.strike} ($${o.bid}-$${o.ask})`)
+      sampleStrikes: filtered.slice(0, 5).map(o => `${o.strike} ($${o.bid}-$${o.ask})`),
+      raw255Data: filtered.find(o => o.strike === 255)
     });
 
     if (filtered.length === 0) {
@@ -189,7 +190,8 @@ const PaperTrading = () => {
     console.log("✅ Final Strikes:", {
       count: finalStrikes.length,
       range: `${lowerBound.toFixed(0)} - ${upperBound.toFixed(0)}`,
-      strikes: finalStrikes.map(s => s.strike)
+      strikes: finalStrikes.map(s => s.strike),
+      sample255Strike: finalStrikes.find(s => s.strike === 255)
     });
 
     setStrikePrices(finalStrikes);
@@ -328,6 +330,13 @@ const PaperTrading = () => {
             strike: pos.strike,
           };
         });
+
+      console.log("📊 Open Positions Calculation:", {
+        totalTrades: allTrades?.length || 0,
+        positionMapSize: positionMap.size,
+        openPositionsCount: openPos.length,
+        positions: openPos
+      });
 
       setOpenPositions(openPos);
     } catch (error: any) {
@@ -1012,23 +1021,45 @@ const PaperTrading = () => {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => {
-                          setFormData({
-                            symbol: position.symbol,
-                            side: position.side || formData.side,
-                            expiration: formData.expiration,
-                            strike: position.strike?.toString() || formData.strike,
-                            quantity: position.quantity.toString(),
-                            price: position.currentPrice.toFixed(2),
-                            orderType: "MARKET",
-                            duration: "DAY",
-                            limitPrice: "",
-                            stopPrice: "",
-                            trailAmount: "",
-                          });
-                          setTimeout(() => {
-                            handleExecuteTrade('sell');
-                          }, 100);
+                        onClick={async () => {
+                          if (!confirm(`Close ${position.quantity} contracts?`)) return;
+                          
+                          // Parse position details to get expiration
+                          const details = position.details?.split(' ') || [];
+                          const expiration = details[2] || '';
+                          
+                          setLoading(true);
+                          try {
+                            const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
+                              body: {
+                                symbol: position.symbol,
+                                action: 'sell',
+                                quantity: position.quantity,
+                                price: position.currentPrice.toFixed(2),
+                                strike: position.strike?.toString() || '',
+                                side: position.side || 'CALL',
+                                expiration: expiration,
+                              }
+                            });
+
+                            if (error) throw error;
+                            
+                            toast({
+                              title: "Position Closed",
+                              description: `Closed ${position.quantity} contracts of ${position.symbol}`,
+                            });
+
+                            await loadAccount();
+                            await loadTrades();
+                          } catch (error: any) {
+                            toast({
+                              title: "Error closing position",
+                              description: error.message,
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setLoading(false);
+                          }
                         }}
                         disabled={loading}
                       >
