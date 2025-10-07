@@ -38,12 +38,38 @@ export const TradingViewChart = memo(({
   indicators = []
 }: TradingViewChartProps) => {
   const container = useRef<HTMLDivElement>(null);
+  const widgetRef = useRef<any>(null);
 
   useEffect(() => {
     if (!container.current) return;
 
     // Clear previous widget
     container.current.innerHTML = '';
+    widgetRef.current = null;
+
+    // Create container div for widget
+    const widgetContainer = document.createElement('div');
+    widgetContainer.id = 'tradingview_chart';
+    widgetContainer.style.height = `${height}px`;
+    widgetContainer.className = 'w-full';
+    container.current.appendChild(widgetContainer);
+
+    // Default indicators if none specified
+    const defaultStudies = [
+      "MASimple@tv-basicstudies",
+      "RSI@tv-basicstudies", 
+      "VWAP@tv-basicstudies",
+      "Volume@tv-basicstudies"
+    ];
+
+    const appliedStudies = indicators.length > 0 ? indicators : defaultStudies;
+
+    console.log('📊 Initializing TradingView Chart:', {
+      symbol,
+      interval,
+      indicators: appliedStudies,
+      theme
+    });
 
     const script = document.createElement("script");
     script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -70,18 +96,18 @@ export const TradingViewChart = memo(({
       details: true,
       hotlist: true,
       calendar: false,
-      studies: indicators.length > 0 ? indicators : [
-        "MASimple@tv-basicstudies",
-        "Volume@tv-basicstudies"
-      ],
+      studies: appliedStudies,
       studies_overrides: {
         "volume.volume.color.0": "rgba(255,82,82,0.7)",
         "volume.volume.color.1": "rgba(0,230,118,0.7)",
+        "moving average.ma.color": "#2962FF",
+        "moving average.ma.linewidth": 2,
       },
       disabled_features: [],
       enabled_features: [
         "study_templates",
         "use_localstorage_for_settings",
+        "save_chart_properties_to_local_storage",
         "header_indicators",
         "header_compare",
         "header_undo_redo",
@@ -96,7 +122,12 @@ export const TradingViewChart = memo(({
         "show_hide_button_in_legend",
         "border_around_the_chart",
         "create_volume_indicator_by_default"
-      ]
+      ],
+      load_last_chart: true,
+      save_load_adapter: {
+        charts: [],
+        studyTemplates: []
+      }
     });
 
     container.current.appendChild(script);
@@ -105,6 +136,7 @@ export const TradingViewChart = memo(({
       if (container.current) {
         container.current.innerHTML = '';
       }
+      widgetRef.current = null;
     };
   }, [symbol, interval, theme, indicators, height]);
 
