@@ -111,24 +111,53 @@ serve(async (req) => {
       state
     });
     
+    // Build the initial auth URL
     const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('state', state);
 
-    console.log('Generated auth URL:', authUrl.toString());
+    console.log('Initial auth URL:', authUrl.toString());
 
-    return new Response(
-      JSON.stringify({ 
-        authUrl: authUrl.toString(),
-        message: 'Redirect user to this URL to complete OAuth flow'
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    // Make a GET request to follow Schwab's redirect chain
+    // This is required because Schwab redirects to their login gateway
+    try {
+      const response = await fetch(authUrl.toString(), {
+        method: 'GET',
+        redirect: 'manual' // Don't automatically follow redirects
+      });
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      // Get the Location header which contains the actual auth URL
+      const actualAuthUrl = response.headers.get('location') || authUrl.toString();
+      
+      console.log('Actual auth URL from Schwab:', actualAuthUrl);
+
+      return new Response(
+        JSON.stringify({ 
+          authUrl: actualAuthUrl,
+          message: 'Redirect user to this URL to complete OAuth flow'
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    } catch (fetchError) {
+      console.error('Error fetching auth URL:', fetchError);
+      // Fallback to direct URL if fetch fails
+      return new Response(
+        JSON.stringify({ 
+          authUrl: authUrl.toString(),
+          message: 'Redirect user to this URL to complete OAuth flow'
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
   } catch (error) {
     console.error('Error in schwab-oauth-init:', error);
