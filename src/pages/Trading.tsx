@@ -42,7 +42,12 @@ const Trading = () => {
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
-  const [chartIndicators, setChartIndicators] = useState<string[]>([]);
+  const [chartIndicators, setChartIndicators] = useState<string[]>([
+    "MASimple@tv-basicstudies",
+    "RSI@tv-basicstudies",
+    "VWAP@tv-basicstudies",
+    "Volume@tv-basicstudies"
+  ]);
 
   // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {

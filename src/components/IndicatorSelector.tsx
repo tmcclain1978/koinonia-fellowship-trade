@@ -69,6 +69,8 @@ interface IndicatorSelectorProps {
 export const IndicatorSelector = ({ onIndicatorsChange }: IndicatorSelectorProps) => {
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([
     "MASimple@tv-basicstudies",
+    "RSI@tv-basicstudies",
+    "VWAP@tv-basicstudies",
     "Volume@tv-basicstudies"
   ]);
 

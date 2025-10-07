@@ -49,7 +49,12 @@ const PaperTrading = () => {
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
-  const [chartIndicators, setChartIndicators] = useState<string[]>([]);
+  const [chartIndicators, setChartIndicators] = useState<string[]>([
+    "MASimple@tv-basicstudies",
+    "RSI@tv-basicstudies",
+    "VWAP@tv-basicstudies",
+    "Volume@tv-basicstudies"
+  ]);
   const [optionsData, setOptionsData] = useState<any[]>([]);
   const [expirationDates, setExpirationDates] = useState<any[]>([]);
   const [strikePrices, setStrikePrices] = useState<any[]>([]);
