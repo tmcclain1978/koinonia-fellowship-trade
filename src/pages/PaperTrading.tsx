@@ -410,23 +410,43 @@ const PaperTrading = () => {
   };
 
   const handleClosePosition = async (position: any) => {
-    if (!confirm(`Close ${position.quantity} contracts of ${position.symbol}?`)) {
+    if (!confirm(`Close ${position.quantity} contracts (${position.quantity * 100} shares) of ${position.symbol}?`)) {
       return;
     }
 
     setLoading(true);
     try {
-      // Get current market price (use ask price for closing)
-      const currentPrice = position.entryPrice * 1.05; // Simulate 5% profit for demo
+      // Get current market price for closing
+      const currentPrice = position.currentPrice;
       
-      await handleExecuteTrade('sell');
+      // Parse position details to get strike and expiration
+      const details = position.details?.split(' ') || [];
+      const side = details[0] || 'CALL';
+      const strike = details[1] || '';
+      const expiration = details[2] || '';
+      
+      // Execute the sell trade directly
+      const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
+        body: {
+          symbol: position.symbol,
+          action: 'sell',
+          quantity: position.quantity,
+          price: currentPrice,
+          strike: strike,
+          side: side,
+          expiration: expiration,
+        }
+      });
+
+      if (error) throw error;
       
       toast({
         title: "Position Closed",
-        description: `Closed ${position.quantity} contracts of ${position.symbol}`,
+        description: `Closed ${position.quantity} contracts (${position.quantity * 100} shares) of ${position.symbol}`,
       });
       
-      await loadOpenPositions();
+      await loadAccount();
+      await loadTrades();
     } catch (error: any) {
       toast({
         title: "Error closing position",
@@ -522,25 +542,26 @@ const PaperTrading = () => {
           </CardContent>
         </Card>
 
-        {/* Chart - Half Width */}
+        {/* Chart - Full Width */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TradingViewChart 
+              symbol={formData.symbol}
+              height={600}
+              interval={chartInterval}
+              theme="dark"
+              entryPrice={selectedPosition?.entryPrice}
+              stopLoss={formData.orderType === "STOP" || formData.orderType === "STOPLIMIT" ? Number(formData.stopPrice) : undefined}
+              signalArrows={signalArrows}
+              indicators={chartIndicators}
+            />
+          </CardContent>
+        </Card>
+
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TradingViewChart 
-                symbol={formData.symbol}
-                height={800}
-                interval={chartInterval}
-                theme="dark"
-                entryPrice={selectedPosition?.entryPrice}
-                stopLoss={formData.orderType === "STOP" || formData.orderType === "STOPLIMIT" ? Number(formData.stopPrice) : undefined}
-                signalArrows={signalArrows}
-                indicators={chartIndicators}
-              />
-            </CardContent>
-          </Card>
           <div className="space-y-6">
             {/* Order Panel */}
             <Card>
@@ -871,7 +892,7 @@ const PaperTrading = () => {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold capitalize">{trade.action}</p>
-                      <p className="text-sm">{trade.quantity} @ ${trade.price}</p>
+                      <p className="text-sm">{trade.quantity} contracts ({trade.quantity * 100} shares) @ ${trade.price}</p>
                       {trade.profit_loss && (
                         <p className={`text-sm font-semibold ${trade.profit_loss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {trade.profit_loss >= 0 ? '+' : ''}${trade.profit_loss.toFixed(2)}
@@ -900,7 +921,7 @@ const PaperTrading = () => {
                       <p className="font-semibold text-lg">{position.symbol}</p>
                       <p className="text-sm text-muted-foreground">{position.details}</p>
                       <p className="text-sm mt-1">
-                        Quantity: <span className="font-semibold">{position.quantity}</span> contracts
+                        Quantity: <span className="font-semibold">{position.quantity}</span> contracts ({position.quantity * 100} shares)
                       </p>
                       <p className="text-sm">
                         Entry: <span className="font-semibold">${position.entryPrice.toFixed(2)}</span> per contract
