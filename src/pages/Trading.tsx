@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { IndicatorSelector } from "@/components/IndicatorSelector";
+import { MultiChartGrid } from "@/components/charts/MultiChartGrid";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -466,27 +467,15 @@ const Trading = () => {
           </CardContent>
         </Card>
 
+        {/* Advanced Multi-Chart System */}
+        <MultiChartGrid
+          symbol={symbol}
+          interval={chartInterval}
+          selectedIndicators={chartIndicators}
+        />
+
         {/* Chart & Order Builder - Side by Side */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          {/* Chart - Half Width */}
-          <Card className="h-full overflow-hidden">
-            <CardHeader>
-              <CardTitle>Advanced Chart - {symbol}</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 h-[800px] overflow-hidden">
-              <TradingViewChart 
-                key={`chart-${chartIndicators.join('-')}`}
-                symbol={symbol}
-                height={800}
-                interval={chartInterval}
-                theme="dark"
-                entryPrice={selectedPosition?.entryPrice}
-                stopLoss={selectedPosition?.stopLoss || (entryType === "STOP" || entryType === "STOPLIMIT" ? Number(stopPrice) : undefined)}
-                signalArrows={signalArrows}
-                indicators={chartIndicators}
-              />
-            </CardContent>
-          </Card>
 
           {/* Order Builder */}
           <div className="space-y-6">
