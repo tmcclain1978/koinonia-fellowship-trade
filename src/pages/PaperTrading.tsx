@@ -83,6 +83,15 @@ const PaperTrading = () => {
       }
 
       if (data?.options) {
+        console.log("📊 Options Data Received:", {
+          source: data.source,
+          totalOptions: data.options.length,
+          uniqueExpirations: [...new Set(data.options.map((o: any) => o.expiration))],
+          uniqueStrikes: [...new Set(data.options.map((o: any) => o.strike))].length,
+          sampleCALL: data.options.find((o: any) => o.type === 'CALL'),
+          samplePUT: data.options.find((o: any) => o.type === 'PUT')
+        });
+        
         setOptionsData(data.options);
         
         // Show data source to user
@@ -109,37 +118,8 @@ const PaperTrading = () => {
           };
         }).sort((a, b) => a.date.getTime() - b.date.getTime());
         
+        console.log("📅 Expiration Dates:", uniqueExpirations.map(e => `${e.formattedDate} (${e.daysOut}d)`));
         setExpirationDates(uniqueExpirations);
-        
-        // Calculate current price from ATM options
-        const atmOptions = data.options.filter((opt: any) => opt.strike).sort((a: any, b: any) => 
-          Math.abs(a.strike - 256) - Math.abs(b.strike - 256)
-        );
-        const estimatedPrice = atmOptions[0]?.strike || 256;
-        
-        // Extract strike prices - show strikes within 10% of current price
-        const strikes = data.options
-          .filter((opt: any) => opt.strike)
-          .filter((opt: any) => {
-            // Show strikes within 10% of estimated current price
-            const priceDiff = Math.abs(opt.strike - estimatedPrice) / estimatedPrice;
-            return priceDiff <= 0.10;
-          })
-          .map((opt: any) => ({
-            strike: opt.strike,
-            delta: opt.delta || 0,
-            probITM: opt.delta ? `${(opt.delta * 100).toFixed(1)}%` : 'N/A',
-            bid: opt.bid || 0,
-            ask: opt.ask || 0,
-            type: opt.type,
-          }));
-        
-        // Remove duplicates and sort
-        const uniqueStrikes: any[] = Array.from(
-          new Map(strikes.map((s: any) => [s.strike, s])).values()
-        ).sort((a: any, b: any) => a.strike - b.strike);
-        
-        setStrikePrices(uniqueStrikes);
       }
     } catch (error: any) {
       console.error('Error fetching options:', error);
@@ -152,6 +132,65 @@ const PaperTrading = () => {
       setLoadingOptions(false);
     }
   };
+
+  // Filter strikes when expiration or side changes
+  useEffect(() => {
+    if (!optionsData.length || !formData.expiration || !formData.side) {
+      console.log("❌ Cannot filter strikes:", {
+        hasOptions: optionsData.length > 0,
+        expiration: formData.expiration,
+        side: formData.side
+      });
+      setStrikePrices([]);
+      return;
+    }
+
+    // Filter options by expiration and side
+    const filtered = optionsData.filter(
+      (opt: any) => opt.expiration === formData.expiration && opt.type === formData.side
+    );
+
+    console.log("🎯 Filtering Strikes:", {
+      expiration: formData.expiration,
+      side: formData.side,
+      totalOptions: optionsData.length,
+      matchingOptions: filtered.length,
+      sampleStrikes: filtered.slice(0, 5).map(o => `${o.strike} ($${o.bid}-$${o.ask})`)
+    });
+
+    if (filtered.length === 0) {
+      setStrikePrices([]);
+      return;
+    }
+
+    // Get current price from ATM options
+    const strikes = filtered.map(o => o.strike).sort((a, b) => a - b);
+    const midStrike = strikes[Math.floor(strikes.length / 2)];
+    
+    // Show strikes within reasonable range (20% of current price)
+    const lowerBound = midStrike * 0.8;
+    const upperBound = midStrike * 1.2;
+
+    const finalStrikes = filtered
+      .filter((opt: any) => opt.strike >= lowerBound && opt.strike <= upperBound)
+      .map((opt: any) => ({
+        strike: opt.strike,
+        delta: opt.delta || 0,
+        probITM: opt.delta ? `${(Math.abs(opt.delta) * 100).toFixed(1)}%` : 'N/A',
+        bid: opt.bid || 0,
+        ask: opt.ask || 0,
+        type: opt.type,
+      }))
+      .sort((a: any, b: any) => a.strike - b.strike);
+
+    console.log("✅ Final Strikes:", {
+      count: finalStrikes.length,
+      range: `${lowerBound.toFixed(0)} - ${upperBound.toFixed(0)}`,
+      strikes: finalStrikes.map(s => s.strike)
+    });
+
+    setStrikePrices(finalStrikes);
+  }, [optionsData, formData.expiration, formData.side]);
 
   const loadAccount = async () => {
     try {
