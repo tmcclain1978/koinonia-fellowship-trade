@@ -37,43 +37,23 @@ serve(async (req) => {
       throw new Error('Invalid user token');
     }
 
-    // Fetch user's Schwab credentials (decrypt using the encrypt-credentials function)
-    const { data: credentialsData, error: credError } = await supabase.functions.invoke(
-      "encrypt-credentials",
-      {
-        body: { operation: "load" },
-        headers: { Authorization: `Bearer ${authHeader}` },
-      }
-    );
-    
-    const credentials = credentialsData?.credentials;
-
-    if (credError || !credentials) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'No Schwab credentials found. Please configure your API credentials in Settings.' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // Try to fetch user's Schwab credentials (optional - will use mock data if not configured)
+    let credentials = null;
+    try {
+      const { data: credentialsData } = await supabase.functions.invoke(
+        "encrypt-credentials",
+        {
+          body: { operation: "load" },
+          headers: { Authorization: authHeader },
         }
       );
+      credentials = credentialsData?.credentials;
+    } catch (error) {
+      console.log('No credentials found, using mock data:', error);
     }
 
-    if (!credentials.schwab_client_id || !credentials.schwab_client_secret) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Schwab credentials incomplete. Please update your settings.' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // TODO: Implement Schwab OAuth flow and API call
-    // For now, return mock options data for testing
+    // For now, return mock options data for paper trading
+    // TODO: Implement actual Schwab OAuth and API call when credentials are available
     const currentDate = new Date();
     const mockExpirations = [
       new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
