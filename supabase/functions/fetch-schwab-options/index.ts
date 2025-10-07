@@ -104,21 +104,27 @@ serve(async (req) => {
 
           // Process put options
           if (schwabData.putExpDateMap) {
-            let putSampleLogged = false;
             for (const [expDate, strikes] of Object.entries(schwabData.putExpDateMap)) {
-              for (const [strike, contracts] of Object.entries(strikes as any)) {
-                const contract = (contracts as any[])[0];
+              const cleanExpDate = expDate.split(':')[0];
+              
+              for (const [strikeKey, contracts] of Object.entries(strikes as any)) {
+                const contractsArray = contracts as any[];
+                const strike = parseFloat(strikeKey);
                 
-                // Log a sample PUT contract
-                if (!putSampleLogged) {
-                  console.log('Sample PUT contract:', JSON.stringify(contract, null, 2));
-                  putSampleLogged = true;
+                // Log 255 strike PUT for 10/10/2025 specifically
+                if (cleanExpDate === '2025-10-10' && Math.abs(strike - 255) < 0.01) {
+                  console.log('🎯 Found 255 PUT for 10/10/2025!');
+                  console.log('Strike key:', strikeKey);
+                  console.log('Number of contracts in array:', contractsArray.length);
+                  console.log('Full contracts array:', JSON.stringify(contractsArray, null, 2));
                 }
+                
+                const contract = contractsArray[0];
                 
                 options.push({
                   type: 'PUT',
-                  strike: parseFloat(strike),
-                  expiration: expDate.split(':')[0],
+                  strike: strike,
+                  expiration: cleanExpDate,
                   bid: contract.bid || 0,
                   ask: contract.ask || 0,
                   volume: contract.totalVolume || 0,
