@@ -60,50 +60,50 @@ const Trading = () => {
         throw new Error(data.error);
       }
 
+      console.log("📊 Options Data Received:", {
+        source: "schwab",
+        totalOptions: data?.options?.length || 0,
+        uniqueExpirations: Array.from(new Set(data?.options?.map((o: any) => o.expiration))),
+        uniqueStrikes: new Set(data?.options?.map((o: any) => o.strike)).size,
+        sampleCALL: data?.options?.find((o: any) => o.type === 'CALL'),
+        samplePUT: data?.options?.find((o: any) => o.type === 'PUT')
+      });
+
       if (data?.options) {
         setOptionsData(data.options);
         
-        // Extract unique expiration dates
-        const uniqueExpirations = Array.from(
+        // Extract unique expiration dates - ONLY FRIDAYS
+        const uniqueExps = Array.from(
           new Set(data.options.map((opt: any) => opt.expiration))
-        ).map((exp: any) => {
-          const date = new Date(exp);
-          const daysOut = Math.ceil((date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-          return {
-            date,
-            daysOut,
-            type: "Weekly 100",
-            iv: `${(Math.random() * 20 + 10).toFixed(2)}%`
-          };
-        }).sort((a, b) => a.date.getTime() - b.date.getTime());
-        
-        setExpirationDates(uniqueExpirations);
-        
-        // Extract strike prices - filter to show strikes within reasonable range of current price
-        // For AAPL at ~$256, show strikes from ~$230 to ~$280
-        const currentPrice = 256; // This should ideally come from real-time data
-        const strikes = data.options
-          .filter((opt: any) => opt.strike)
-          .filter((opt: any) => {
-            // Show strikes within 15% of current price
-            const priceDiff = Math.abs(opt.strike - currentPrice) / currentPrice;
-            return priceDiff <= 0.15;
+        );
+
+        const fridayExpirations = uniqueExps
+          .map((exp: any) => {
+            const date = new Date(exp);
+            return { date, dateString: exp };
           })
-          .map((opt: any) => ({
-            strike: opt.strike,
-            delta: opt.delta || 0,
-            probITM: `${((opt.delta || 0) * 100).toFixed(2)}%`,
-            bid: opt.bid || 0,
-            ask: opt.ask || 0,
-            type: opt.type,
-          }));
+          .filter((item) => {
+            // Only include Fridays (day 5)
+            return item.date.getDay() === 5;
+          })
+          .map((item) => {
+            const daysOut = Math.ceil(
+              (item.date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return {
+              date: item.date,
+              dateString: item.dateString,
+              daysOut,
+              type: "Weekly 100",
+              iv: `${(Math.random() * 20 + 10).toFixed(2)}%`,
+            };
+          })
+          .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        console.log("📅 Expiration Dates:", fridayExpirations.map(e => e.dateString));
+        setExpirationDates(fridayExpirations);
         
-        // Remove duplicates and sort
-        const uniqueStrikes: any[] = Array.from(
-          new Map(strikes.map((s: any) => [s.strike, s])).values()
-        ).sort((a: any, b: any) => a.strike - b.strike);
-        
-        setStrikePrices(uniqueStrikes);
+        // Don't filter strikes here - let the useEffect below handle it based on selected expiration
       }
     } catch (error: any) {
       console.error('Error fetching options:', error);
@@ -152,6 +152,78 @@ const Trading = () => {
       console.error("Error fetching account details:", error);
     }
   };
+
+  // Filter strikes when expiration or order type changes
+  useEffect(() => {
+    if (!optionsData || optionsData.length === 0) {
+      console.log("❌ Cannot filter strikes:", {
+        hasOptions: !!optionsData?.length,
+        expiration: expirationDate ? format(expirationDate, "yyyy-MM-dd") : "",
+        side: orderType
+      });
+      return;
+    }
+
+    if (!expirationDate) {
+      console.log("⚠️ No expiration date selected yet");
+      return;
+    }
+
+    const selectedExp = format(expirationDate, "yyyy-MM-dd");
+    const filteredOptions = optionsData.filter(
+      (opt: any) => opt.expiration === selectedExp && opt.type === orderType
+    );
+
+    console.log("🎯 Filtering Strikes:", {
+      expiration: selectedExp,
+      side: orderType,
+      totalOptions: optionsData.length,
+      matchingOptions: filteredOptions.length,
+      sampleStrikes: filteredOptions.slice(0, 5).map((o: any) => 
+        `${o.strike} ($${o.bid}-$${o.ask})`
+      ),
+      raw255Data: filteredOptions.find((o: any) => o.strike === 255)
+    });
+
+    if (filteredOptions.length === 0) {
+      setStrikePrices([]);
+      return;
+    }
+
+    // Get current price from the first option (they all have the same underlying price)
+    const currentPrice = 256; // Ideally from real-time data
+    
+    // Show strikes within reasonable range
+    const strikes = filteredOptions
+      .filter((opt: any) => {
+        const priceDiff = Math.abs(opt.strike - currentPrice) / currentPrice;
+        return priceDiff <= 0.15; // Within 15% of current price
+      })
+      .map((opt: any) => ({
+        strike: opt.strike,
+        delta: opt.delta || 0,
+        probITM: `${(Math.abs(opt.delta || 0) * 100).toFixed(1)}%`,
+        bid: opt.bid || 0,
+        ask: opt.ask || 0,
+        type: opt.type,
+      }));
+
+    // Remove duplicates and sort
+    const uniqueStrikes = Array.from(
+      new Map(strikes.map((s: any) => [s.strike, s])).values()
+    ).sort((a: any, b: any) => a.strike - b.strike);
+
+    console.log("✅ Final Strikes:", {
+      count: uniqueStrikes.length,
+      range: uniqueStrikes.length > 0 
+        ? `${uniqueStrikes[0].strike} - ${uniqueStrikes[uniqueStrikes.length - 1].strike}`
+        : "none",
+      strikes: uniqueStrikes.map(s => s.strike),
+      sample255Strike: uniqueStrikes.find(s => s.strike === 255)
+    });
+
+    setStrikePrices(uniqueStrikes);
+  }, [optionsData, expirationDate, orderType]);
 
   // Fetch options when symbol changes
   useEffect(() => {
@@ -588,13 +660,24 @@ const Trading = () => {
                         {strikePrices.length > 0 ? (
                           <select
                             value={strikePrice}
-                            onChange={(e) => setStrikePrice(e.target.value)}
+                            onChange={(e) => {
+                              const selectedStrikeValue = e.target.value;
+                              setStrikePrice(selectedStrikeValue);
+                              
+                              // Auto-populate limit price with ask price when strike is selected
+                              const selectedStrike = strikePrices.find(
+                                s => s.strike.toString() === selectedStrikeValue
+                              );
+                              if (selectedStrike) {
+                                setLimitPrice(selectedStrike.ask.toFixed(2));
+                              }
+                            }}
                             className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
                           >
                             <option value="">Select Strike</option>
                             {strikePrices.map((strike) => (
                               <option key={strike.strike} value={strike.strike}>
-                                ${strike.strike} - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
+                                ${strike.strike} - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)} ({strike.probITM})
                               </option>
                             ))}
                           </select>
@@ -606,6 +689,11 @@ const Trading = () => {
                             onChange={(e) => setStrikePrice(e.target.value)}
                             placeholder="0.00"
                           />
+                        )}
+                        {strikePrice && limitPrice && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Premium auto-filled: ${limitPrice} per contract
+                          </p>
                         )}
                       </div>
                     </>
