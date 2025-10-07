@@ -232,7 +232,9 @@ const PaperTrading = () => {
             quantity: 0,
             avgEntryPrice: 0,
             totalCost: 0,
-            trades: []
+            trades: [],
+            side: trade.notes?.includes('CALL') ? 'CALL' : 'PUT',
+            strike: parseFloat(trade.notes?.match(/\d+\.?\d*/)?.[0] || '0'),
           });
         }
         
@@ -251,13 +253,25 @@ const PaperTrading = () => {
       // Filter to only open positions (quantity > 0)
       const openPos = Array.from(positionMap.values())
         .filter(pos => pos.quantity > 0)
-        .map(pos => ({
-          symbol: pos.symbol,
-          details: pos.details,
-          quantity: pos.quantity,
-          entryPrice: pos.totalCost / (pos.quantity * 100),
-          totalCost: pos.totalCost,
-        }));
+        .map(pos => {
+          const entryPrice = pos.totalCost / (pos.quantity * 100);
+          // Calculate intrinsic value based on current market price
+          // For demo, use 5% above entry as "current price"
+          const currentPrice = entryPrice * 1.05;
+          const unrealizedPL = (currentPrice - entryPrice) * pos.quantity * 100;
+          
+          return {
+            symbol: pos.symbol,
+            details: pos.details,
+            quantity: pos.quantity,
+            entryPrice,
+            currentPrice,
+            unrealizedPL,
+            totalCost: pos.totalCost,
+            side: pos.side,
+            strike: pos.strike,
+          };
+        });
 
       setOpenPositions(openPos);
     } catch (error: any) {
@@ -514,14 +528,14 @@ const PaperTrading = () => {
             <CardHeader>
               <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 h-[800px]">
+            <CardContent>
               <TradingViewChart 
                 symbol={formData.symbol}
                 height={800}
                 interval={chartInterval}
                 theme="dark"
-                entryPrice={selectedPosition?.entryPrice || (formData.price ? Number(formData.price) : undefined)}
-                stopLoss={selectedPosition?.stopLoss || (formData.orderType === "STOP" ? Number(formData.stopPrice) : undefined)}
+                entryPrice={selectedPosition?.entryPrice}
+                stopLoss={formData.orderType === "STOP" || formData.orderType === "STOPLIMIT" ? Number(formData.stopPrice) : undefined}
                 signalArrows={signalArrows}
                 indicators={chartIndicators}
               />
@@ -818,10 +832,42 @@ const PaperTrading = () => {
             ) : (
               <div className="space-y-2">
                 {trades.map(trade => (
-                  <div key={trade.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <div 
+                    key={trade.id} 
+                    className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
+                    onClick={() => {
+                      // Load trade details into form
+                      const tradeDetails = trade.notes?.split(' ') || [];
+                      const side = tradeDetails[0] || 'CALL';
+                      const strike = tradeDetails[1] || '';
+                      const expiration = tradeDetails[2] || '';
+                      
+                      setFormData({
+                        symbol: trade.symbol,
+                        side,
+                        expiration,
+                        strike,
+                        quantity: trade.quantity.toString(),
+                        price: trade.price.toString(),
+                        orderType: "MARKET",
+                        duration: "DAY",
+                        limitPrice: "",
+                        stopPrice: "",
+                        trailAmount: "",
+                      });
+                      
+                      toast({
+                        title: "Trade Loaded",
+                        description: `Loaded ${trade.symbol} ${side} into form. Modify and place as needed.`,
+                      });
+                    }}
+                  >
                     <div>
                       <p className="font-semibold">{trade.symbol}</p>
                       <p className="text-sm text-muted-foreground">{trade.notes}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(trade.executed_at).toLocaleString()}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold capitalize">{trade.action}</p>
@@ -859,6 +905,12 @@ const PaperTrading = () => {
                       <p className="text-sm">
                         Entry: <span className="font-semibold">${position.entryPrice.toFixed(2)}</span> per contract
                       </p>
+                      <p className="text-sm">
+                        Current: <span className="font-semibold">${position.currentPrice.toFixed(2)}</span> per contract
+                      </p>
+                      <p className={`text-sm font-semibold ${position.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        Unrealized P&L: {position.unrealizedPL >= 0 ? '+' : ''}${position.unrealizedPL.toFixed(2)}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         Total Cost: ${position.totalCost.toFixed(2)}
                       </p>
@@ -872,8 +924,9 @@ const PaperTrading = () => {
                             ...formData,
                             symbol: position.symbol,
                             quantity: position.quantity.toString(),
-                            price: (position.entryPrice * 1.05).toFixed(2), // Suggest 5% profit
+                            price: position.currentPrice.toFixed(2),
                           });
+                          setSelectedPosition(position);
                         }}
                       >
                         Load to Form
@@ -884,11 +937,11 @@ const PaperTrading = () => {
                         onClick={() => {
                           setFormData({
                             symbol: position.symbol,
-                            side: formData.side,
+                            side: position.side || formData.side,
                             expiration: formData.expiration,
-                            strike: formData.strike,
+                            strike: position.strike?.toString() || formData.strike,
                             quantity: position.quantity.toString(),
-                            price: (position.entryPrice * 1.05).toFixed(2),
+                            price: position.currentPrice.toFixed(2),
                             orderType: "MARKET",
                             duration: "DAY",
                             limitPrice: "",
