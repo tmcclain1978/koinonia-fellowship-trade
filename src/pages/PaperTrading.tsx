@@ -50,11 +50,87 @@ const PaperTrading = () => {
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
   const [chartIndicators, setChartIndicators] = useState<string[]>([]);
+  const [optionsData, setOptionsData] = useState<any[]>([]);
+  const [expirationDates, setExpirationDates] = useState<any[]>([]);
+  const [strikePrices, setStrikePrices] = useState<any[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
   useEffect(() => {
     loadAccount();
     loadTrades();
   }, []);
+
+  // Fetch options when symbol changes
+  useEffect(() => {
+    if (formData.symbol && formData.symbol.length >= 1) {
+      fetchOptionsChain();
+    }
+  }, [formData.symbol]);
+
+  const fetchOptionsChain = async () => {
+    if (!formData.symbol) return;
+    
+    setLoadingOptions(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-schwab-options', {
+        body: { symbol: formData.symbol }
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      if (data?.options) {
+        setOptionsData(data.options);
+        
+        // Extract unique expiration dates
+        const uniqueExpirations = Array.from(
+          new Set(data.options.map((opt: any) => opt.expiration))
+        ).map((exp: any) => {
+          const date = new Date(exp);
+          const daysOut = Math.ceil((date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+          return {
+            date,
+            formattedDate: exp,
+            daysOut,
+            type: "Weekly 100",
+            iv: `${(Math.random() * 20 + 10).toFixed(2)}%`
+          };
+        }).sort((a, b) => a.date.getTime() - b.date.getTime());
+        
+        setExpirationDates(uniqueExpirations);
+        
+        // Extract strike prices
+        const strikes = data.options
+          .filter((opt: any) => opt.strike)
+          .map((opt: any) => ({
+            strike: opt.strike,
+            delta: opt.delta || 0,
+            probITM: `${((opt.delta || 0) * 100).toFixed(2)}%`,
+            bid: opt.bid || 0,
+            ask: opt.ask || 0,
+          }));
+        
+        // Remove duplicates and sort
+        const uniqueStrikes: any[] = Array.from(
+          new Map(strikes.map((s: any) => [s.strike, s])).values()
+        ).sort((a: any, b: any) => a.strike - b.strike);
+        
+        setStrikePrices(uniqueStrikes);
+      }
+    } catch (error: any) {
+      console.error('Error fetching options:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch options data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
 
   const loadAccount = async () => {
     try {
@@ -368,10 +444,24 @@ const PaperTrading = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>Symbol</Label>
-                      <Input
-                        value={formData.symbol}
-                        onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
-                      />
+                      <div className="flex gap-2">
+                        <Input
+                          value={formData.symbol}
+                          onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={fetchOptionsChain}
+                          disabled={loadingOptions || !formData.symbol}
+                        >
+                          {loadingOptions ? (
+                            <BarChart3 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <TrendingUp className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     <div>
                       <Label>Side</Label>
@@ -390,20 +480,56 @@ const PaperTrading = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>Expiration</Label>
-                      <Input
-                        type="date"
-                        value={formData.expiration}
-                        onChange={(e) => setFormData({ ...formData, expiration: e.target.value })}
-                      />
+                      {expirationDates.length > 0 ? (
+                        <Select 
+                          value={formData.expiration} 
+                          onValueChange={(v) => setFormData({ ...formData, expiration: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select expiration" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {expirationDates.map((exp) => (
+                              <SelectItem key={exp.formattedDate} value={exp.formattedDate}>
+                                {new Date(exp.formattedDate).toLocaleDateString()} ({exp.daysOut} days)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type="date"
+                          value={formData.expiration}
+                          onChange={(e) => setFormData({ ...formData, expiration: e.target.value })}
+                        />
+                      )}
                     </div>
                     <div>
                       <Label>Strike</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.strike}
-                        onChange={(e) => setFormData({ ...formData, strike: e.target.value })}
-                      />
+                      {strikePrices.length > 0 ? (
+                        <Select 
+                          value={formData.strike} 
+                          onValueChange={(v) => setFormData({ ...formData, strike: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select strike" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {strikePrices.map((strike) => (
+                              <SelectItem key={strike.strike} value={strike.strike.toString()}>
+                                ${strike.strike} - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={formData.strike}
+                          onChange={(e) => setFormData({ ...formData, strike: e.target.value })}
+                        />
+                      )}
                     </div>
                   </div>
 
