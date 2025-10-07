@@ -180,9 +180,40 @@ const Settings = () => {
       }
 
       if (data?.authUrl) {
-        console.log('Redirecting to:', data.authUrl);
-        // Redirect to Schwab OAuth page
-        window.location.href = data.authUrl;
+        console.log('Opening OAuth in popup:', data.authUrl);
+        
+        // Open in a popup window instead of redirecting
+        // This helps bypass the sws-gateway browser restrictions
+        const width = 600;
+        const height = 700;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        
+        const popup = window.open(
+          data.authUrl,
+          'schwab_oauth',
+          `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
+        );
+
+        if (!popup) {
+          toast({
+            title: "Popup Blocked",
+            description: "Please allow popups for this site to complete OAuth",
+            variant: "destructive",
+          });
+          setOauthLoading(false);
+          return;
+        }
+
+        // Monitor the popup
+        const checkPopup = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopup);
+            setOauthLoading(false);
+            // Refresh credentials to see if OAuth succeeded
+            window.location.reload();
+          }
+        }, 1000);
       } else {
         throw new Error('No authorization URL received');
       }
