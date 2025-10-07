@@ -24,11 +24,18 @@ serve(async (req) => {
 
     console.log(`Fetching market data for ${symbol} with interval ${interval}`);
 
+    // Convert interval to Alpha Vantage format
+    let apiInterval = interval;
+    if (!interval.includes('min') && interval !== '1D' && interval !== 'daily') {
+      // Convert numeric intervals to Alpha Vantage format (5 -> 5min)
+      apiInterval = `${interval}min`;
+    }
+
     // Determine which Alpha Vantage function to use
     let apiFunction = 'TIME_SERIES_INTRADAY';
-    let intervalParam = `&interval=${interval}`;
+    let intervalParam = `&interval=${apiInterval}`;
     
-    if (interval === '1D' || interval === 'daily') {
+    if (interval === '1D' || interval === 'daily' || interval === 'D') {
       apiFunction = 'TIME_SERIES_DAILY';
       intervalParam = '';
     }
@@ -40,7 +47,7 @@ serve(async (req) => {
 
     console.log('Alpha Vantage API response keys:', Object.keys(data));
 
-    // Check for API errors
+    // Check for API errors or informational messages
     if (data['Error Message']) {
       throw new Error(data['Error Message']);
     }
@@ -49,12 +56,17 @@ serve(async (req) => {
       throw new Error('API rate limit reached. Alpha Vantage free tier allows 25 requests per day.');
     }
 
+    if (data['Information']) {
+      console.error('Alpha Vantage Information:', data['Information']);
+      throw new Error(data['Information']);
+    }
+
     // Parse the time series data
     let timeSeriesKey = '';
-    if (interval === '1D' || interval === 'daily') {
+    if (interval === '1D' || interval === 'daily' || interval === 'D') {
       timeSeriesKey = 'Time Series (Daily)';
     } else {
-      timeSeriesKey = `Time Series (${interval})`;
+      timeSeriesKey = `Time Series (${apiInterval})`;
     }
 
     const timeSeries = data[timeSeriesKey];
