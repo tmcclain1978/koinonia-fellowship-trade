@@ -102,15 +102,22 @@ const PaperTrading = () => {
         
         setExpirationDates(uniqueExpirations);
         
-        // Extract strike prices
+        // Extract strike prices - filter to show strikes within reasonable range
+        const currentPrice = 256; // This should ideally come from real-time data
         const strikes = data.options
           .filter((opt: any) => opt.strike)
+          .filter((opt: any) => {
+            // Show strikes within 15% of current price
+            const priceDiff = Math.abs(opt.strike - currentPrice) / currentPrice;
+            return priceDiff <= 0.15;
+          })
           .map((opt: any) => ({
             strike: opt.strike,
             delta: opt.delta || 0,
             probITM: `${((opt.delta || 0) * 100).toFixed(2)}%`,
             bid: opt.bid || 0,
             ask: opt.ask || 0,
+            type: opt.type,
           }));
         
         // Remove duplicates and sort
