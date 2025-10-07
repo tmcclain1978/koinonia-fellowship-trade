@@ -542,26 +542,25 @@ const PaperTrading = () => {
           </CardContent>
         </Card>
 
-        {/* Chart - Full Width */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TradingViewChart 
-              symbol={formData.symbol}
-              height={600}
-              interval={chartInterval}
-              theme="dark"
-              entryPrice={selectedPosition?.entryPrice}
-              stopLoss={formData.orderType === "STOP" || formData.orderType === "STOPLIMIT" ? Number(formData.stopPrice) : undefined}
-              signalArrows={signalArrows}
-              indicators={chartIndicators}
-            />
-          </CardContent>
-        </Card>
-
+        {/* Chart - Half Width */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TradingViewChart 
+                symbol={formData.symbol}
+                height={800}
+                interval={chartInterval}
+                theme="dark"
+                entryPrice={selectedPosition?.entryPrice}
+                stopLoss={formData.orderType === "STOP" || formData.orderType === "STOPLIMIT" ? Number(formData.stopPrice) : undefined}
+                signalArrows={signalArrows}
+                indicators={chartIndicators}
+              />
+            </CardContent>
+          </Card>
           <div className="space-y-6">
             {/* Order Panel */}
             <Card>
