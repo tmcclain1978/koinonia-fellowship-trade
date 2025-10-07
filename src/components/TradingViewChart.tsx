@@ -1,4 +1,4 @@
-import { useEffect, useRef, memo } from 'react';
+import { useEffect, useRef, memo, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Info } from "lucide-react";
@@ -39,6 +39,12 @@ export const TradingViewChart = memo(({
 }: TradingViewChartProps) => {
   const container = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
+  const [widgetKey, setWidgetKey] = useState(0);
+
+  useEffect(() => {
+    // Force new widget when indicators change
+    setWidgetKey(prev => prev + 1);
+  }, [indicators]);
 
   useEffect(() => {
     if (!container.current) return;
@@ -48,6 +54,9 @@ export const TradingViewChart = memo(({
     // Clear previous widget completely
     container.current.innerHTML = '';
     widgetRef.current = null;
+
+    // Generate unique container ID to bypass TradingView caching
+    const containerId = `tradingview_chart_${widgetKey}`;
 
     // Small delay to ensure cleanup
     const timer = setTimeout(() => {
@@ -63,7 +72,10 @@ export const TradingViewChart = memo(({
 
       const appliedStudies = indicators.length > 0 ? indicators : defaultStudies;
 
-      console.log('📊 Applying studies to chart:', appliedStudies);
+      console.log('📊 Applying studies to chart:', {
+        containerId,
+        studies: appliedStudies
+      });
 
       const script = document.createElement("script");
       script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -82,7 +94,7 @@ export const TradingViewChart = memo(({
         enable_publishing: false,
         allow_symbol_change: true,
         support_host: "https://www.tradingview.com",
-        container_id: "tradingview_chart",
+        container_id: containerId,
         hide_side_toolbar: false,
         withdateranges: true,
         hide_top_toolbar: false,
@@ -97,11 +109,9 @@ export const TradingViewChart = memo(({
           "moving average.ma.color": "#2962FF",
           "moving average.ma.linewidth": 2,
         },
-        disabled_features: [],
+        disabled_features: ["use_localstorage_for_settings"], // Disable localStorage caching
         enabled_features: [
           "study_templates",
-          "use_localstorage_for_settings",
-          "save_chart_properties_to_local_storage",
           "header_indicators",
           "header_compare",
           "header_undo_redo",
@@ -116,12 +126,7 @@ export const TradingViewChart = memo(({
           "show_hide_button_in_legend",
           "border_around_the_chart",
           "create_volume_indicator_by_default"
-        ],
-        load_last_chart: false, // Changed to false to force fresh load
-        save_load_adapter: {
-          charts: [],
-          studyTemplates: []
-        }
+        ]
       });
 
       container.current.appendChild(script);
@@ -134,7 +139,7 @@ export const TradingViewChart = memo(({
       }
       widgetRef.current = null;
     };
-  }, [symbol, interval, theme, indicators, height]);
+  }, [symbol, interval, theme, indicators, height, widgetKey]);
 
   return (
     <div className="tradingview-widget-container w-full relative overflow-hidden" style={{ height: `${height}px` }} ref={container}>
