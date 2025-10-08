@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, CandlestickData, Time, CandlestickSeries } from 'lightweight-charts';
+import { createChart, IChartApi, CandlestickData, Time, CandlestickSeries, ISeriesApi, LineData, LineSeries } from 'lightweight-charts';
 import { Button } from '@/components/ui/button';
 import { Settings, TrendingUp, Activity } from 'lucide-react';
+import { 
+  calculateSMA, 
+  calculateEMA, 
+  calculateRSI, 
+  calculateBollingerBands,
+  IndicatorData 
+} from '@/utils/chartIndicators';
 
 interface AdvancedChartProps {
   symbol: string;
@@ -23,6 +30,8 @@ export const AdvancedChart = ({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<any>(null);
+  const indicatorSeriesRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
+  const chartDataRef = useRef<CandlestickData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -97,7 +106,7 @@ export const AdvancedChart = ({
 
   // Update indicators when they change
   useEffect(() => {
-    if (chartRef.current && candleSeriesRef.current) {
+    if (chartRef.current && chartDataRef.current.length > 0) {
       updateIndicators();
     }
   }, [indicators]);
@@ -122,7 +131,13 @@ export const AdvancedChart = ({
 
       if (data?.data && candleSeriesRef.current) {
         console.log(`Loaded ${data.data.length} candles from ${data.source}`);
+        chartDataRef.current = data.data;
         candleSeriesRef.current.setData(data.data);
+        
+        // Update indicators with new data
+        if (indicators && indicators.length > 0) {
+          updateIndicators();
+        }
       } else if (data?.error) {
         console.error('Data error:', data.error);
         throw new Error(data.error);
@@ -175,8 +190,79 @@ export const AdvancedChart = ({
   };
 
   const updateIndicators = () => {
-    // Indicator logic will be added here
-    console.log('Updating indicators:', indicators);
+    if (!chartRef.current || chartDataRef.current.length === 0) return;
+
+    // Clear existing indicators
+    indicatorSeriesRef.current.forEach(series => {
+      chartRef.current?.removeSeries(series);
+    });
+    indicatorSeriesRef.current.clear();
+
+    // Map TradingView indicator names to our implementations
+    indicators?.forEach(indicator => {
+      try {
+        const indicatorName = indicator.split('@')[0].toLowerCase();
+        
+        if (indicatorName.includes('masimple') || indicatorName.includes('sma')) {
+          // Simple Moving Average (20 period)
+          const smaData = calculateSMA(chartDataRef.current, 20);
+          const smaSeries = chartRef.current!.addSeries(LineSeries, {
+            color: '#2962FF',
+            lineWidth: 2,
+            title: 'SMA(20)',
+          });
+          smaSeries.setData(smaData.map(d => ({ time: d.time, value: d.value } as LineData)));
+          indicatorSeriesRef.current.set('sma', smaSeries);
+        }
+        
+        if (indicatorName.includes('ema')) {
+          // Exponential Moving Average (12 period)
+          const emaData = calculateEMA(chartDataRef.current, 12);
+          const emaSeries = chartRef.current!.addSeries(LineSeries, {
+            color: '#FF6D00',
+            lineWidth: 2,
+            title: 'EMA(12)',
+          });
+          emaSeries.setData(emaData.map(d => ({ time: d.time, value: d.value } as LineData)));
+          indicatorSeriesRef.current.set('ema', emaSeries);
+        }
+        
+        if (indicatorName.includes('bb') || indicatorName.includes('bollinger')) {
+          // Bollinger Bands
+          const bbData = calculateBollingerBands(chartDataRef.current, 20, 2);
+          
+          const upperSeries = chartRef.current!.addSeries(LineSeries, {
+            color: '#787B86',
+            lineWidth: 1,
+            title: 'BB Upper',
+          });
+          upperSeries.setData(bbData.upper.map(d => ({ time: d.time, value: d.value } as LineData)));
+          
+          const middleSeries = chartRef.current!.addSeries(LineSeries, {
+            color: '#787B86',
+            lineWidth: 1,
+            lineStyle: 2, // dashed
+            title: 'BB Middle',
+          });
+          middleSeries.setData(bbData.middle.map(d => ({ time: d.time, value: d.value } as LineData)));
+          
+          const lowerSeries = chartRef.current!.addSeries(LineSeries, {
+            color: '#787B86',
+            lineWidth: 1,
+            title: 'BB Lower',
+          });
+          lowerSeries.setData(bbData.lower.map(d => ({ time: d.time, value: d.value } as LineData)));
+          
+          indicatorSeriesRef.current.set('bb-upper', upperSeries);
+          indicatorSeriesRef.current.set('bb-middle', middleSeries);
+          indicatorSeriesRef.current.set('bb-lower', lowerSeries);
+        }
+
+        console.log(`✅ Added indicator: ${indicatorName}`);
+      } catch (error) {
+        console.error(`Error adding indicator ${indicator}:`, error);
+      }
+    });
   };
 
   return (
