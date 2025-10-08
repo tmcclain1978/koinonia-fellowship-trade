@@ -62,6 +62,11 @@ serve(async (req) => {
       try {
         // Map intervals to Schwab API format
         const intervalMap: Record<string, { periodType: string; frequencyType: string; frequency: number }> = {
+          '1': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
+          '5': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
+          '15': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
+          '30': { periodType: 'day', frequencyType: 'minute', frequency: 30 },
+          '60': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
           '1m': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
           '5m': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
           '15m': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
@@ -72,6 +77,8 @@ serve(async (req) => {
         };
 
         const config = intervalMap[interval] || intervalMap['1D'];
+        
+        console.log(`📊 Interval mapping: ${interval} -> ${config.frequencyType} ${config.frequency}`);
         
         const schwabUrl = new URL(`https://api.schwabapi.com/marketdata/v1/pricehistory`);
         schwabUrl.searchParams.append('symbol', symbol);
