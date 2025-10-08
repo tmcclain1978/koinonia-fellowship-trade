@@ -41,10 +41,11 @@ export const TradingViewChart = memo(({
   const widgetRef = useRef<any>(null);
   const [widgetKey, setWidgetKey] = useState(0);
 
-  // Don't force recreation on indicator changes - let TradingView handle it
-  // useEffect(() => {
-  //   setWidgetKey(prev => prev + 1);
-  // }, [indicators]);
+  // Force widget recreation when indicators change (TradingView requires this)
+  useEffect(() => {
+    console.log('🔄 Indicators changed, forcing widget recreation');
+    setWidgetKey(prev => prev + 1);
+  }, [indicators]);
 
   useEffect(() => {
     if (!container.current) return;
