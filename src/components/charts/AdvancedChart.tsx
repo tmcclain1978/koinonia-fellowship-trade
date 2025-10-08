@@ -34,6 +34,7 @@ export const AdvancedChart = ({
   const chartDataRef = useRef<CandlestickData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Create chart once on mount
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
@@ -95,14 +96,19 @@ export const AdvancedChart = ({
 
     window.addEventListener('resize', handleResize);
 
-    // Fetch market data
-    fetchMarketData(symbol, interval);
-
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [symbol, interval, height]);
+  }, [height]);
+
+  // Fetch data when symbol or interval changes
+  useEffect(() => {
+    if (chartRef.current && candleSeriesRef.current) {
+      console.log(`📊 Fetching data for ${symbol} at ${interval} interval`);
+      fetchMarketData(symbol, interval);
+    }
+  }, [symbol, interval]);
 
   // Update indicators when they change
   useEffect(() => {
