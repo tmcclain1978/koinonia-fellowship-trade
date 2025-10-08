@@ -622,7 +622,7 @@ const PaperTrading = () => {
               <TradingViewChart 
                 key={`chart-${chartIndicators.join('-')}`}
                 symbol={formData.symbol}
-                height={1200}
+                height={600}
                 interval={chartInterval}
                 theme="dark"
                 entryPrice={selectedPosition?.entryPrice}
