@@ -41,10 +41,10 @@ export const TradingViewChart = memo(({
   const widgetRef = useRef<any>(null);
   const [widgetKey, setWidgetKey] = useState(0);
 
-  useEffect(() => {
-    // Force new widget when indicators change
-    setWidgetKey(prev => prev + 1);
-  }, [indicators]);
+  // Don't force recreation on indicator changes - let TradingView handle it
+  // useEffect(() => {
+  //   setWidgetKey(prev => prev + 1);
+  // }, [indicators]);
 
   useEffect(() => {
     if (!container.current) return;
@@ -108,24 +108,12 @@ export const TradingViewChart = memo(({
           "volume.volume.color.1": "rgba(0,230,118,0.7)",
           "moving average.ma.color": "#2962FF",
           "moving average.ma.linewidth": 2,
+          "rsi.plot.color": "#FF6D00",
+          "vwap.plot.color": "#00E676"
         },
-        disabled_features: ["use_localstorage_for_settings"], // Disable localStorage caching
         enabled_features: [
           "study_templates",
-          "header_indicators",
-          "header_compare",
-          "header_undo_redo",
-          "header_screenshot",
-          "header_chart_type",
-          "header_settings",
-          "left_toolbar",
-          "control_bar",
-          "timeframes_toolbar",
-          "display_market_status",
-          "items_favoriting",
-          "show_hide_button_in_legend",
-          "border_around_the_chart",
-          "create_volume_indicator_by_default"
+          "header_indicators"
         ]
       });
 
