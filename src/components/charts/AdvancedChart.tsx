@@ -107,28 +107,25 @@ export const AdvancedChart = ({
     try {
       const { supabase } = await import('@/integrations/supabase/client');
       
-      // Use standard endpoints for free tier Alpha Vantage
-      const dataType = 'price';
-      
-      const { data, error } = await supabase.functions.invoke('fetch-market-data', {
+      // Fetch real-time data from Schwab
+      const { data, error } = await supabase.functions.invoke('fetch-schwab-candles', {
         body: { 
           symbol: sym, 
           interval: int,
-          dataType 
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Schwab API Error:', error);
+        throw error;
+      }
 
-      if (data?.error) {
-        console.error('API Error:', data.error);
-        // Fall back to mock data on error
-        const mockData = generateMockData();
-        if (candleSeriesRef.current) {
-          candleSeriesRef.current.setData(mockData);
-        }
-      } else if (data?.data && candleSeriesRef.current) {
+      if (data?.data && candleSeriesRef.current) {
+        console.log(`Loaded ${data.data.length} candles from ${data.source}`);
         candleSeriesRef.current.setData(data.data);
+      } else if (data?.error) {
+        console.error('Data error:', data.error);
+        throw new Error(data.error);
       }
 
       // Fit content
@@ -137,13 +134,12 @@ export const AdvancedChart = ({
       }
     } catch (error) {
       console.error('Error fetching market data:', error);
-      // Fall back to mock data on error
-      const mockData = generateMockData();
-      if (candleSeriesRef.current) {
-        candleSeriesRef.current.setData(mockData);
-      }
-      if (chartRef.current) {
-        chartRef.current.timeScale().fitContent();
+      // Show error to user
+      if (onSignal) {
+        onSignal({ 
+          type: 'error', 
+          message: 'Unable to load chart data. Please connect your Schwab account in Settings.' 
+        });
       }
     } finally {
       setIsLoading(false);
