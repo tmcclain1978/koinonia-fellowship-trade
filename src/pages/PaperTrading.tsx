@@ -944,55 +944,126 @@ const PaperTrading = () => {
               <p className="text-center text-muted-foreground py-8">No trades yet. Start trading!</p>
             ) : (
               <div className="space-y-2">
-                {trades.map(trade => (
-                  <div 
-                    key={trade.id} 
-                    className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
-                    onClick={() => {
-                      // Load trade details into form
-                      const tradeDetails = trade.notes?.split(' ') || [];
-                      const side = tradeDetails[0] || 'CALL';
-                      const strike = tradeDetails[1] || '';
-                      const expiration = tradeDetails[2] || '';
-                      
-                      setFormData({
-                        symbol: trade.symbol,
-                        side,
-                        expiration,
-                        strike,
-                        quantity: trade.quantity.toString(),
-                        price: trade.price.toString(),
-                        orderType: "MARKET",
-                        duration: "DAY",
-                        limitPrice: "",
-                        stopPrice: "",
-                        trailAmount: "",
-                      });
-                      
-                      toast({
-                        title: "Trade Loaded",
-                        description: `Loaded ${trade.symbol} ${side} into form. Modify and place as needed.`,
-                      });
-                    }}
-                  >
-                    <div>
-                      <p className="font-semibold">{trade.symbol}</p>
-                      <p className="text-sm text-muted-foreground">{trade.notes}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(trade.executed_at).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold capitalize">{trade.action}</p>
-                      <p className="text-sm">{trade.quantity} contracts ({trade.quantity * 100} shares) @ ${trade.price}</p>
-                      {trade.profit_loss && (
-                        <p className={`text-sm font-semibold ${trade.profit_loss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {trade.profit_loss >= 0 ? '+' : ''}${trade.profit_loss.toFixed(2)}
+                {trades.map(trade => {
+                  // Check if this trade is part of an open position
+                  const tradeDetails = trade.notes?.split(' ') || [];
+                  const side = tradeDetails[0] || 'CALL';
+                  const strike = parseFloat(tradeDetails[1] || '0');
+                  
+                  const matchingPosition = openPositions.find(
+                    pos => pos.symbol === trade.symbol && 
+                    pos.side === side && 
+                    pos.strike === strike
+                  );
+                  
+                  // Calculate current P&L for this trade
+                  let currentPL = 0;
+                  let currentPrice = trade.price;
+                  
+                  if (matchingPosition && trade.action === 'buy') {
+                    // Trade is part of open position - show unrealized P&L
+                    currentPrice = matchingPosition.currentPrice;
+                    currentPL = (currentPrice - trade.price) * trade.quantity * 100;
+                  } else if (trade.profit_loss) {
+                    // Trade is closed - show realized P&L
+                    currentPL = trade.profit_loss;
+                  }
+                  
+                  const isOpen = matchingPosition && trade.action === 'buy';
+                  
+                  return (
+                    <div 
+                      key={trade.id} 
+                      className="flex items-center justify-between p-3 bg-muted rounded-lg border"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold">{trade.symbol}</p>
+                          {isOpen && (
+                            <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-500 rounded-full">
+                              Open
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{trade.notes}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(trade.executed_at).toLocaleString()}
                         </p>
-                       )}
+                        <div className="flex items-center gap-3 mt-2 text-sm">
+                          <span className="font-semibold capitalize">{trade.action}</span>
+                          <span>{trade.quantity} contracts @ ${trade.price}</span>
+                        </div>
+                        {isOpen && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Current: ${currentPrice.toFixed(2)} per contract
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          {currentPL !== 0 && (
+                            <>
+                              <p className="text-xs text-muted-foreground">
+                                {isOpen ? 'Unrealized P&L' : 'Realized P&L'}
+                              </p>
+                              <p className={`text-lg font-bold ${currentPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {currentPL >= 0 ? '+' : ''}${currentPL.toFixed(2)}
+                              </p>
+                              <p className={`text-xs ${currentPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {((currentPL / (trade.price * trade.quantity * 100)) * 100).toFixed(2)}%
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        {isOpen && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={async () => {
+                              if (!confirm(`Close ${trade.quantity} contracts of ${trade.symbol}?`)) return;
+                              
+                              setLoading(true);
+                              try {
+                                const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
+                                  body: {
+                                    symbol: trade.symbol,
+                                    action: 'sell',
+                                    quantity: trade.quantity,
+                                    price: currentPrice.toFixed(2),
+                                    strike: strike.toString(),
+                                    side: side,
+                                    expiration: tradeDetails[2] || '',
+                                  }
+                                });
+
+                                if (error) throw error;
+                                
+                                toast({
+                                  title: "Trade Closed",
+                                  description: `Closed ${trade.quantity} contracts with P&L: ${currentPL >= 0 ? '+' : ''}$${currentPL.toFixed(2)}`,
+                                });
+
+                                await loadAccount();
+                                await loadTrades();
+                              } catch (error: any) {
+                                toast({
+                                  title: "Error closing trade",
+                                  description: error.message,
+                                  variant: "destructive",
+                                });
+                              } finally {
+                                setLoading(false);
+                              }
+                            }}
+                            disabled={loading}
+                          >
+                            Close Trade
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             </CardContent>
