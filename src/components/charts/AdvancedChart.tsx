@@ -107,10 +107,8 @@ export const AdvancedChart = ({
     try {
       const { supabase } = await import('@/integrations/supabase/client');
       
-      // Use daily_adjusted for daily data to get split/dividend adjusted prices
-      const dataType = (int === '1D' || int === 'D' || int === 'daily') 
-        ? 'daily_adjusted' 
-        : 'price';
+      // Use standard endpoints for free tier Alpha Vantage
+      const dataType = 'price';
       
       const { data, error } = await supabase.functions.invoke('fetch-market-data', {
         body: { 
