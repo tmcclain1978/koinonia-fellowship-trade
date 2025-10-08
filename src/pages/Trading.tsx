@@ -467,12 +467,22 @@ const Trading = () => {
           </CardContent>
         </Card>
 
-        {/* Advanced Multi-Chart System */}
-        <MultiChartGrid
-          symbol={symbol}
-          interval={chartInterval}
-          selectedIndicators={chartIndicators}
-        />
+        {/* Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Chart - {symbol}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TradingViewChart 
+              key={`chart-${chartIndicators.join('-')}`}
+              symbol={symbol}
+              height={600}
+              interval={chartInterval}
+              theme="dark"
+              indicators={chartIndicators}
+            />
+          </CardContent>
+        </Card>
 
         {/* Chart & Order Builder - Side by Side */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
