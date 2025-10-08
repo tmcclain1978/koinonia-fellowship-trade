@@ -1177,14 +1177,6 @@ const PaperTrading = () => {
           </CardContent>
         </Card>
 
-        {/* Open Positions Component (for chart integration) */}
-        <OpenPositions 
-          positions={openPositions}
-          onPositionClick={(position) => {
-            setSelectedPosition(position);
-            setFormData({ ...formData, symbol: position.symbol });
-          }}
-        />
       </div>
     </>
   );
