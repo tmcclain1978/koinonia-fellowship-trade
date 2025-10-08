@@ -467,6 +467,14 @@ const Trading = () => {
           </CardContent>
         </Card>
 
+        {/* Koinonia Indicator Section */}
+        <div className="mb-6">
+          <KoinoniaIndicator 
+            symbol={symbol}
+            onSignalGenerated={handleKoinoniaSignal}
+          />
+        </div>
+
         {/* Chart */}
         <Card>
           <CardHeader>
@@ -951,14 +959,6 @@ const Trading = () => {
               setSelectedPosition(position);
               setSymbol(position.symbol);
             }}
-          />
-        </div>
-
-        {/* Koinonia Indicator Section */}
-        <div className="mb-6">
-          <KoinoniaIndicator 
-            symbol={symbol}
-            onSignalGenerated={handleKoinoniaSignal}
           />
         </div>
         </div>
