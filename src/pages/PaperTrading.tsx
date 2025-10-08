@@ -612,6 +612,14 @@ const PaperTrading = () => {
           </CardContent>
         </Card>
 
+        {/* Koinonia Indicator Section */}
+        <div className="mb-6">
+          <KoinoniaIndicator 
+            symbol={formData.symbol}
+            onSignalGenerated={handleKoinoniaSignal}
+          />
+        </div>
+
         {/* Chart - Half Width */}
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
           <Card className="h-full overflow-hidden">
@@ -633,6 +641,9 @@ const PaperTrading = () => {
             </CardContent>
           </Card>
           <div className="space-y-6">
+            {/* Indicator Selector */}
+            <IndicatorSelector onIndicatorsChange={setChartIndicators} />
+            
             {/* Order Panel */}
             <Card>
               <CardHeader>
@@ -1103,19 +1114,6 @@ const PaperTrading = () => {
             setFormData({ ...formData, symbol: position.symbol });
           }}
         />
-
-        {/* Koinonia Indicator Section */}
-        <div className="mt-6">
-          <KoinoniaIndicator 
-            symbol={formData.symbol}
-            onSignalGenerated={handleKoinoniaSignal}
-          />
-        </div>
-
-        {/* Indicator Selector */}
-        <div className="mt-6">
-          <IndicatorSelector onIndicatorsChange={setChartIndicators} />
-        </div>
       </div>
     </>
   );
