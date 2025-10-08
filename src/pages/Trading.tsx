@@ -480,6 +480,9 @@ const Trading = () => {
               interval={chartInterval}
               theme="dark"
               indicators={chartIndicators}
+              entryPrice={signalArrows.find(a => a.type === 'entry')?.price}
+              stopLoss={Number(stopPrice) || undefined}
+              signalArrows={signalArrows}
             />
           </CardContent>
         </Card>

@@ -10,7 +10,11 @@ interface TradingViewChartProps {
   theme?: 'light' | 'dark';
   entryPrice?: number;
   stopLoss?: number;
-  signalArrows?: any[];
+  signalArrows?: Array<{
+    price: number;
+    type: 'entry' | 'exit';
+    timestamp?: string;
+  }>;
   indicators?: string[];
 }
 
@@ -19,7 +23,10 @@ export const TradingViewChart = memo(({
   height = 500,
   interval = 'D',
   theme = 'dark',
-  indicators = []
+  indicators = [],
+  entryPrice,
+  stopLoss,
+  signalArrows = []
 }: TradingViewChartProps) => {
   const container = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
@@ -140,6 +147,51 @@ export const TradingViewChart = memo(({
         ref={container} 
         style={{ width: '100%', height: '100%' }} 
       />
+
+      {/* Koinonia Signal Markers */}
+      {signalArrows.length > 0 && (
+        <div className="absolute bottom-4 left-4 z-10 space-y-2">
+          {signalArrows.map((arrow, idx) => (
+            <div 
+              key={idx}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg backdrop-blur-sm border ${
+                arrow.type === 'entry' 
+                  ? 'bg-green-500/20 border-green-500/50 text-green-300' 
+                  : 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+              }`}
+            >
+              {arrow.type === 'entry' ? (
+                <>
+                  <div className="text-2xl">📈</div>
+                  <div>
+                    <div className="text-xs font-semibold">Entry</div>
+                    <div className="text-sm font-bold">${arrow.price.toFixed(2)}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl">🎯</div>
+                  <div>
+                    <div className="text-xs font-semibold">
+                      Exit Target {signalArrows.filter(a => a.type === 'exit').indexOf(arrow) + 1}
+                    </div>
+                    <div className="text-sm font-bold">${arrow.price.toFixed(2)}</div>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          {stopLoss && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg backdrop-blur-sm border bg-red-500/20 border-red-500/50 text-red-300">
+              <div className="text-2xl">🛑</div>
+              <div>
+                <div className="text-xs font-semibold">Stop Loss</div>
+                <div className="text-sm font-bold">${stopLoss.toFixed(2)}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 });
