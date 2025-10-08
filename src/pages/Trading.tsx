@@ -933,6 +933,11 @@ const Trading = () => {
               </Button>
             </div>
           </div>
+
+          {/* Indicator Selector - beside Order Builder */}
+          <div>
+            <IndicatorSelector onIndicatorsChange={setChartIndicators} />
+          </div>
         </div>
 
         {/* Open Positions Section */}
@@ -952,11 +957,6 @@ const Trading = () => {
             symbol={symbol}
             onSignalGenerated={handleKoinoniaSignal}
           />
-        </div>
-
-        {/* Indicator Selector */}
-        <div className="mb-6">
-          <IndicatorSelector onIndicatorsChange={setChartIndicators} />
         </div>
         </div>
       </div>
