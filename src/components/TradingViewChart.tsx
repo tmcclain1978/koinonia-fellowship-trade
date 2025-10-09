@@ -165,7 +165,7 @@ export const TradingViewChart = memo(({
                   <div className="text-2xl">📈</div>
                   <div>
                     <div className="text-xs font-semibold">Entry</div>
-                    <div className="text-sm font-bold">${arrow.price.toFixed(2)}</div>
+                    <div className="text-sm font-bold">${Number(arrow.price).toFixed(2)}</div>
                   </div>
                 </>
               ) : (
@@ -175,7 +175,7 @@ export const TradingViewChart = memo(({
                     <div className="text-xs font-semibold">
                       Exit Target {signalArrows.filter(a => a.type === 'exit').indexOf(arrow) + 1}
                     </div>
-                    <div className="text-sm font-bold">${arrow.price.toFixed(2)}</div>
+                    <div className="text-sm font-bold">${Number(arrow.price).toFixed(2)}</div>
                   </div>
                 </>
               )}
@@ -186,7 +186,7 @@ export const TradingViewChart = memo(({
               <div className="text-2xl">🛑</div>
               <div>
                 <div className="text-xs font-semibold">Stop Loss</div>
-                <div className="text-sm font-bold">${stopLoss.toFixed(2)}</div>
+                <div className="text-sm font-bold">${Number(stopLoss).toFixed(2)}</div>
               </div>
             </div>
           )}
