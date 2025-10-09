@@ -1010,7 +1010,7 @@ const PaperTrading = () => {
                                 {currentPL >= 0 ? '+' : ''}${currentPL.toFixed(2)}
                               </p>
                               <p className={`text-xs ${currentPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {((currentPL / (trade.price * trade.quantity * 100)) * 100).toFixed(2)}%
+                                {((currentPL / (Number(trade.price) * Number(trade.quantity) * 100)) * 100).toFixed(2)}%
                               </p>
                             </>
                           )}
@@ -1028,8 +1028,8 @@ const PaperTrading = () => {
                                   body: {
                                     symbol: trade.symbol,
                                     action: 'sell',
-                                    quantity: trade.quantity,
-                                    price: currentPrice.toFixed(2),
+                                    quantity: Number(trade.quantity),
+                                    price: Number(currentPrice).toFixed(2),
                                     strike: strike.toString(),
                                     side: side,
                                     expiration: tradeDetails[2] || '',
