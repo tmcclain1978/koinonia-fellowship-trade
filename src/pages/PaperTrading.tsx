@@ -958,15 +958,15 @@ const PaperTrading = () => {
                   
                   // Calculate current P&L for this trade
                   let currentPL = 0;
-                  let currentPrice = trade.price;
+                  let currentPrice = Number(trade.price);
                   
                   if (matchingPosition && trade.action === 'buy') {
                     // Trade is part of open position - show unrealized P&L
                     currentPrice = matchingPosition.currentPrice;
-                    currentPL = (currentPrice - trade.price) * trade.quantity * 100;
+                    currentPL = (currentPrice - Number(trade.price)) * Number(trade.quantity) * 100;
                   } else if (trade.profit_loss) {
                     // Trade is closed - show realized P&L
-                    currentPL = trade.profit_loss;
+                    currentPL = Number(trade.profit_loss);
                   }
                   
                   const isOpen = matchingPosition && trade.action === 'buy';
@@ -991,7 +991,7 @@ const PaperTrading = () => {
                         </p>
                         <div className="flex items-center gap-3 mt-2 text-sm">
                           <span className="font-semibold capitalize">{trade.action}</span>
-                          <span>{trade.quantity} contracts @ ${trade.price}</span>
+                          <span>{trade.quantity} contracts @ ${Number(trade.price).toFixed(2)}</span>
                         </div>
                         {isOpen && (
                           <p className="text-xs text-muted-foreground mt-1">
