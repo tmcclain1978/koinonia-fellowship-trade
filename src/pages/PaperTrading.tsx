@@ -40,6 +40,7 @@ const PaperTrading = () => {
     limitPrice: "",
     stopPrice: "",
     trailAmount: "",
+    trailType: "DOLLAR", // DOLLAR or PERCENT
   });
   
   const [account, setAccount] = useState<any>(null);
@@ -407,6 +408,7 @@ const PaperTrading = () => {
         limitPrice: "",
         stopPrice: "",
         trailAmount: "",
+        trailType: "DOLLAR",
       });
     } catch (error: any) {
       toast({
@@ -856,15 +858,40 @@ const PaperTrading = () => {
                   )}
 
                   {formData.orderType === "TRAILSTOP" && (
-                    <div>
-                      <Label>Trail Amount ($)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.trailAmount}
-                        onChange={(e) => setFormData({ ...formData, trailAmount: e.target.value })}
-                        placeholder="0.00"
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Trail Type</Label>
+                        <Select 
+                          value={formData.trailType} 
+                          onValueChange={(v) => setFormData({ ...formData, trailType: v, trailAmount: "" })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="DOLLAR">Dollar Amount ($)</SelectItem>
+                            <SelectItem value="PERCENT">Percentage (%)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>
+                          Trail Amount {formData.trailType === "DOLLAR" ? "($)" : "(%)"}
+                        </Label>
+                        <Input
+                          type="number"
+                          step={formData.trailType === "DOLLAR" ? "0.01" : "0.1"}
+                          min="0"
+                          value={formData.trailAmount}
+                          onChange={(e) => setFormData({ ...formData, trailAmount: e.target.value })}
+                          placeholder={formData.trailType === "DOLLAR" ? "0.00" : "0.0"}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formData.trailType === "DOLLAR" 
+                            ? "Dollar amount to trail behind the market price" 
+                            : "Percentage to trail behind the market price"}
+                        </p>
+                      </div>
                     </div>
                   )}
 
