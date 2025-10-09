@@ -33,7 +33,7 @@ export const TradingViewChart = memo(({
   const [containerId] = useState(`tradingview_${Math.random().toString(36).substring(7)}`);
 
   useEffect(() => {
-    console.log('🔄 TradingView Chart initializing with indicators:', indicators);
+    console.log('🔄 TradingView Chart initializing...');
 
     // Load TradingView library if not already loaded
     if (typeof (window as any).TradingView === 'undefined') {
@@ -51,18 +51,6 @@ export const TradingViewChart = memo(({
         return;
       }
 
-      // Default indicators
-      const defaultStudies = [
-        "MASimple@tv-basicstudies",
-        "RSI@tv-basicstudies",
-        "VWAP@tv-basicstudies",
-        "Volume@tv-basicstudies"
-      ];
-
-      const appliedStudies = indicators.length > 0 ? indicators : defaultStudies;
-
-      console.log('📊 Creating widget with studies:', appliedStudies);
-
       // Destroy previous widget
       if (widgetRef.current) {
         try {
@@ -72,7 +60,7 @@ export const TradingViewChart = memo(({
         }
       }
 
-      // Create new widget with tv.js API (supports studies parameter)
+      // Create new widget without studies - we'll add them separately
       widgetRef.current = new (window as any).TradingView.widget({
         autosize: true,
         symbol: symbol,
@@ -85,7 +73,6 @@ export const TradingViewChart = memo(({
         enable_publishing: false,
         hide_side_toolbar: false,
         allow_symbol_change: true,
-        studies: appliedStudies,
         container_id: containerId,
         height: height,
         studies_overrides: {
@@ -108,7 +95,49 @@ export const TradingViewChart = memo(({
         }
       }
     };
-  }, [symbol, interval, theme, height, indicators, containerId]);
+  }, [symbol, interval, theme, height, containerId]);
+
+  // Separate effect for managing indicators without recreating the widget
+  useEffect(() => {
+    if (!widgetRef.current) return;
+
+    console.log('📊 Updating indicators:', indicators);
+
+    // Wait for widget to be ready
+    const updateStudies = () => {
+      try {
+        if (widgetRef.current && widgetRef.current.activeChart) {
+          const chart = widgetRef.current.activeChart();
+          
+          // Get existing studies
+          const existingStudies = chart.getAllStudies();
+          
+          // Remove studies that are no longer needed
+          existingStudies.forEach((study: any) => {
+            const studyName = study.name;
+            if (!indicators.includes(studyName)) {
+              chart.removeEntity(study.id);
+            }
+          });
+          
+          // Add new studies that aren't already present
+          const existingStudyNames = existingStudies.map((s: any) => s.name);
+          indicators.forEach((indicator: string) => {
+            if (!existingStudyNames.includes(indicator)) {
+              chart.createStudy(indicator, false, false);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error updating studies:', e);
+      }
+    };
+
+    // Widget might not be ready immediately, try with a small delay
+    const timer = setTimeout(updateStudies, 500);
+    
+    return () => clearTimeout(timer);
+  }, [indicators]);
 
   return (
     <div className="relative" style={{ height: `${height}px` }}>
