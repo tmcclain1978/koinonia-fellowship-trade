@@ -19,22 +19,33 @@ serve(async (req) => {
 
     console.log("[Learning] Starting daily analysis...");
 
-    // Get all users with active enterprise subscriptions
-    const { data: enterpriseUsers } = await supabase
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", "enterprise");
+    // Get user ID from request or analyze all premium users (enterprise and admin)
+    const { userId } = await req.json().catch(() => ({}));
+    
+    let usersToAnalyze;
+    if (userId) {
+      // Analyze specific user
+      usersToAnalyze = [{ user_id: userId }];
+    } else {
+      // Get all users with enterprise or admin role
+      const { data: premiumUsers } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["enterprise", "admin"]);
+      
+      usersToAnalyze = premiumUsers || [];
+    }
 
-    if (!enterpriseUsers || enterpriseUsers.length === 0) {
+    if (usersToAnalyze.length === 0) {
       return new Response(
-        JSON.stringify({ message: "No enterprise users found" }),
+        JSON.stringify({ message: "No users to analyze" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const results = [];
 
-    for (const user of enterpriseUsers) {
+    for (const user of usersToAnalyze) {
       try {
         // Get today's completed trades
         const today = new Date();

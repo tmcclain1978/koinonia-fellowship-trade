@@ -28,6 +28,39 @@ const BotLearning = () => {
     });
   }, [navigate]);
 
+  const generateInsights = async () => {
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      toast({
+        title: "Analyzing trades...",
+        description: "Generating AI insights from your trading data",
+      });
+
+      const { error } = await supabase.functions.invoke('bot-learning-analysis', {
+        body: { userId: user.id }
+      });
+
+      if (error) throw error;
+
+      await loadBotData(user.id);
+      
+      toast({
+        title: "Analysis Complete",
+        description: "New insights have been generated",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate insights",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadBotData = async (userId: string) => {
     try {
       setLoading(true);
@@ -39,7 +72,7 @@ const BotLearning = () => {
         .eq("user_id", userId)
         .order("insight_date", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       setInsights(insightsData);
 
@@ -89,11 +122,17 @@ const BotLearning = () => {
       <Navigation />
       
       <div className="container mx-auto px-6 py-24">
-        <div className="mb-8">
-          <h1 className="text-4xl font-display font-bold mb-2">AI Trading Bot Learning</h1>
-          <p className="text-muted-foreground">
-            Track your bot's performance, learning progress, and coaching insights
-          </p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-display font-bold mb-2">AI Trading Bot Learning</h1>
+            <p className="text-muted-foreground">
+              Track your bot's performance, learning progress, and coaching insights
+            </p>
+          </div>
+          <Button onClick={generateInsights} disabled={loading}>
+            <Brain className="w-4 h-4 mr-2" />
+            Generate Insights
+          </Button>
         </div>
 
         <Tabs defaultValue="insights" className="space-y-6">
@@ -202,8 +241,12 @@ const BotLearning = () => {
                   <Brain className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="text-lg font-semibold mb-2">No insights yet</h3>
                   <p className="text-muted-foreground mb-4">
-                    Your AI bot will generate learning insights after completing trades
+                    Complete some trades (open and close positions), then click "Generate Insights" to analyze your trading performance.
                   </p>
+                  <Button onClick={generateInsights} disabled={loading}>
+                    <Brain className="w-4 h-4 mr-2" />
+                    Generate Insights
+                  </Button>
                 </CardContent>
               </Card>
             )}
