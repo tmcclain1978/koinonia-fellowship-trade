@@ -299,6 +299,7 @@ const PaperTrading = () => {
             trades: [],
             side: trade.notes?.includes('CALL') ? 'CALL' : 'PUT',
             strike: parseFloat(trade.notes?.match(/\d+\.?\d*/)?.[0] || '0'),
+            expiration: trade.notes?.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '',
           });
         }
         
@@ -314,28 +315,52 @@ const PaperTrading = () => {
         }
       });
 
-      // Filter to only open positions (quantity > 0)
-      const openPos = Array.from(positionMap.values())
-        .filter(pos => pos.quantity > 0)
-        .map(pos => {
-          const entryPrice = pos.totalCost / (pos.quantity * 100);
-          // Calculate intrinsic value based on current market price
-          // For demo, use 5% above entry as "current price"
-          const currentPrice = entryPrice * 1.05;
-          const unrealizedPL = (currentPrice - entryPrice) * pos.quantity * 100;
-          
-          return {
-            symbol: pos.symbol,
-            details: pos.details,
-            quantity: pos.quantity,
-            entryPrice,
-            currentPrice,
-            unrealizedPL,
-            totalCost: pos.totalCost,
-            side: pos.side,
-            strike: pos.strike,
-          };
-        });
+      // Filter to only open positions (quantity > 0) and update with current prices
+      const openPos = await Promise.all(
+        Array.from(positionMap.values())
+          .filter(pos => pos.quantity > 0)
+          .map(async (pos) => {
+            const entryPrice = pos.totalCost / (pos.quantity * 100);
+            
+            // Fetch current market price from options chain
+            let currentPrice = entryPrice;
+            try {
+              const { data: optionsData } = await supabase.functions.invoke('fetch-schwab-options', {
+                body: { symbol: pos.symbol }
+              });
+              
+              if (optionsData?.options) {
+                const currentOption = optionsData.options.find((opt: any) => 
+                  opt.type === pos.side && 
+                  opt.strike === pos.strike &&
+                  opt.expiration === pos.expiration
+                );
+                
+                if (currentOption) {
+                  // Use mid price (average of bid/ask)
+                  currentPrice = (currentOption.bid + currentOption.ask) / 2;
+                }
+              }
+            } catch (err) {
+              console.error('Error fetching current price:', err);
+            }
+            
+            const unrealizedPL = (currentPrice - entryPrice) * pos.quantity * 100;
+            
+            return {
+              symbol: pos.symbol,
+              details: pos.details,
+              quantity: pos.quantity,
+              entryPrice,
+              currentPrice,
+              unrealizedPL,
+              totalCost: pos.totalCost,
+              side: pos.side,
+              strike: pos.strike,
+              expiration: pos.expiration,
+            };
+          })
+      );
 
       console.log("📊 Open Positions Calculation:", {
         totalTrades: allTrades?.length || 0,
@@ -349,6 +374,17 @@ const PaperTrading = () => {
       console.error('Error loading positions:', error);
     }
   };
+
+  // Auto-refresh positions every 10 seconds for real-time P&L updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (openPositions.length > 0) {
+        loadOpenPositions();
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [openPositions.length]);
 
   const [chartInterval, setChartInterval] = useState("D");
 
