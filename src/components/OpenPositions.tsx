@@ -3,16 +3,16 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface Position {
-  id: string;
   symbol: string;
+  details: string;
   side: string;
   strike?: number;
   expiration?: string;
   quantity: number;
   entryPrice: number;
   currentPrice: number;
-  stopLoss?: number;
-  executedAt: string;
+  unrealizedPL: number;
+  totalCost: number;
 }
 
 interface OpenPositionsProps {
@@ -21,25 +21,6 @@ interface OpenPositionsProps {
 }
 
 export const OpenPositions = ({ positions, onPositionClick }: OpenPositionsProps) => {
-  const calculateIntrinsicValue = (position: Position) => {
-    if (!position.strike) return 0;
-    
-    // For calls: max(currentPrice - strike, 0)
-    // For puts: max(strike - currentPrice, 0)
-    if (position.side === 'CALL') {
-      return Math.max(position.currentPrice - position.strike, 0);
-    } else {
-      return Math.max(position.strike - position.currentPrice, 0);
-    }
-  };
-
-  const calculatePL = (position: Position) => {
-    const intrinsicValue = calculateIntrinsicValue(position);
-    const contractValue = intrinsicValue * 100; // Options multiplier
-    const entryValue = position.entryPrice * 100;
-    return (contractValue - entryValue) * position.quantity;
-  };
-
   if (positions.length === 0) {
     return (
       <Card>
@@ -60,14 +41,13 @@ export const OpenPositions = ({ positions, onPositionClick }: OpenPositionsProps
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {positions.map((position) => {
-            const intrinsicValue = calculateIntrinsicValue(position);
-            const pl = calculatePL(position);
-            const plPercentage = ((pl / (position.entryPrice * 100 * position.quantity)) * 100).toFixed(2);
+          {positions.map((position, index) => {
+            const pl = position.unrealizedPL;
+            const plPercentage = ((pl / position.totalCost) * 100).toFixed(2);
             
             return (
               <div
-                key={position.id}
+                key={`${position.symbol}-${index}`}
                 onClick={() => onPositionClick?.(position)}
                 className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
               >
@@ -102,27 +82,18 @@ export const OpenPositions = ({ positions, onPositionClick }: OpenPositionsProps
                     <p className="font-medium">{position.quantity}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Entry</p>
+                    <p className="text-muted-foreground">Entry Premium</p>
                     <p className="font-medium">${position.entryPrice.toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Current</p>
+                    <p className="text-muted-foreground">Current Premium</p>
                     <p className="font-medium">${position.currentPrice.toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Intrinsic Value</p>
-                    <p className="font-medium text-primary">${intrinsicValue.toFixed(2)}</p>
+                    <p className="text-muted-foreground">Total Cost</p>
+                    <p className="font-medium">${position.totalCost.toFixed(2)}</p>
                   </div>
                 </div>
-                
-                {position.stopLoss && (
-                  <div className="mt-2 pt-2 border-t border-border">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Stop Loss</span>
-                      <span className="font-medium text-red-500">${position.stopLoss.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}
