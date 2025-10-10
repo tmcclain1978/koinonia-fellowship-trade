@@ -79,7 +79,7 @@ serve(async (req) => {
     // Update account balance
     const newBalance = action === 'buy' 
       ? account.balance - totalValue 
-      : account.balance + totalValue + (profitLoss || 0);
+      : account.balance + totalValue;
 
     await supabase
       .from('paper_trading_accounts')
