@@ -62,17 +62,19 @@ serve(async (req) => {
 
     // Calculate profit/loss for sell orders
     if (action === 'sell') {
-      const { data: buyTrades } = await supabase
+      // Get most recent unclosed buy position for this symbol
+      const { data: recentBuy } = await supabase
         .from('paper_trades')
         .select('*')
         .eq('user_id', user.id)
         .eq('symbol', symbol)
         .eq('action', 'buy')
-        .order('executed_at', { ascending: true });
+        .order('executed_at', { ascending: false })
+        .limit(1)
+        .single();
 
-      if (buyTrades && buyTrades.length > 0) {
-        const avgBuyPrice = buyTrades.reduce((sum, t) => sum + Number(t.price), 0) / buyTrades.length;
-        profitLoss = (Number(price) - avgBuyPrice) * Number(quantity) * 100;
+      if (recentBuy) {
+        profitLoss = (Number(price) - Number(recentBuy.price)) * Number(quantity) * 100;
       }
     }
 
