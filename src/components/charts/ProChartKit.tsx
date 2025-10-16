@@ -314,7 +314,7 @@ export const ProChartKit = ({
         />
 
         {/* Koinonia Signal Display */}
-        {koinoniaSignal && (
+        {koinoniaSignal?.signal && (
           <div className="absolute bottom-4 left-4 right-4 z-10">
             <Card className="p-4 bg-background/95 backdrop-blur">
               <div className="space-y-2">
