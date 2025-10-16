@@ -104,9 +104,14 @@ export const ProChartKit = ({
 
   // Fetch market data
   const fetchAndLoadData = async () => {
-    if (!chartRef.current) return;
+    if (!chartRef.current) {
+      console.log("⚠️ Chart ref not ready");
+      return;
+    }
 
     setLoading(true);
+    console.log("📊 Fetching chart data for", symbol, interval);
+    
     try {
       // Fetch candlestick data from Schwab
       const { data, error } = await supabase.functions.invoke("fetch-schwab-candles", {
@@ -117,12 +122,19 @@ export const ProChartKit = ({
         }
       });
 
-      if (error) throw error;
+      console.log("📈 Received data:", { data, error });
+
+      if (error) {
+        console.error("❌ Error from fetch-schwab-candles:", error);
+        throw error;
+      }
 
       // Handle both formats: { data: [...] } from fetch-schwab-candles and { candles: [...] } from legacy
       const candles = data?.data || data?.candles;
       
-      if (candles && Array.isArray(candles)) {
+      console.log("🕯️ Candles array:", { length: candles?.length, sample: candles?.[0] });
+      
+      if (candles && Array.isArray(candles) && candles.length > 0) {
         const klineData: KLineData[] = candles.map((candle: any) => ({
           timestamp: candle.time ? candle.time * 1000 : new Date(candle.datetime).getTime(),
           open: candle.open,
@@ -132,17 +144,21 @@ export const ProChartKit = ({
           volume: candle.volume || 0
         }));
 
+        console.log("✅ Applying data to chart:", klineData.length, "candles");
         chartRef.current.applyNewData(klineData);
 
         // Fetch Koinonia signals if enabled
         if (showKoinoniaSignals && userId) {
           fetchKoinoniaSignals();
         }
+      } else {
+        console.error("❌ No valid candles data received");
       }
     } catch (error) {
-      console.error("Error fetching chart data:", error);
+      console.error("❌ Error fetching chart data:", error);
     } finally {
       setLoading(false);
+      console.log("✅ Loading complete");
     }
   };
 
