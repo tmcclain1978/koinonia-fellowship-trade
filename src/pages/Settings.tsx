@@ -339,9 +339,20 @@ const Settings = () => {
                       {hasRefreshToken ? (
                         <>
                           <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                          <div>
+                          <div className="flex-1">
                             <p className="font-medium">OAuth Connected</p>
                             <p className="text-sm text-muted-foreground">Your Schwab account is authorized and ready for trading.</p>
+                            <div className="mt-3 flex gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={handleSchwabOAuth}
+                                disabled={oauthLoading}
+                              >
+                                <LinkIcon className="mr-2 h-4 w-4" />
+                                {oauthLoading ? "Reconnecting..." : "Reconnect Account"}
+                              </Button>
+                            </div>
                           </div>
                         </>
                       ) : (
