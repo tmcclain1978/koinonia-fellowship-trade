@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Play, TrendingUp, Users, Shield } from "lucide-react";
+import { ArrowRight, Play } from "lucide-react";
 import heroImage from "@/assets/hero-trading.jpg";
 import DemoVideoModal from "@/components/DemoVideoModal";
 
@@ -57,37 +57,6 @@ const HeroSection = () => {
                 <Play className="w-5 h-5 mr-2" />
                 Watch Demo
               </Button>
-            </div>
-
-            {/* Stats */}
-            <div className="flex flex-col sm:flex-row gap-8 pt-8 border-t border-border">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <div className="font-display font-semibold text-2xl text-foreground">85%</div>
-                  <div className="text-sm text-muted-foreground">Success Rate</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-accent" />
-                </div>
-                <div>
-                  <div className="font-display font-semibold text-2xl text-foreground">2,500+</div>
-                  <div className="text-sm text-muted-foreground">Active Members</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
-                  <Shield className="w-6 h-6 text-success" />
-                </div>
-                <div>
-                  <div className="font-display font-semibold text-2xl text-foreground">5 Years</div>
-                  <div className="text-sm text-muted-foreground">Proven Track Record</div>
-                </div>
-              </div>
             </div>
           </div>
 
