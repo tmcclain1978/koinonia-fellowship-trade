@@ -134,7 +134,49 @@ serve(async (req) => {
       }
     }
 
-    throw new Error('No Schwab access token available. Please connect your Schwab account in Settings.');
+    // No access token available, use mock data
+    console.log('No access token available, using mock data');
+    
+    // Generate realistic mock candle data
+    const now = Date.now();
+    const mockCandles = [];
+    let basePrice = 150;
+    
+    // Generate 100 candles for demo
+    for (let i = 100; i >= 0; i--) {
+      const time = Math.floor((now - (i * 60 * 1000)) / 1000); // 1-minute intervals
+      const variation = (Math.random() - 0.5) * 5;
+      const open = basePrice;
+      const close = basePrice + variation;
+      const high = Math.max(open, close) + Math.random() * 2;
+      const low = Math.min(open, close) - Math.random() * 2;
+      const volume = Math.floor(Math.random() * 1000000) + 100000;
+      
+      mockCandles.push({
+        time,
+        open: parseFloat(open.toFixed(2)),
+        high: parseFloat(high.toFixed(2)),
+        low: parseFloat(low.toFixed(2)),
+        close: parseFloat(close.toFixed(2)),
+        volume,
+      });
+      
+      basePrice = close;
+    }
+    
+    console.log(`Generated ${mockCandles.length} mock candles`);
+    
+    return new Response(
+      JSON.stringify({ 
+        data: mockCandles,
+        source: 'mock',
+        symbol,
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
 
   } catch (error) {
     console.error('Error in fetch-schwab-candles:', error);

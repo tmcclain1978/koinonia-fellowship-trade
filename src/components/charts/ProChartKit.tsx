@@ -119,9 +119,12 @@ export const ProChartKit = ({
 
       if (error) throw error;
 
-      if (data?.candles && Array.isArray(data.candles)) {
-        const klineData: KLineData[] = data.candles.map((candle: any) => ({
-          timestamp: new Date(candle.datetime).getTime(),
+      // Handle both formats: { data: [...] } from fetch-schwab-candles and { candles: [...] } from legacy
+      const candles = data?.data || data?.candles;
+      
+      if (candles && Array.isArray(candles)) {
+        const klineData: KLineData[] = candles.map((candle: any) => ({
+          timestamp: candle.time ? candle.time * 1000 : new Date(candle.datetime).getTime(),
           open: candle.open,
           high: candle.high,
           low: candle.low,
