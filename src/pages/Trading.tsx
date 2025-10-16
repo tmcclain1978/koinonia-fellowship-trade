@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import Navigation from "@/components/Navigation";
-import { TradingViewChart } from "@/components/TradingViewChart";
+import { ProChartKit } from "@/components/charts/ProChartKit";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { OpenPositions } from "@/components/OpenPositions";
@@ -481,16 +481,31 @@ const Trading = () => {
             <CardTitle>Chart - {symbol}</CardTitle>
           </CardHeader>
           <CardContent>
-            <TradingViewChart 
-              key={`chart-${chartIndicators.join('-')}`}
+            <ProChartKit 
               symbol={symbol}
               height={600}
               interval={chartInterval}
               theme="dark"
-              indicators={chartIndicators}
-              entryPrice={signalArrows.find(a => a.type === 'entry')?.price}
-              stopLoss={Number(stopPrice) || undefined}
-              signalArrows={signalArrows}
+              showKoinoniaSignals={true}
+              userId={user?.id}
+              onSignalGenerated={(signal) => {
+                console.log("Koinonia signal generated:", signal);
+                if (signal?.signal) {
+                  const arrows = [];
+                  if (signal.signal.entry_price) {
+                    arrows.push({ price: signal.signal.entry_price, type: 'entry' });
+                  }
+                  if (signal.signal.targets) {
+                    signal.signal.targets.forEach((target: number) => {
+                      arrows.push({ price: target, type: 'exit' });
+                    });
+                  }
+                  setSignalArrows(arrows);
+                  if (signal.signal.stop_loss) {
+                    setStopPrice(signal.signal.stop_loss.toString());
+                  }
+                }
+              }}
             />
           </CardContent>
         </Card>

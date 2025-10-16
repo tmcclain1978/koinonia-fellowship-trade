@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AdvancedChart } from './AdvancedChart';
+import { ProChartKit } from './ProChartKit';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,12 +15,14 @@ interface MultiChartGridProps {
   symbol: string;
   interval: string;
   selectedIndicators: string[];
+  userId?: string;
 }
 
 export const MultiChartGrid = ({ 
   symbol, 
   interval,
-  selectedIndicators 
+  selectedIndicators,
+  userId
 }: MultiChartGridProps) => {
   const [layout, setLayout] = useState<'single' | 'dual' | 'quad'>('single');
 
@@ -68,56 +70,57 @@ export const MultiChartGrid = ({
           
           <TabsContent value="price" className="space-y-4">
             {layout === 'single' && (
-              <AdvancedChart
+              <ProChartKit
                 symbol={symbol}
                 interval={interval}
                 height={600}
-                indicators={selectedIndicators}
+                userId={userId}
+                showKoinoniaSignals={!!userId}
               />
             )}
             
             {layout === 'dual' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <AdvancedChart
+                <ProChartKit
                   symbol={symbol}
                   interval={interval}
                   height={400}
-                  indicators={selectedIndicators.slice(0, 3)}
+                  userId={userId}
                 />
-                <AdvancedChart
+                <ProChartKit
                   symbol={symbol}
                   interval="1h"
                   height={400}
-                  indicators={['RSI', 'MACD']}
+                  userId={userId}
                 />
               </div>
             )}
             
             {layout === 'quad' && (
               <div className="grid grid-cols-2 gap-4">
-                <AdvancedChart
+                <ProChartKit
                   symbol={symbol}
                   interval="1m"
                   height={300}
-                  indicators={['SMA_20']}
+                  userId={userId}
                 />
-                <AdvancedChart
+                <ProChartKit
                   symbol={symbol}
                   interval="5m"
                   height={300}
-                  indicators={['EMA_50']}
+                  userId={userId}
                 />
-                <AdvancedChart
+                <ProChartKit
                   symbol={symbol}
                   interval="15m"
                   height={300}
-                  indicators={['BB']}
+                  userId={userId}
                 />
-                <AdvancedChart
+                <ProChartKit
                   symbol={symbol}
                   interval="1h"
                   height={300}
-                  indicators={['ATR']}
+                  userId={userId}
                 />
               </div>
             )}
@@ -125,37 +128,37 @@ export const MultiChartGrid = ({
           
           <TabsContent value="oscillators" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <AdvancedChart
+              <ProChartKit
                 symbol={symbol}
                 interval={interval}
                 height={300}
-                indicators={['RSI']}
+                userId={userId}
               />
-              <AdvancedChart
+              <ProChartKit
                 symbol={symbol}
                 interval={interval}
                 height={300}
-                indicators={['MACD']}
+                userId={userId}
               />
             </div>
           </TabsContent>
           
           <TabsContent value="volume" className="space-y-4">
-            <AdvancedChart
+            <ProChartKit
               symbol={symbol}
               interval={interval}
               height={400}
-              showVolume={true}
-              indicators={['Volume', 'OBV']}
+              userId={userId}
             />
           </TabsContent>
           
           <TabsContent value="custom" className="space-y-4">
-            <AdvancedChart
+            <ProChartKit
               symbol={symbol}
               interval={interval}
               height={600}
-              indicators={selectedIndicators}
+              userId={userId}
+              showKoinoniaSignals={!!userId}
             />
           </TabsContent>
         </Tabs>

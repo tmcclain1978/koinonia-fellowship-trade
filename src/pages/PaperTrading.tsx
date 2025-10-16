@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { BarChart3, TrendingUp, Download, FileText, BarChart2 } from "lucide-react";
 import Navigation from "@/components/Navigation";
-import { TradingViewChart } from "@/components/TradingViewChart";
+import { ProChartKit } from "@/components/charts/ProChartKit";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { IndicatorSelector } from "@/components/IndicatorSelector";
@@ -44,6 +44,7 @@ const PaperTrading = () => {
   });
   
   const [account, setAccount] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
@@ -210,6 +211,8 @@ const PaperTrading = () => {
         navigate('/auth');
         return;
       }
+
+      setUser(user);
 
       let { data, error } = await supabase
         .from('paper_trading_accounts')
@@ -665,16 +668,31 @@ const PaperTrading = () => {
               <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
             </CardHeader>
             <CardContent className="overflow-hidden">
-              <TradingViewChart 
-                key={`chart-${chartIndicators.join('-')}`}
+              <ProChartKit 
                 symbol={formData.symbol}
                 height={600}
                 interval={chartInterval}
                 theme="dark"
-                entryPrice={selectedPosition?.entryPrice}
-                stopLoss={formData.orderType === "STOP" || formData.orderType === "STOPLIMIT" ? Number(formData.stopPrice) : undefined}
-                signalArrows={signalArrows}
-                indicators={chartIndicators}
+                showKoinoniaSignals={true}
+                userId={user?.id}
+                onSignalGenerated={(signal) => {
+                  console.log("Koinonia signal generated:", signal);
+                  if (signal?.signal) {
+                    const arrows = [];
+                    if (signal.signal.entry_price) {
+                      arrows.push({ price: signal.signal.entry_price, type: 'entry' });
+                    }
+                    if (signal.signal.targets) {
+                      signal.signal.targets.forEach((target: number) => {
+                        arrows.push({ price: target, type: 'exit' });
+                      });
+                    }
+                    setSignalArrows(arrows);
+                    if (signal.signal.stop_loss) {
+                      setFormData(prev => ({ ...prev, stopPrice: signal.signal.stop_loss.toString() }));
+                    }
+                  }
+                }}
               />
             </CardContent>
           </Card>
