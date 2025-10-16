@@ -103,17 +103,31 @@ serve(async (req) => {
     let clientId = data.schwab_client_id;
     let clientSecret = data.schwab_client_secret;
     
+    console.log('Retrieved credentials - Client ID length:', clientId?.length, 'Secret length:', clientSecret?.length);
+    
     try {
-      if (clientId) clientId = await decryptText(clientId);
-      if (clientSecret) clientSecret = await decryptText(clientSecret);
+      if (clientId) {
+        clientId = await decryptText(clientId);
+        console.log('Decrypted Client ID length:', clientId.length);
+      }
+      if (clientSecret) {
+        clientSecret = await decryptText(clientSecret);
+        console.log('Decrypted Client Secret length:', clientSecret.length);
+      }
     } catch (decryptError) {
       console.error('Decryption failed, using plain text:', decryptError);
-      // If decryption fails, assume plain text (for backward compatibility)
+      // Restore original values if decryption fails
+      clientId = data.schwab_client_id;
+      clientSecret = data.schwab_client_secret;
+      console.log('Using plain text - Client ID length:', clientId?.length, 'Secret length:', clientSecret?.length);
     }
 
     if (!clientId || !clientSecret) {
+      console.error('Missing credentials after decryption attempt');
       throw new Error('Missing Schwab credentials');
     }
+
+    console.log('About to exchange code with Schwab using Client ID:', clientId.substring(0, 10) + '...');
 
     // Exchange authorization code for tokens
     const tokenUrl = 'https://api.schwabapi.com/v1/oauth/token';
@@ -134,8 +148,10 @@ serve(async (req) => {
 
     if (!tokenResponse.ok) {
       const error = await tokenResponse.text();
-      console.error('Token exchange failed:', error);
-      throw new Error('Failed to exchange authorization code for tokens');
+      console.error('Token exchange failed. Status:', tokenResponse.status);
+      console.error('Response:', error);
+      console.error('Using redirect URI:', redirectUri);
+      throw new Error(`Schwab API error (${tokenResponse.status}): ${error}`);
     }
 
     const tokens = await tokenResponse.json();
