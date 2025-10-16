@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { DrawingToolbar } from "./DrawingToolbar";
 import { ChartSettings } from "./ChartSettings";
@@ -32,7 +34,9 @@ export const ProChartKit = ({
   const [loading, setLoading] = useState(true);
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
+  const [showPremarket, setShowPremarket] = useState(false);
   const unsubRef = useRef<(() => void) | null>(null);
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize chart
   useEffect(() => {
@@ -112,12 +116,41 @@ export const ProChartKit = ({
     return () => {
       clearTimeout(timer);
       unsubRef.current?.();
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+      }
       if (chartRef.current) {
         dispose(containerRef.current!);
         chartRef.current = null;
       }
     };
   }, [symbol, interval, theme]);
+
+  // Set up real-time updates
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // Update every 5 seconds during market hours (9:30 AM - 4:00 PM ET)
+    // or every 10 seconds during premarket (4:00 AM - 9:30 AM ET)
+    const updateInterval = showPremarket ? 10000 : 5000;
+    
+    updateIntervalRef.current = setInterval(() => {
+      fetchAndLoadData();
+    }, updateInterval);
+
+    return () => {
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+      }
+    };
+  }, [symbol, interval, showPremarket]);
+
+  // Refetch when premarket toggle changes
+  useEffect(() => {
+    if (chartRef.current) {
+      fetchAndLoadData();
+    }
+  }, [showPremarket]);
 
   // Fetch market data
   const fetchAndLoadData = async () => {
@@ -127,7 +160,7 @@ export const ProChartKit = ({
     }
 
     setLoading(true);
-    console.log("📊 Fetching chart data for", symbol, interval);
+    console.log("📊 Fetching chart data for", symbol, interval, "premarket:", showPremarket);
     
     try {
       // Fetch candlestick data from Schwab
@@ -135,7 +168,8 @@ export const ProChartKit = ({
         body: {
           symbol,
           interval: mapInterval(interval),
-          period: "1y"
+          period: "1y",
+          premarket: showPremarket
         }
       });
 
@@ -290,7 +324,18 @@ export const ProChartKit = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="premarket-toggle"
+            checked={showPremarket}
+            onCheckedChange={setShowPremarket}
+          />
+          <Label htmlFor="premarket-toggle" className="text-sm">
+            Show Premarket
+          </Label>
+        </div>
+        
         <IndicatorPanel 
           selectedIndicators={selectedIndicators}
           onIndicatorChange={handleIndicatorChange}
