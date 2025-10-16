@@ -36,62 +36,74 @@ export const ProChartKit = ({
 
   // Initialize chart
   useEffect(() => {
-    if (!containerRef.current) return;
+    console.log("🎨 ProChartKit useEffect triggered", { symbol, interval, theme, hasContainer: !!containerRef.current });
+    
+    if (!containerRef.current) {
+      console.error("❌ Container ref is null!");
+      return;
+    }
 
-    const chart = init(containerRef.current, {
-      styles: {
-        grid: {
-          show: true,
-          horizontal: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
-          vertical: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" }
-        },
-        candle: {
-          type: CandleType.CandleSolid,
-          bar: {
-            upColor: "#26a69a",
-            downColor: "#ef5350",
-            upBorderColor: "#26a69a",
-            downBorderColor: "#ef5350",
-            upWickColor: "#26a69a",
-            downWickColor: "#ef5350"
+    try {
+      console.log("🚀 Initializing chart...");
+      const chart = init(containerRef.current, {
+        styles: {
+          grid: {
+            show: true,
+            horizontal: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
+            vertical: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" }
           },
-          tooltip: {
-            text: {
-              size: 12,
-              color: theme === "dark" ? "#ffffff" : "#000000"
+          candle: {
+            type: CandleType.CandleSolid,
+            bar: {
+              upColor: "#26a69a",
+              downColor: "#ef5350",
+              upBorderColor: "#26a69a",
+              downBorderColor: "#ef5350",
+              upWickColor: "#26a69a",
+              downWickColor: "#ef5350"
+            },
+            tooltip: {
+              text: {
+                size: 12,
+                color: theme === "dark" ? "#ffffff" : "#000000"
+              }
+            }
+          },
+          xAxis: {
+            axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+            tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+            tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
+          },
+          yAxis: {
+            axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+            tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+            tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
+          },
+          separator: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
+          crosshair: {
+            horizontal: {
+              line: { color: theme === "dark" ? "#888888" : "#666666" }
+            },
+            vertical: {
+              line: { color: theme === "dark" ? "#888888" : "#666666" }
             }
           }
         },
-        xAxis: {
-          axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-          tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-          tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
-        },
-        yAxis: {
-          axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-          tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-          tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
-        },
-        separator: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
-        crosshair: {
-          horizontal: {
-            line: { color: theme === "dark" ? "#888888" : "#666666" }
-          },
-          vertical: {
-            line: { color: theme === "dark" ? "#888888" : "#666666" }
+        customApi: {
+          formatDate: (timestamp: number) => {
+            const date = new Date(timestamp);
+            return date.toLocaleDateString() + " " + date.toLocaleTimeString();
           }
         }
-      },
-      customApi: {
-        formatDate: (timestamp: number) => {
-          const date = new Date(timestamp);
-          return date.toLocaleDateString() + " " + date.toLocaleTimeString();
-        }
-      }
-    });
+      });
 
-    chartRef.current = chart;
-    fetchAndLoadData();
+      console.log("✅ Chart initialized successfully");
+      chartRef.current = chart;
+      fetchAndLoadData();
+    } catch (error) {
+      console.error("❌ Failed to initialize chart:", error);
+      setLoading(false);
+    }
 
     return () => {
       unsubRef.current?.();
