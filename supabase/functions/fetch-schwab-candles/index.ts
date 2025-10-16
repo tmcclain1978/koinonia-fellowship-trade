@@ -134,16 +134,16 @@ serve(async (req) => {
       }
     }
 
-    // No access token available, use mock data
-    console.log('No access token available, using mock data');
+    // No access token available, use mock data with simulated live updates
+    console.log('No access token available, using mock data with live simulation');
     
     // Generate realistic mock candle data
     const now = Date.now();
     const mockCandles = [];
     let basePrice = 150;
     
-    // Generate 100 candles for demo
-    for (let i = 100; i >= 0; i--) {
+    // Generate historical candles (past 100 minutes)
+    for (let i = 101; i >= 1; i--) {
       const time = Math.floor((now - (i * 60 * 1000)) / 1000); // 1-minute intervals
       const variation = (Math.random() - 0.5) * 5;
       const open = basePrice;
@@ -163,6 +163,20 @@ serve(async (req) => {
       
       basePrice = close;
     }
+    
+    // Add current candle with live-like movement
+    const currentTime = Math.floor(now / 1000);
+    const currentVariation = (Math.random() - 0.5) * 3;
+    const currentOpen = basePrice;
+    const currentClose = basePrice + currentVariation;
+    mockCandles.push({
+      time: currentTime,
+      open: parseFloat(currentOpen.toFixed(2)),
+      high: parseFloat((Math.max(currentOpen, currentClose) + Math.random() * 1.5).toFixed(2)),
+      low: parseFloat((Math.min(currentOpen, currentClose) - Math.random() * 1.5).toFixed(2)),
+      close: parseFloat(currentClose.toFixed(2)),
+      volume: Math.floor(Math.random() * 500000) + 50000,
+    });
     
     console.log(`Generated ${mockCandles.length} mock candles`);
     
