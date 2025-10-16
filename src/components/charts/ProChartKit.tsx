@@ -288,16 +288,6 @@ export const ProChartKit = ({
     return configs[indicator];
   };
 
-  if (loading) {
-    return (
-      <Card className="p-8" style={{ height: `${height}px` }}>
-        <div className="flex items-center justify-center h-full">
-          <Loader2 className="w-8 h-8 animate-spin" />
-        </div>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -313,6 +303,11 @@ export const ProChartKit = ({
       </div>
 
       <Card className="relative p-0 overflow-hidden">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-20">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        )}
         <div 
           ref={containerRef} 
           style={{ width: "100%", height: `${height}px` }}
