@@ -319,6 +319,7 @@ const Settings = () => {
                         setCredentials({ ...credentials, schwab_client_id: e.target.value })
                       }
                       placeholder="Enter your Schwab Client ID"
+                      autoComplete="off"
                     />
                   </div>
                   <div className="space-y-2">
@@ -331,8 +332,49 @@ const Settings = () => {
                         setCredentials({ ...credentials, schwab_client_secret: e.target.value })
                       }
                       placeholder="Enter your Schwab Client Secret"
+                      autoComplete="off"
                     />
                   </div>
+                  
+                  <Button 
+                    variant="destructive"
+                    size="sm"
+                    onClick={async () => {
+                      if (!confirm('This will delete all saved credentials and disconnect your account. Continue?')) {
+                        return;
+                      }
+                      try {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (user) {
+                          await supabase
+                            .from('user_api_credentials')
+                            .delete()
+                            .eq('user_id', user.id);
+                          
+                          setCredentials({
+                            ...credentials,
+                            schwab_client_id: "",
+                            schwab_client_secret: "",
+                          });
+                          setHasRefreshToken(false);
+                          
+                          toast({
+                            title: "Success",
+                            description: "All credentials cleared. Please enter new credentials and save.",
+                          });
+                        }
+                      } catch (error) {
+                        console.error('Error clearing credentials:', error);
+                        toast({
+                          title: "Error",
+                          description: "Failed to clear credentials",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                  >
+                    Clear All Credentials
+                  </Button>
 
                   <Alert>
                     <AlertDescription className="flex items-start gap-2">
