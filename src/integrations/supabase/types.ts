@@ -86,6 +86,59 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_decisions: {
+        Row: {
+          analysis_data: Json | null
+          confidence: number | null
+          created_at: string
+          decision_type: string
+          executed: boolean | null
+          executed_at: string | null
+          execution_result: Json | null
+          id: string
+          reasoning: string | null
+          session_id: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          analysis_data?: Json | null
+          confidence?: number | null
+          created_at?: string
+          decision_type: string
+          executed?: boolean | null
+          executed_at?: string | null
+          execution_result?: Json | null
+          id?: string
+          reasoning?: string | null
+          session_id: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          analysis_data?: Json | null
+          confidence?: number | null
+          created_at?: string
+          decision_type?: string
+          executed?: boolean | null
+          executed_at?: string | null
+          execution_result?: Json | null
+          id?: string
+          reasoning?: string | null
+          session_id?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_decisions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "bot_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_learning_insights: {
         Row: {
           avg_discipline_score: number | null
@@ -222,6 +275,104 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      bot_performance_metrics: {
+        Row: {
+          cash_balance: number | null
+          created_at: string
+          daily_pnl: number | null
+          id: string
+          metrics: Json | null
+          portfolio_value: number | null
+          positions_count: number | null
+          session_id: string
+          timestamp: string
+          total_pnl: number | null
+          user_id: string
+          win_rate: number | null
+        }
+        Insert: {
+          cash_balance?: number | null
+          created_at?: string
+          daily_pnl?: number | null
+          id?: string
+          metrics?: Json | null
+          portfolio_value?: number | null
+          positions_count?: number | null
+          session_id: string
+          timestamp?: string
+          total_pnl?: number | null
+          user_id: string
+          win_rate?: number | null
+        }
+        Update: {
+          cash_balance?: number | null
+          created_at?: string
+          daily_pnl?: number | null
+          id?: string
+          metrics?: Json | null
+          portfolio_value?: number | null
+          positions_count?: number | null
+          session_id?: string
+          timestamp?: string
+          total_pnl?: number | null
+          user_id?: string
+          win_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_performance_metrics_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "bot_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_sessions: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          failed_trades: number | null
+          id: string
+          mode: string
+          started_at: string
+          status: string
+          successful_trades: number | null
+          total_pnl: number | null
+          total_trades: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          failed_trades?: number | null
+          id?: string
+          mode: string
+          started_at?: string
+          status: string
+          successful_trades?: number | null
+          total_pnl?: number | null
+          total_trades?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          failed_trades?: number | null
+          id?: string
+          mode?: string
+          started_at?: string
+          status?: string
+          successful_trades?: number | null
+          total_pnl?: number | null
+          total_trades?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       bot_strategy_stats: {
         Row: {

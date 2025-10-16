@@ -100,6 +100,16 @@ const Navigation = () => {
                 Paper Trading
               </Link>
               <Link 
+                to="/bot-testing" 
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/bot-testing" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Bot Testing
+              </Link>
+              <Link 
                 to="/analytics" 
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/analytics" 
@@ -193,6 +203,17 @@ const Navigation = () => {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Paper Trading
+                </Link>
+                <Link 
+                  to="/bot-testing" 
+                  className={`text-sm font-medium ${
+                    location.pathname === "/bot-testing" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Bot Testing
                 </Link>
                 <Link 
                   to="/analytics" 
