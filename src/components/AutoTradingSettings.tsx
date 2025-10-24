@@ -74,6 +74,8 @@ const AutoTradingSettings = () => {
           max_daily_trades: settings.max_daily_trades,
           risk_tolerance: settings.risk_tolerance,
           allowed_symbols: settings.allowed_symbols,
+        }, {
+          onConflict: 'user_id'
         });
 
       if (error) throw error;
