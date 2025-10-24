@@ -21,6 +21,7 @@ import Pricing from "./pages/Pricing";
 import TradingBot from "./pages/TradingBot";
 import BotLearning from "./pages/BotLearning";
 import BotTesting from "./pages/BotTesting";
+import PocketOption from "./pages/PocketOption";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
           <Route path="/trading-bot" element={<TradingBot />} />
           <Route path="/bot-learning" element={<BotLearning />} />
           <Route path="/bot-testing" element={<BotTesting />} />
+          <Route path="/pocketoption" element={<PocketOption />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/education" element={<Education />} />
           <Route path="/podcast" element={<Podcast />} />

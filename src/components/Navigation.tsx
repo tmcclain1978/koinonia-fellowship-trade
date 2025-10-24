@@ -110,7 +110,17 @@ const Navigation = () => {
                 Bot Testing
               </Link>
               <Link 
-                to="/analytics" 
+                to="/pocketoption" 
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/pocketoption" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                PocketOption
+              </Link>
+              <Link 
+                to="/analytics"
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/analytics" 
                     ? "text-primary" 
@@ -216,7 +226,18 @@ const Navigation = () => {
                   Bot Testing
                 </Link>
                 <Link 
-                  to="/analytics" 
+                  to="/pocketoption" 
+                  className={`text-sm font-medium ${
+                    location.pathname === "/pocketoption" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  PocketOption
+                </Link>
+                <Link 
+                  to="/analytics"
                   className={`text-sm font-medium ${
                     location.pathname === "/analytics" 
                       ? "text-primary" 

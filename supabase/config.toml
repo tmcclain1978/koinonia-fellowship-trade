@@ -39,6 +39,15 @@ verify_jwt = false
 [functions.check-pdt-status]
 verify_jwt = false
 
+[functions.test-pocketoption-connection]
+verify_jwt = true
+
+[functions.analyze-pocketoption-pattern]
+verify_jwt = true
+
+[functions.execute-pocketoption-trade]
+verify_jwt = true
+
 [functions.execute-paper-trade]
 verify_jwt = true
 

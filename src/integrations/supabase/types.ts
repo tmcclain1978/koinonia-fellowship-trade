@@ -574,6 +574,107 @@ export type Database = {
         }
         Relationships: []
       }
+      pocketoption_patterns: {
+        Row: {
+          accuracy_rate: number
+          confidence: number
+          created_at: string
+          expires_at: string
+          id: string
+          pair: string
+          pattern_type: string
+          predicted_at: string
+          predicted_direction: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accuracy_rate?: number
+          confidence: number
+          created_at?: string
+          expires_at: string
+          id?: string
+          pair: string
+          pattern_type: string
+          predicted_at?: string
+          predicted_direction: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accuracy_rate?: number
+          confidence?: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          pair?: string
+          pattern_type?: string
+          predicted_at?: string
+          predicted_direction?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pocketoption_trades: {
+        Row: {
+          amount: number
+          closed_at: string | null
+          created_at: string
+          direction: string
+          duration: number
+          entry_price: number
+          executed_at: string
+          exit_price: number | null
+          id: string
+          pair: string
+          pattern_id: string | null
+          profit_loss: number | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          closed_at?: string | null
+          created_at?: string
+          direction: string
+          duration: number
+          entry_price: number
+          executed_at?: string
+          exit_price?: number | null
+          id?: string
+          pair: string
+          pattern_id?: string | null
+          profit_loss?: number | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          closed_at?: string | null
+          created_at?: string
+          direction?: string
+          duration?: number
+          entry_price?: number
+          executed_at?: string
+          exit_price?: number | null
+          id?: string
+          pair?: string
+          pattern_id?: string | null
+          profit_loss?: number | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pocketoption_trades_pattern_id_fkey"
+            columns: ["pattern_id"]
+            isOneToOne: false
+            referencedRelation: "pocketoption_patterns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       podcast_chat_messages: {
         Row: {
           created_at: string
@@ -921,6 +1022,8 @@ export type Database = {
           ib_access_token: string | null
           ib_account_id: string | null
           id: string
+          pocketoption_api_key: string | null
+          pocketoption_ssid: string | null
           schwab_client_id: string | null
           schwab_client_secret: string | null
           schwab_refresh_token: string | null
@@ -946,6 +1049,8 @@ export type Database = {
           ib_access_token?: string | null
           ib_account_id?: string | null
           id?: string
+          pocketoption_api_key?: string | null
+          pocketoption_ssid?: string | null
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
           schwab_refresh_token?: string | null
@@ -971,6 +1076,8 @@ export type Database = {
           ib_access_token?: string | null
           ib_account_id?: string | null
           id?: string
+          pocketoption_api_key?: string | null
+          pocketoption_ssid?: string | null
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
           schwab_refresh_token?: string | null
@@ -1083,10 +1190,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
       }
-      has_premium_access: {
-        Args: { _user_id: string }
-        Returns: boolean
-      }
+      has_premium_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
