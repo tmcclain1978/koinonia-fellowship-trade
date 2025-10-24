@@ -86,7 +86,9 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
   };
 
   const saveCredentials = async () => {
-    if (!ssid) {
+    const trimmedSsid = ssid.trim();
+    
+    if (!trimmedSsid) {
       toast({
         title: "Missing SSID",
         description: "Please enter your SSID",
@@ -95,18 +97,44 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
       return;
     }
 
+    // Skip validation for masked values
+    if (trimmedSsid !== "••••••••••••") {
+      // Validate format before saving
+      if (!trimmedSsid.startsWith('42["auth",') && !trimmedSsid.startsWith('42["user_init",')) {
+        toast({
+          title: "Invalid SSID format",
+          description: "SSID must start with 42[\"auth\", or 42[\"user_init\",",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Try to parse the JSON structure
+      try {
+        const jsonPart = trimmedSsid.substring(2); // Remove '42' prefix
+        JSON.parse(jsonPart);
+      } catch {
+        toast({
+          title: "Invalid SSID format",
+          description: "SSID contains invalid JSON structure",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
       // Only update if not showing masked values
-      if (ssid !== "••••••••••••") {
+      if (trimmedSsid !== "••••••••••••") {
         const { error } = await supabase
           .from("user_api_credentials")
           .upsert({
             user_id: session.user.id,
-            pocketoption_ssid: ssid,
+            pocketoption_ssid: trimmedSsid,
           }, {
             onConflict: 'user_id'
           });
