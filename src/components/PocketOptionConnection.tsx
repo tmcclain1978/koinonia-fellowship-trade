@@ -175,7 +175,7 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">
-              Format: 42["auth",{"{"}...{"}"}]
+              Format: 42["user_init",{"{"}...{"}"}] or 42["auth",{"{"}...{"}"}]
             </p>
           </div>
 
@@ -207,8 +207,8 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
             <li>Go to the Network tab</li>
             <li>Filter by "WS" (WebSocket)</li>
             <li>Look for a connection to socket.io</li>
-            <li>Find a message starting with <code className="bg-muted px-1 rounded">42["auth",</code></li>
-            <li>Copy the entire message (it will look like: <code className="bg-muted px-1 rounded">42["auth",{"{"}"session":"..."{"}"}]</code>)</li>
+            <li>Find a message starting with <code className="bg-muted px-1 rounded">42["user_init",</code> or <code className="bg-muted px-1 rounded">42["auth",</code></li>
+            <li>Copy the entire message (example: <code className="bg-muted px-1 rounded">42["user_init",{"{"}"id":123,"secret":"..."{"}"}]</code>)</li>
             <li>Paste it here and click "Save Credentials"</li>
           </ol>
         </div>

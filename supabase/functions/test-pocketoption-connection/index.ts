@@ -17,9 +17,9 @@ serve(async (req) => {
       throw new Error("Missing SSID");
     }
 
-    // Validate SSID format
-    if (!ssid.startsWith('42["auth",')) {
-      throw new Error("Invalid SSID format. It should start with 42[\"auth\",");
+    // Validate SSID format - accept both auth and user_init formats
+    if (!ssid.startsWith('42["auth",') && !ssid.startsWith('42["user_init",')) {
+      throw new Error("Invalid SSID format. It should start with 42[\"auth\", or 42[\"user_init\",");
     }
 
     // Try to parse the SSID to validate JSON structure
