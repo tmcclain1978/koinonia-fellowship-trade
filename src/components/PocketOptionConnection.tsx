@@ -57,9 +57,28 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
 
     setTestingConnection(true);
     try {
+      let testSsid = ssid;
+      
+      // If showing masked value, fetch the real SSID from database
+      if (ssid === "••••••••••••") {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not authenticated");
+
+        const { data, error } = await supabase
+          .from("user_api_credentials")
+          .select("pocketoption_ssid")
+          .eq("user_id", session.user.id)
+          .single();
+
+        if (error) throw error;
+        if (!data?.pocketoption_ssid) throw new Error("No saved SSID found");
+        
+        testSsid = data.pocketoption_ssid;
+      }
+
       // Test connection via edge function
       const { data, error } = await supabase.functions.invoke("test-pocketoption-connection", {
-        body: { ssid },
+        body: { ssid: testSsid },
       });
 
       if (error) throw error;
