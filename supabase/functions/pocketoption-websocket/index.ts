@@ -23,11 +23,16 @@ serve(async (req) => {
   }
 
   try {
+    console.log("WebSocket connection request received");
+    
     // Get token from query parameter
     const url = new URL(req.url);
     const token = url.searchParams.get('token');
     
+    console.log("Token present:", !!token);
+    
     if (!token) {
+      console.error("No authentication token provided");
       throw new Error("No authentication token provided");
     }
 
@@ -44,8 +49,11 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
+      console.error("Authentication failed:", authError);
       throw new Error("Not authenticated");
     }
+    
+    console.log("User authenticated:", user.id);
 
     // Get user's PocketOption credentials
     const { data: credentials, error: credError } = await supabaseClient

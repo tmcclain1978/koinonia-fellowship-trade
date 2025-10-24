@@ -31,6 +31,8 @@ export const usePocketOptionWebSocket = () => {
         throw new Error('Not authenticated');
       }
 
+      console.log('Session token:', session.access_token ? 'Present' : 'Missing');
+
       // Get Supabase project details from environment
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const projectRef = supabaseUrl.split('//')[1].split('.')[0];
@@ -38,15 +40,20 @@ export const usePocketOptionWebSocket = () => {
       // Construct WebSocket URL with auth token as query parameter
       const wsUrl = `wss://${projectRef}.supabase.co/functions/v1/pocketoption-websocket?token=${session.access_token}`;
       
-      console.log('Connecting to WebSocket:', wsUrl);
+      console.log('Connecting to WebSocket...');
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connection opened');
+        console.log('WebSocket connection opened successfully');
+        setIsConnected(true);
         // Send connect message to initiate PocketOption connection
         ws.send(JSON.stringify({ type: 'connect' }));
+        toast({
+          title: 'WebSocket Connected',
+          description: 'Establishing connection to PocketOption...',
+        });
       };
 
       ws.onmessage = (event) => {
@@ -101,10 +108,14 @@ export const usePocketOptionWebSocket = () => {
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('WebSocket error details:', {
+          error,
+          readyState: ws.readyState,
+          url: wsUrl,
+        });
         toast({
           title: 'WebSocket Error',
-          description: 'Connection error occurred',
+          description: 'Failed to connect. Check console for details.',
           variant: 'destructive',
         });
       };
