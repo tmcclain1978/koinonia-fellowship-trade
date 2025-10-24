@@ -48,6 +48,9 @@ verify_jwt = true
 [functions.execute-pocketoption-trade]
 verify_jwt = true
 
+[functions.pocketoption-websocket]
+verify_jwt = true
+
 [functions.execute-paper-trade]
 verify_jwt = true
 

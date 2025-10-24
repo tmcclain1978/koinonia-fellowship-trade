@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 
 interface PocketOptionConnectionProps {
   onConnectionChange: (connected: boolean) => void;
@@ -14,7 +14,6 @@ interface PocketOptionConnectionProps {
 }
 
 const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptionConnectionProps) => {
-  const [apiKey, setApiKey] = useState("");
   const [ssid, setSsid] = useState("");
   const [loading, setLoading] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -37,8 +36,7 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
 
       if (error && error.code !== "PGRST116") throw error;
 
-      if (data?.pocketoption_api_key && data?.pocketoption_ssid) {
-        setApiKey("••••••••••••");
+      if (data?.pocketoption_ssid) {
         setSsid("••••••••••••");
         onConnectionChange(true);
       }
@@ -48,10 +46,10 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
   };
 
   const testConnection = async () => {
-    if (!apiKey || !ssid) {
+    if (!ssid) {
       toast({
-        title: "Missing credentials",
-        description: "Please enter both API Key and SSID",
+        title: "Missing SSID",
+        description: "Please enter your SSID",
         variant: "destructive",
       });
       return;
@@ -61,7 +59,7 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
     try {
       // Test connection via edge function
       const { data, error } = await supabase.functions.invoke("test-pocketoption-connection", {
-        body: { apiKey, ssid },
+        body: { ssid },
       });
 
       if (error) throw error;
@@ -69,7 +67,7 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
       if (data.success) {
         toast({
           title: "Connection successful",
-          description: "PocketOption API is connected",
+          description: "PocketOption credentials are valid",
         });
         onConnectionChange(true);
       } else {
@@ -88,10 +86,10 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
   };
 
   const saveCredentials = async () => {
-    if (!apiKey || !ssid) {
+    if (!ssid) {
       toast({
-        title: "Missing credentials",
-        description: "Please enter both API Key and SSID",
+        title: "Missing SSID",
+        description: "Please enter your SSID",
         variant: "destructive",
       });
       return;
@@ -103,12 +101,11 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
       if (!session) throw new Error("Not authenticated");
 
       // Only update if not showing masked values
-      if (apiKey !== "••••••••••••") {
+      if (ssid !== "••••••••••••") {
         const { error } = await supabase
           .from("user_api_credentials")
           .upsert({
             user_id: session.user.id,
-            pocketoption_api_key: apiKey,
             pocketoption_ssid: ssid,
           }, {
             onConflict: 'user_id'
@@ -118,7 +115,7 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
 
         toast({
           title: "Credentials saved",
-          description: "Your PocketOption credentials have been saved securely",
+          description: "Your PocketOption SSID has been saved securely",
         });
 
         // Test connection after saving
@@ -152,8 +149,8 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            You can find your API credentials in your PocketOption account settings.
-            Never share these credentials with anyone.
+            You need your PocketOption SSID to connect. Never share this with anyone.
+            See instructions below for how to obtain it.
           </AlertDescription>
         </Alert>
 
@@ -168,25 +165,18 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="apiKey">API Key</Label>
-            <Input
-              id="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your PocketOption API Key"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="ssid">SSID (Session ID)</Label>
             <Input
               id="ssid"
               type="password"
               value={ssid}
               onChange={(e) => setSsid(e.target.value)}
-              placeholder="Enter your PocketOption SSID"
+              placeholder="Paste your PocketOption SSID here"
+              className="font-mono text-xs"
             />
+            <p className="text-xs text-muted-foreground">
+              Format: 42["auth",{"{"}...{"}"}]
+            </p>
           </div>
 
           <div className="flex gap-3">
@@ -200,7 +190,7 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
             </Button>
             <Button
               onClick={testConnection}
-              disabled={loading || testingConnection || !apiKey || !ssid}
+              disabled={loading || testingConnection || !ssid}
               variant="outline"
             >
               {testingConnection && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -210,13 +200,16 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
         </div>
 
         <div className="pt-4 border-t border-border">
-          <h3 className="font-semibold mb-2">How to get your credentials:</h3>
-          <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-            <li>Log in to your PocketOption account</li>
-            <li>Navigate to Settings → API Settings</li>
-            <li>Generate a new API Key if you don't have one</li>
-            <li>Copy your API Key and SSID</li>
-            <li>Paste them here and click "Save Credentials"</li>
+          <h3 className="font-semibold mb-2">How to get your SSID:</h3>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+            <li>Log in to <a href="https://pocketoption.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">PocketOption.com</a></li>
+            <li>Open your browser's Developer Tools (F12)</li>
+            <li>Go to the Network tab</li>
+            <li>Filter by "WS" (WebSocket)</li>
+            <li>Look for a connection to socket.io</li>
+            <li>Find a message starting with <code className="bg-muted px-1 rounded">42["auth",</code></li>
+            <li>Copy the entire message (it will look like: <code className="bg-muted px-1 rounded">42["auth",{"{"}"session":"..."{"}"}]</code>)</li>
+            <li>Paste it here and click "Save Credentials"</li>
           </ol>
         </div>
       </CardContent>

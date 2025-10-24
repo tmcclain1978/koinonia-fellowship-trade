@@ -11,39 +11,37 @@ serve(async (req) => {
   }
 
   try {
-    const { apiKey, ssid } = await req.json();
+    const { ssid } = await req.json();
 
-    if (!apiKey || !ssid) {
-      throw new Error("Missing API Key or SSID");
+    if (!ssid) {
+      throw new Error("Missing SSID");
     }
 
-    // Test connection to PocketOption API
-    // Note: Replace with actual PocketOption API endpoint
-    const response = await fetch("https://api.po.trade/api/v2/profile", {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-        "X-SSID": ssid,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Connection failed: ${response.statusText}`);
+    // Validate SSID format
+    if (!ssid.startsWith('42["auth",')) {
+      throw new Error("Invalid SSID format. It should start with 42[\"auth\",");
     }
 
-    const data = await response.json();
-    console.log("PocketOption connection test successful:", data);
+    // Try to parse the SSID to validate JSON structure
+    try {
+      const jsonPart = ssid.substring(2); // Remove '42' prefix
+      JSON.parse(jsonPart);
+    } catch {
+      throw new Error("Invalid SSID format. Unable to parse JSON structure");
+    }
+
+    console.log("SSID validation successful");
 
     return new Response(
-      JSON.stringify({ success: true, message: "Connection successful" }),
+      JSON.stringify({ success: true, message: "SSID format is valid" }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error("PocketOption connection error:", error);
+    console.error("SSID validation error:", error);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        message: error.message || "Connection failed" 
+        message: error.message || "Validation failed" 
       }),
       { 
         status: 400,

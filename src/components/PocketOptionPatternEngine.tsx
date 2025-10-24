@@ -3,9 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, TrendingUp, TrendingDown, Activity, BarChart3 } from "lucide-react";
+import { usePocketOptionWebSocket } from "@/hooks/usePocketOptionWebSocket";
+import { Loader2, TrendingUp, TrendingDown, Activity, BarChart3, Wifi, WifiOff } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Pattern {
@@ -35,11 +39,31 @@ const PocketOptionPatternEngine = () => {
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [liveTradingEnabled, setLiveTradingEnabled] = useState(false);
   const { toast } = useToast();
+  
+  const { 
+    isConnected, 
+    balance, 
+    prices, 
+    connect, 
+    disconnect, 
+    executeTrade,
+    changeBalanceMode,
+    subscribeToCandles 
+  } = usePocketOptionWebSocket();
 
   useEffect(() => {
     loadPatterns();
   }, [selectedPair]);
+
+  useEffect(() => {
+    // Subscribe to price updates for selected pair when connected
+    if (isConnected && selectedPair) {
+      const assetCode = selectedPair.replace('/', '');
+      subscribeToCandles(assetCode);
+    }
+  }, [isConnected, selectedPair, subscribeToCandles]);
 
   const loadPatterns = async () => {
     setLoading(true);
@@ -87,22 +111,29 @@ const PocketOptionPatternEngine = () => {
     }
   };
 
-  const executeTrade = async (pattern: Pattern) => {
+  const handleExecuteTrade = async (pattern: Pattern) => {
+    if (!isConnected) {
+      toast({
+        title: "Not Connected",
+        description: "Please connect to PocketOption WebSocket first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      const { error } = await supabase.functions.invoke("execute-pocketoption-trade", {
-        body: {
-          pair: pattern.pair,
-          direction: pattern.predicted_direction,
-          amount: 10, // Default amount
-          duration: 60, // 60 seconds
-        },
+      const assetCode = pattern.pair.replace('/', '');
+      
+      executeTrade({
+        asset: assetCode,
+        action: pattern.predicted_direction === 'up' ? 'call' : 'put',
+        amount: 10, // Default amount
+        duration: 60, // 60 seconds
       });
 
-      if (error) throw error;
-
       toast({
-        title: "Trade executed",
-        description: `${pattern.predicted_direction.toUpperCase()} position opened on ${pattern.pair}`,
+        title: "Trade Sent",
+        description: `${pattern.predicted_direction.toUpperCase()} position for ${pattern.pair}`,
       });
     } catch (error: any) {
       toast({
@@ -117,12 +148,52 @@ const PocketOptionPatternEngine = () => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Pattern Recognition Engine</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Pattern Recognition Engine</span>
+            <div className="flex items-center gap-3">
+              <Badge variant={isConnected ? "default" : "secondary"}>
+                {isConnected ? (
+                  <>
+                    <Wifi className="w-3 h-3 mr-1" />
+                    Connected
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-3 h-3 mr-1" />
+                    Disconnected
+                  </>
+                )}
+              </Badge>
+              {!isConnected ? (
+                <Button onClick={connect} size="sm" variant="outline">
+                  Connect
+                </Button>
+              ) : (
+                <Button onClick={disconnect} size="sm" variant="outline">
+                  Disconnect
+                </Button>
+              )}
+            </div>
+          </CardTitle>
           <CardDescription>
-            AI-powered pattern detection for OTC pairs with repeating behaviors
+            AI-powered pattern detection for OTC pairs with real-time WebSocket connection
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {balance !== null && (
+            <Alert>
+              <Activity className="h-4 w-4" />
+              <AlertDescription>
+                Current Balance: <span className="font-bold">${balance.toFixed(2)}</span>
+                {prices[selectedPair.replace('/', '')] && (
+                  <span className="ml-4">
+                    {selectedPair}: <span className="font-bold">${prices[selectedPair.replace('/', '')].toFixed(5)}</span>
+                  </span>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex items-center gap-4">
             <div className="flex-1">
               <Select value={selectedPair} onValueChange={setSelectedPair}>
@@ -138,7 +209,23 @@ const PocketOptionPatternEngine = () => {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={analyzePattern} disabled={analyzing}>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="live-trading"
+                checked={liveTradingEnabled}
+                onCheckedChange={(checked) => {
+                  setLiveTradingEnabled(checked);
+                  if (checked && isConnected) {
+                    changeBalanceMode('demo');
+                  }
+                }}
+                disabled={!isConnected}
+              />
+              <Label htmlFor="live-trading" className="text-sm">
+                Live Trading Mode
+              </Label>
+            </div>
+            <Button onClick={analyzePattern} disabled={analyzing || !isConnected}>
               {analyzing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               <BarChart3 className="w-4 h-4 mr-2" />
               Analyze Patterns
@@ -240,8 +327,12 @@ const PocketOptionPatternEngine = () => {
                           Pattern: {pattern.pattern_type}
                         </p>
                       </div>
-                      <Button onClick={() => executeTrade(pattern)} size="sm">
-                        Execute Trade
+                      <Button 
+                        onClick={() => handleExecuteTrade(pattern)} 
+                        size="sm"
+                        disabled={!isConnected || !liveTradingEnabled}
+                      >
+                        {liveTradingEnabled ? 'Execute Trade' : 'Enable Live Trading'}
                       </Button>
                     </div>
 
