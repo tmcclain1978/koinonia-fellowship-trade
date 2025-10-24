@@ -127,6 +127,8 @@ serve(async (req) => {
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', state);
+    // Schwab requires scope parameter - common scopes for trading
+    authUrl.searchParams.set('scope', 'api');
 
     console.log('Generated auth URL:', authUrl.toString());
 
