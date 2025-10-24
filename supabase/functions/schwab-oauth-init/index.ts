@@ -121,14 +121,12 @@ serve(async (req) => {
     });
     
     // Build the auth URL - use the standard OAuth endpoint
-    // Don't try to follow redirects, just send user directly to the auth endpoint
+    // Schwab OAuth doesn't require scope parameter
     const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', state);
-    // Schwab requires scope parameter - common scopes for trading
-    authUrl.searchParams.set('scope', 'api');
 
     console.log('Generated auth URL:', authUrl.toString());
 
