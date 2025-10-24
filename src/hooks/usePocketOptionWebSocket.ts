@@ -35,8 +35,8 @@ export const usePocketOptionWebSocket = () => {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const projectRef = supabaseUrl.split('//')[1].split('.')[0];
       
-      // Construct WebSocket URL to edge function
-      const wsUrl = `wss://${projectRef}.supabase.co/functions/v1/pocketoption-websocket`;
+      // Construct WebSocket URL with auth token as query parameter
+      const wsUrl = `wss://${projectRef}.supabase.co/functions/v1/pocketoption-websocket?token=${session.access_token}`;
       
       console.log('Connecting to WebSocket:', wsUrl);
 
