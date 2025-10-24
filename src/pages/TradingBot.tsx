@@ -148,6 +148,8 @@ const TradingBot = () => {
         .upsert({
           user_id: session.user.id,
           enabled: newStatus,
+        }, {
+          onConflict: 'user_id'
         });
 
       if (error) throw error;
