@@ -16,6 +16,8 @@ import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { IndicatorSelector } from "@/components/IndicatorSelector";
 import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAnalytics";
 import { PositionsRiskModule } from "@/components/paper-trading/PositionsRiskModule";
+import { LivePriceDisplay } from "@/components/LivePriceDisplay";
+import { StreamingPositionsTracker } from "@/components/StreamingPositionsTracker";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -1259,6 +1261,33 @@ const PaperTrading = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Live Price Display */}
+        <div className="mb-6">
+          <LivePriceDisplay 
+            initialSymbols={[formData.symbol, 'SPY', 'QQQ']}
+          />
+        </div>
+
+        {/* Streaming Positions Tracker */}
+        {openPositions.length > 0 && (
+          <div className="mb-6">
+            <StreamingPositionsTracker 
+              positions={openPositions.map(pos => ({
+                symbol: pos.symbol,
+                quantity: pos.quantity,
+                entryPrice: pos.entryPrice,
+                side: 'long' as const,
+                type: (pos.side === 'CALL' || pos.side === 'PUT') ? 'option' as const : 'stock' as const,
+                optionDetails: (pos.side === 'CALL' || pos.side === 'PUT') ? {
+                  strike: pos.strike,
+                  expiration: pos.expiration,
+                  optionType: pos.side.toLowerCase() as 'call' | 'put',
+                } : undefined,
+              }))}
+            />
+          </div>
+        )}
 
         {/* Positions & Risk Module */}
         <div className="mb-6">
