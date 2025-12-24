@@ -43,6 +43,7 @@ export const SchwabOrderEntry = ({
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(accountHash || "");
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [needsOAuth, setNeedsOAuth] = useState(false);
 
   // Fetch accounts on mount
   useEffect(() => {
@@ -53,8 +54,15 @@ export const SchwabOrderEntry = ({
         if (linkedAccounts.length > 0 && !selectedAccount) {
           setSelectedAccount(linkedAccounts[0].hashValue);
         }
-      } catch (error) {
-        console.log("Using mock accounts for demo");
+        setNeedsOAuth(false);
+      } catch (error: any) {
+        console.log("Schwab OAuth not completed:", error?.message);
+        // Check if OAuth error
+        const errorMsg = error?.message || '';
+        if (errorMsg.includes('OAuth') || errorMsg.includes('access token')) {
+          setNeedsOAuth(true);
+        }
+        // Use demo account
         setAccounts([{ accountNumber: "DEMO-123456", hashValue: "demo-hash-123" }]);
         setSelectedAccount("demo-hash-123");
       }
@@ -209,6 +217,14 @@ export const SchwabOrderEntry = ({
     <Card className="border-border/50">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>Schwab Order Entry</span>
+            {needsOAuth && (
+              <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                Demo Mode
+              </Badge>
+            )}
+          </div>
           <span>Schwab Order Entry</span>
           {quote && (
             <div className="flex items-center gap-2 text-sm font-normal">

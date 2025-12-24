@@ -96,8 +96,18 @@ export const SchwabPortfolio = () => {
       if (showToast) {
         toast({ title: "Portfolio Refreshed", description: "Latest data loaded" });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching portfolio:", error);
+      
+      // Check if it's an OAuth error
+      const errorMsg = error?.message || '';
+      if (errorMsg.includes('OAuth') || errorMsg.includes('access token')) {
+        setPortfolios([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      
       // Use mock data for demo
       const mockPortfolio: PortfolioData = {
         accountNumber: "DEMO-123456",
@@ -194,6 +204,32 @@ export const SchwabPortfolio = () => {
       <Card className="border-border/50">
         <CardContent className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show connection prompt if no portfolios (OAuth not completed)
+  if (portfolios.length === 0) {
+    return (
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Briefcase className="w-5 h-5" />
+            Schwab Portfolio
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Briefcase className="w-16 h-16 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Connect Your Schwab Account</h3>
+            <p className="text-muted-foreground mb-4 max-w-sm">
+              To view your portfolio, positions, and balances, please connect your Schwab account via OAuth in Settings.
+            </p>
+            <Button variant="outline" onClick={() => window.location.href = '/settings'}>
+              Go to Settings
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );
