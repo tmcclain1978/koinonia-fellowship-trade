@@ -20,6 +20,7 @@ import { MultiChartGrid } from "@/components/charts/MultiChartGrid";
 import { SchwabOrderEntry } from "@/components/SchwabOrderEntry";
 import { SchwabPortfolio } from "@/components/SchwabPortfolio";
 import { SchwabLiveQuotes } from "@/components/SchwabLiveQuotes";
+import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -46,6 +47,9 @@ const Trading = () => {
   const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
+  const [chartEntryPrice, setChartEntryPrice] = useState<number | undefined>();
+  const [chartExitPrice, setChartExitPrice] = useState<number | undefined>();
+  const [chartStopLoss, setChartStopLoss] = useState<number | undefined>();
   const [chartIndicators, setChartIndicators] = useState<string[]>([
     "MASimple@tv-basicstudies",
     "RSI@tv-basicstudies",
@@ -368,9 +372,15 @@ const Trading = () => {
     // Set entry price and stop loss on the chart
     if (signal.entryPrice) {
       setLimitPrice(signal.entryPrice.toFixed(2));
+      setChartEntryPrice(signal.entryPrice);
     }
     if (signal.stopLoss) {
       setStopPrice(signal.stopLoss.toFixed(2));
+      setChartStopLoss(signal.stopLoss);
+    }
+    // Set first exit target
+    if (signal.exitPrices?.length > 0) {
+      setChartExitPrice(signal.exitPrices[0].price);
     }
   };
 
@@ -491,21 +501,29 @@ const Trading = () => {
               theme="dark"
               showKoinoniaSignals={true}
               userId={user?.id}
+              entryPrice={chartEntryPrice}
+              exitPrice={chartExitPrice}
+              stopLoss={chartStopLoss}
               onSignalGenerated={(signal) => {
                 console.log("Koinonia signal generated:", signal);
                 if (signal?.signal) {
                   const arrows = [];
                   if (signal.signal.entry_price) {
                     arrows.push({ price: signal.signal.entry_price, type: 'entry' });
+                    setChartEntryPrice(signal.signal.entry_price);
                   }
                   if (signal.signal.targets) {
                     signal.signal.targets.forEach((target: number) => {
                       arrows.push({ price: target, type: 'exit' });
                     });
+                    if (signal.signal.targets[0]) {
+                      setChartExitPrice(signal.signal.targets[0]);
+                    }
                   }
                   setSignalArrows(arrows);
                   if (signal.signal.stop_loss) {
                     setStopPrice(signal.signal.stop_loss.toString());
+                    setChartStopLoss(signal.signal.stop_loss);
                   }
                 }
               }}
@@ -993,6 +1011,11 @@ const Trading = () => {
               initialSymbols={["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", symbol].filter((s, i, a) => a.indexOf(s) === i)}
               onSymbolClick={(sym) => setSymbol(sym)}
             />
+          </div>
+
+          {/* News Sentiment Dashboard */}
+          <div className="mb-6">
+            <NewsSentimentDashboard />
           </div>
 
           {/* Portfolio & Order Entry Side by Side */}

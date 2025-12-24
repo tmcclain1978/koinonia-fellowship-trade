@@ -8,6 +8,7 @@ import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle,
 import AIAnalysis from "@/components/AIAnalysis";
 import TradeSuggestionsCard from "@/components/TradeSuggestionsCard";
 import { useSubscription } from "@/hooks/useSubscription";
+import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -256,6 +257,11 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* News Sentiment Dashboard */}
+        <div className="mb-8">
+          <NewsSentimentDashboard />
         </div>
 
         {/* Trade Suggestions and AI Analysis */}
