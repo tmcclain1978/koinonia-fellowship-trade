@@ -12,13 +12,13 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, interval = '1min', period = 'day' } = await req.json();
+    const { symbol, interval = '1min', period = 'day', startDate, endDate, premarket = false } = await req.json();
 
     if (!symbol) {
       throw new Error('Symbol is required');
     }
 
-    console.log(`Fetching candles for ${symbol} with interval ${interval}`);
+    console.log(`Fetching candles for ${symbol} with interval ${interval}, startDate: ${startDate}, endDate: ${endDate}`);
 
     // Get the authorization header
     const authHeader = req.headers.get('authorization');
@@ -61,7 +61,7 @@ serve(async (req) => {
     if (accessToken) {
       try {
         // Map intervals to Schwab API format
-        const intervalMap: Record<string, { periodType: string; frequencyType: string; frequency: number }> = {
+        const intervalMap: Record<string, { periodType: string; frequencyType: string; frequency: number; period?: number }> = {
           '1': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
           '5': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
           '15': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
@@ -69,23 +69,48 @@ serve(async (req) => {
           '60': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
           '1m': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
           '5m': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
+          'minute': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
+          '5minute': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
+          '15minute': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
+          '30minute': { periodType: 'day', frequencyType: 'minute', frequency: 30 },
+          'hour': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
           '15m': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
           '30m': { periodType: 'day', frequencyType: 'minute', frequency: 30 },
           '1h': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
-          'D': { periodType: 'month', frequencyType: 'daily', frequency: 1 },
-          '1D': { periodType: 'month', frequencyType: 'daily', frequency: 1 },
+          'D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 10 },
+          '1D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 10 },
+          'daily': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 10 },
+          'W': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 20 },
+          '1W': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 20 },
+          'weekly': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 20 },
+          'M': { periodType: 'year', frequencyType: 'monthly', frequency: 1, period: 20 },
+          '1M': { periodType: 'year', frequencyType: 'monthly', frequency: 1, period: 20 },
+          'monthly': { periodType: 'year', frequencyType: 'monthly', frequency: 1, period: 20 },
         };
 
-        const config = intervalMap[interval] || intervalMap['1D'];
+        const config = intervalMap[interval] || intervalMap['daily'];
         
         console.log(`📊 Interval mapping: ${interval} -> ${config.frequencyType} ${config.frequency}`);
         
         const schwabUrl = new URL(`https://api.schwabapi.com/marketdata/v1/pricehistory`);
         schwabUrl.searchParams.append('symbol', symbol);
-        schwabUrl.searchParams.append('periodType', config.periodType);
         schwabUrl.searchParams.append('frequencyType', config.frequencyType);
         schwabUrl.searchParams.append('frequency', config.frequency.toString());
-        schwabUrl.searchParams.append('needExtendedHoursData', 'false');
+        schwabUrl.searchParams.append('needExtendedHoursData', premarket ? 'true' : 'false');
+
+        // If custom date range is provided, use startDate and endDate
+        if (startDate && endDate) {
+          const startMs = new Date(startDate).getTime();
+          const endMs = new Date(endDate).getTime();
+          schwabUrl.searchParams.append('startDate', startMs.toString());
+          schwabUrl.searchParams.append('endDate', endMs.toString());
+          console.log(`Using custom date range: ${startDate} to ${endDate}`);
+        } else {
+          schwabUrl.searchParams.append('periodType', config.periodType);
+          if (config.period) {
+            schwabUrl.searchParams.append('period', config.period.toString());
+          }
+        }
 
         console.log('Calling Schwab API:', schwabUrl.toString());
         
@@ -130,7 +155,133 @@ serve(async (req) => {
         }
       } catch (schwabError) {
         console.error('Error fetching from Schwab:', schwabError);
-        throw schwabError;
+        // Fall through to mock data
+      }
+    }
+
+    // No access token available or Schwab failed, try Polygon.io for historical data
+    const polygonApiKey = Deno.env.get('POLYGON_API_KEY');
+    if (polygonApiKey && startDate && endDate) {
+      try {
+        console.log('Trying Polygon.io for historical data...');
+        
+        // Map interval to Polygon format
+        const polygonIntervalMap: Record<string, { multiplier: number; timespan: string }> = {
+          'minute': { multiplier: 1, timespan: 'minute' },
+          '5minute': { multiplier: 5, timespan: 'minute' },
+          '15minute': { multiplier: 15, timespan: 'minute' },
+          '30minute': { multiplier: 30, timespan: 'minute' },
+          'hour': { multiplier: 1, timespan: 'hour' },
+          'daily': { multiplier: 1, timespan: 'day' },
+          'weekly': { multiplier: 1, timespan: 'week' },
+          'monthly': { multiplier: 1, timespan: 'month' },
+          '1D': { multiplier: 1, timespan: 'day' },
+          '1W': { multiplier: 1, timespan: 'week' },
+          '1M': { multiplier: 1, timespan: 'month' },
+        };
+        
+        const polyConfig = polygonIntervalMap[interval] || { multiplier: 1, timespan: 'day' };
+        
+        const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${polyConfig.multiplier}/${polyConfig.timespan}/${startDate}/${endDate}?adjusted=true&sort=asc&limit=50000&apiKey=${polygonApiKey}`;
+        
+        const polygonResponse = await fetch(polygonUrl);
+        
+        if (polygonResponse.ok) {
+          const polygonData = await polygonResponse.json();
+          
+          if (polygonData.results && polygonData.results.length > 0) {
+            const candles = polygonData.results.map((bar: any) => ({
+              time: Math.floor(bar.t / 1000),
+              open: bar.o,
+              high: bar.h,
+              low: bar.l,
+              close: bar.c,
+              volume: bar.v || 0,
+            }));
+            
+            console.log(`Processed ${candles.length} candles from Polygon.io`);
+            
+            return new Response(
+              JSON.stringify({ 
+                data: candles,
+                source: 'polygon',
+                symbol,
+              }),
+              { 
+                status: 200, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          }
+        }
+      } catch (polygonError) {
+        console.error('Error fetching from Polygon:', polygonError);
+      }
+    }
+
+    // Try Alpha Vantage as fallback
+    const alphaVantageKey = Deno.env.get('ALPHA_VANTAGE_API_KEY');
+    if (alphaVantageKey) {
+      try {
+        console.log('Trying Alpha Vantage for historical data...');
+        
+        const functionType = interval.includes('D') || interval === 'daily' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
+        let avUrl = `https://www.alphavantage.co/query?function=${functionType}&symbol=${symbol}&apikey=${alphaVantageKey}&outputsize=full`;
+        
+        if (functionType === 'TIME_SERIES_INTRADAY') {
+          const avIntervalMap: Record<string, string> = {
+            'minute': '1min',
+            '5minute': '5min',
+            '15minute': '15min',
+            '30minute': '30min',
+            'hour': '60min',
+          };
+          avUrl += `&interval=${avIntervalMap[interval] || '5min'}`;
+        }
+        
+        const avResponse = await fetch(avUrl);
+        
+        if (avResponse.ok) {
+          const avData = await avResponse.json();
+          const timeSeriesKey = Object.keys(avData).find(k => k.includes('Time Series'));
+          
+          if (timeSeriesKey && avData[timeSeriesKey]) {
+            const timeSeries = avData[timeSeriesKey];
+            const candles = Object.entries(timeSeries)
+              .map(([datetime, values]: [string, any]) => ({
+                time: Math.floor(new Date(datetime).getTime() / 1000),
+                open: parseFloat(values['1. open']),
+                high: parseFloat(values['2. high']),
+                low: parseFloat(values['3. low']),
+                close: parseFloat(values['4. close']),
+                volume: parseInt(values['5. volume'] || '0'),
+              }))
+              .filter(candle => {
+                if (!startDate || !endDate) return true;
+                const candleDate = new Date(candle.time * 1000);
+                return candleDate >= new Date(startDate) && candleDate <= new Date(endDate);
+              })
+              .sort((a, b) => a.time - b.time);
+            
+            if (candles.length > 0) {
+              console.log(`Processed ${candles.length} candles from Alpha Vantage`);
+              
+              return new Response(
+                JSON.stringify({ 
+                  data: candles,
+                  source: 'alphavantage',
+                  symbol,
+                }),
+                { 
+                  status: 200, 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                }
+              );
+            }
+          }
+        }
+      } catch (avError) {
+        console.error('Error fetching from Alpha Vantage:', avError);
       }
     }
 

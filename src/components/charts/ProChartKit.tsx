@@ -9,6 +9,12 @@ import { IndicatorPanel } from "./IndicatorPanel";
 import { DrawingToolbar } from "./DrawingToolbar";
 import { ChartSettings } from "./ChartSettings";
 import { CandleTypeSelector, CandleTypeOption } from "./CandleTypeSelector";
+import { ChartReplayControls } from "./ChartReplayControls";
+import { HistoricalDatePicker } from "./HistoricalDatePicker";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { format } from "date-fns";
 
 interface ProChartKitProps {
   symbol: string;
@@ -46,6 +52,21 @@ export const ProChartKit = ({
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
   const lastCandleTimestampRef = useRef<number | null>(null);
+
+  // Replay state
+  const [replayMode, setReplayMode] = useState(false);
+  const [allCandleData, setAllCandleData] = useState<KLineData[]>([]);
+  const [replayIndex, setReplayIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const replayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [showReplayControls, setShowReplayControls] = useState(false);
+
+  // Historical data state
+  const [historicalStartDate, setHistoricalStartDate] = useState<Date | undefined>();
+  const [historicalEndDate, setHistoricalEndDate] = useState<Date | undefined>();
+  const [loadingHistorical, setLoadingHistorical] = useState(false);
+  const [showHistoricalPicker, setShowHistoricalPicker] = useState(false);
 
   // Initialize chart
   useEffect(() => {
@@ -146,9 +167,9 @@ export const ProChartKit = ({
     });
   }, [candleType]);
 
-  // Set up real-time updates
+  // Set up real-time updates (only when not in replay mode)
   useEffect(() => {
-    if (!chartRef.current) return;
+    if (!chartRef.current || replayMode) return;
 
     // Update every 5 seconds during market hours (9:30 AM - 4:00 PM ET)
     // or every 10 seconds during premarket (4:00 AM - 9:30 AM ET)
@@ -164,17 +185,49 @@ export const ProChartKit = ({
         clearInterval(updateIntervalRef.current);
       }
     };
-  }, [symbol, interval, showPremarket]);
+  }, [symbol, interval, showPremarket, replayMode]);
 
   // Refetch when premarket toggle changes
   useEffect(() => {
-    if (chartRef.current) {
+    if (chartRef.current && !replayMode) {
       // Reset tracking refs when premarket changes (treat as new data load)
       isInitialLoadRef.current = true;
       lastCandleTimestampRef.current = null;
       fetchAndLoadData(false);
     }
   }, [showPremarket]);
+
+  // Replay playback effect
+  useEffect(() => {
+    if (isPlaying && replayMode && allCandleData.length > 0) {
+      const intervalMs = 500 / playbackSpeed; // Base interval is 500ms
+      
+      replayIntervalRef.current = setInterval(() => {
+        setReplayIndex(prev => {
+          const next = prev + 1;
+          if (next >= allCandleData.length) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return next;
+        });
+      }, intervalMs);
+
+      return () => {
+        if (replayIntervalRef.current) {
+          clearInterval(replayIntervalRef.current);
+        }
+      };
+    }
+  }, [isPlaying, replayMode, allCandleData.length, playbackSpeed]);
+
+  // Update chart when replay index changes
+  useEffect(() => {
+    if (replayMode && chartRef.current && allCandleData.length > 0) {
+      const visibleCandles = allCandleData.slice(0, replayIndex + 1);
+      chartRef.current.applyNewData(visibleCandles);
+    }
+  }, [replayIndex, replayMode, allCandleData]);
 
   // Fetch market data
   const fetchAndLoadData = async (isUpdate = false) => {
@@ -261,6 +314,94 @@ export const ProChartKit = ({
       console.log("✅ Data fetch complete");
     }
   };
+
+  // Fetch historical data for a specific date range
+  const fetchHistoricalData = async () => {
+    if (!chartRef.current || !historicalStartDate || !historicalEndDate) return;
+
+    setLoadingHistorical(true);
+    
+    try {
+      const startDateStr = format(historicalStartDate, "yyyy-MM-dd");
+      const endDateStr = format(historicalEndDate, "yyyy-MM-dd");
+      
+      console.log("📊 Fetching historical data from", startDateStr, "to", endDateStr);
+
+      const { data, error } = await supabase.functions.invoke("fetch-schwab-candles", {
+        body: {
+          symbol,
+          interval: mapInterval(interval),
+          startDate: startDateStr,
+          endDate: endDateStr,
+          premarket: showPremarket
+        }
+      });
+
+      if (error) {
+        console.error("❌ Error fetching historical data:", error);
+        throw error;
+      }
+
+      const candles = data?.data || data?.candles;
+      
+      if (candles && Array.isArray(candles) && candles.length > 0) {
+        const klineData: KLineData[] = candles.map((candle: any) => ({
+          timestamp: candle.time ? candle.time * 1000 : new Date(candle.datetime).getTime(),
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume || 0
+        }));
+
+        console.log("✅ Loaded", klineData.length, "historical candles");
+        setAllCandleData(klineData);
+        chartRef.current.applyNewData(klineData);
+        
+        // Enable replay mode with historical data
+        setReplayMode(true);
+        setReplayIndex(klineData.length - 1);
+        setShowReplayControls(true);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching historical data:", error);
+    } finally {
+      setLoadingHistorical(false);
+    }
+  };
+
+  // Replay control handlers
+  const handleReplayPlayPause = useCallback(() => {
+    setIsPlaying(prev => !prev);
+  }, []);
+
+  const handleReplayStepForward = useCallback(() => {
+    setReplayIndex(prev => Math.min(prev + 1, allCandleData.length - 1));
+  }, [allCandleData.length]);
+
+  const handleReplayStepBack = useCallback(() => {
+    setReplayIndex(prev => Math.max(prev - 1, 0));
+  }, []);
+
+  const handleReplayReset = useCallback(() => {
+    setReplayIndex(0);
+    setIsPlaying(false);
+  }, []);
+
+  const handleReplaySkipToEnd = useCallback(() => {
+    setReplayIndex(allCandleData.length - 1);
+    setIsPlaying(false);
+  }, [allCandleData.length]);
+
+  const handleExitReplayMode = useCallback(() => {
+    setReplayMode(false);
+    setIsPlaying(false);
+    setAllCandleData([]);
+    setReplayIndex(0);
+    setShowReplayControls(false);
+    // Reload live data
+    fetchAndLoadData(false);
+  }, []);
 
   // Fetch Koinonia indicator signals
   const fetchKoinoniaSignals = async () => {
@@ -596,10 +737,79 @@ export const ProChartKit = ({
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}
         />
+
+        {/* Replay Mode Toggle */}
+        <Button
+          variant={showReplayControls ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowReplayControls(!showReplayControls)}
+          className="gap-2"
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${showReplayControls ? 'rotate-180' : ''}`} />
+          Replay Mode
+        </Button>
+
+        {/* Historical Data Toggle */}
+        <Button
+          variant={showHistoricalPicker ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowHistoricalPicker(!showHistoricalPicker)}
+          className="gap-2"
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${showHistoricalPicker ? 'rotate-180' : ''}`} />
+          Historical Data
+        </Button>
+
+        {/* Exit Replay Mode Button */}
+        {replayMode && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleExitReplayMode}
+          >
+            Exit Replay Mode
+          </Button>
+        )}
       </div>
 
+      {/* Historical Date Picker */}
+      {showHistoricalPicker && (
+        <HistoricalDatePicker
+          startDate={historicalStartDate}
+          endDate={historicalEndDate}
+          onStartDateChange={setHistoricalStartDate}
+          onEndDateChange={setHistoricalEndDate}
+          onApply={fetchHistoricalData}
+          isLoading={loadingHistorical}
+        />
+      )}
+
+      {/* Replay Controls */}
+      {showReplayControls && replayMode && allCandleData.length > 0 && (
+        <ChartReplayControls
+          totalCandles={allCandleData.length}
+          currentIndex={replayIndex}
+          isPlaying={isPlaying}
+          playbackSpeed={playbackSpeed}
+          onIndexChange={setReplayIndex}
+          onPlayPause={handleReplayPlayPause}
+          onSpeedChange={setPlaybackSpeed}
+          onStepForward={handleReplayStepForward}
+          onStepBack={handleReplayStepBack}
+          onReset={handleReplayReset}
+          onSkipToEnd={handleReplaySkipToEnd}
+        />
+      )}
+
+      {/* Replay Mode Prompt */}
+      {showReplayControls && !replayMode && (
+        <div className="p-3 bg-muted/50 rounded-lg border text-center text-sm text-muted-foreground">
+          Load historical data using the "Historical Data" panel above to enable chart replay
+        </div>
+      )}
+
       <Card className="relative p-0 overflow-hidden">
-        {loading && (
+        {(loading || loadingHistorical) && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-20">
             <Loader2 className="w-8 h-8 animate-spin" />
           </div>
@@ -609,8 +819,35 @@ export const ProChartKit = ({
           style={{ width: "100%", height: `${height}px` }}
         />
 
+        {/* Replay Mode Indicator */}
+        {replayMode && (
+          <div className="absolute top-4 left-4 z-10">
+            <div className="px-3 py-1.5 bg-primary text-primary-foreground rounded-full text-xs font-medium flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              REPLAY MODE
+            </div>
+          </div>
+        )}
+
+        {/* Current Candle Info in Replay */}
+        {replayMode && allCandleData.length > 0 && replayIndex < allCandleData.length && (
+          <div className="absolute top-4 right-4 z-10">
+            <Card className="p-2 bg-background/95 backdrop-blur text-xs">
+              <div className="text-muted-foreground">
+                {new Date(allCandleData[replayIndex].timestamp).toLocaleString()}
+              </div>
+              <div className="font-mono">
+                O: ${allCandleData[replayIndex].open.toFixed(2)} | 
+                H: ${allCandleData[replayIndex].high.toFixed(2)} | 
+                L: ${allCandleData[replayIndex].low.toFixed(2)} | 
+                C: ${allCandleData[replayIndex].close.toFixed(2)}
+              </div>
+            </Card>
+          </div>
+        )}
+
         {/* Koinonia Signal Display */}
-        {koinoniaSignal?.signal && (
+        {koinoniaSignal?.signal && !replayMode && (
           <div className="absolute bottom-4 left-4 right-4 z-10">
             <Card className="p-4 bg-background/95 backdrop-blur">
               <div className="space-y-2">
