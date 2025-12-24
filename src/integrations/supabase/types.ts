@@ -1024,9 +1024,11 @@ export type Database = {
           id: string
           pocketoption_api_key: string | null
           pocketoption_ssid: string | null
+          schwab_access_token: string | null
           schwab_client_id: string | null
           schwab_client_secret: string | null
           schwab_refresh_token: string | null
+          schwab_token_expires_at: string | null
           td_client_id: string | null
           td_client_secret: string | null
           td_refresh_token: string | null
@@ -1051,9 +1053,11 @@ export type Database = {
           id?: string
           pocketoption_api_key?: string | null
           pocketoption_ssid?: string | null
+          schwab_access_token?: string | null
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
           schwab_refresh_token?: string | null
+          schwab_token_expires_at?: string | null
           td_client_id?: string | null
           td_client_secret?: string | null
           td_refresh_token?: string | null
@@ -1078,9 +1082,11 @@ export type Database = {
           id?: string
           pocketoption_api_key?: string | null
           pocketoption_ssid?: string | null
+          schwab_access_token?: string | null
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
           schwab_refresh_token?: string | null
+          schwab_token_expires_at?: string | null
           td_client_id?: string | null
           td_client_secret?: string | null
           td_refresh_token?: string | null
