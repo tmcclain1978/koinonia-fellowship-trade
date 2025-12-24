@@ -44,6 +44,8 @@ export const ProChartKit = ({
   const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
   const unsubRef = useRef<(() => void) | null>(null);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialLoadRef = useRef(true);
+  const lastCandleTimestampRef = useRef<number | null>(null);
 
   // Initialize chart
   useEffect(() => {
@@ -153,7 +155,8 @@ export const ProChartKit = ({
     const updateInterval = showPremarket ? 10000 : 5000;
     
     updateIntervalRef.current = setInterval(() => {
-      fetchAndLoadData();
+      // Pass isUpdate=true to avoid showing loader and use smooth updates
+      fetchAndLoadData(true);
     }, updateInterval);
 
     return () => {
@@ -166,19 +169,26 @@ export const ProChartKit = ({
   // Refetch when premarket toggle changes
   useEffect(() => {
     if (chartRef.current) {
-      fetchAndLoadData();
+      // Reset tracking refs when premarket changes (treat as new data load)
+      isInitialLoadRef.current = true;
+      lastCandleTimestampRef.current = null;
+      fetchAndLoadData(false);
     }
   }, [showPremarket]);
 
   // Fetch market data
-  const fetchAndLoadData = async () => {
+  const fetchAndLoadData = async (isUpdate = false) => {
     if (!chartRef.current) {
       console.log("⚠️ Chart ref not ready");
       return;
     }
 
-    setLoading(true);
-    console.log("📊 Fetching chart data for", symbol, interval, "premarket:", showPremarket);
+    // Only show loading spinner on initial load, not updates
+    if (!isUpdate) {
+      setLoading(true);
+    }
+    
+    console.log("📊 Fetching chart data for", symbol, interval, "premarket:", showPremarket, "isUpdate:", isUpdate);
     
     try {
       // Fetch candlestick data from Schwab
@@ -191,8 +201,6 @@ export const ProChartKit = ({
         }
       });
 
-      console.log("📈 Received data:", { data, error });
-
       if (error) {
         console.error("❌ Error from fetch-schwab-candles:", error);
         throw error;
@@ -200,8 +208,6 @@ export const ProChartKit = ({
 
       // Handle both formats: { data: [...] } from fetch-schwab-candles and { candles: [...] } from legacy
       const candles = data?.data || data?.candles;
-      
-      console.log("🕯️ Candles array:", { length: candles?.length, sample: candles?.[0] });
       
       if (candles && Array.isArray(candles) && candles.length > 0) {
         const klineData: KLineData[] = candles.map((candle: any) => ({
@@ -213,11 +219,34 @@ export const ProChartKit = ({
           volume: candle.volume || 0
         }));
 
-        console.log("✅ Applying data to chart:", klineData.length, "candles");
-        chartRef.current.applyNewData(klineData);
+        // Get the latest candle timestamp
+        const latestTimestamp = klineData[klineData.length - 1]?.timestamp;
+
+        if (isUpdate && lastCandleTimestampRef.current) {
+          // For updates, only update the latest candle for smooth animation
+          const lastCandle = klineData[klineData.length - 1];
+          if (lastCandle) {
+            if (latestTimestamp === lastCandleTimestampRef.current) {
+              // Same candle - update it smoothly
+              chartRef.current.updateData(lastCandle);
+              console.log("🔄 Updated latest candle smoothly");
+            } else {
+              // New candle appeared - apply new data
+              chartRef.current.applyNewData(klineData);
+              lastCandleTimestampRef.current = latestTimestamp;
+              console.log("📈 New candle detected, applied data");
+            }
+          }
+        } else {
+          // Initial load - apply all data
+          console.log("✅ Initial load:", klineData.length, "candles");
+          chartRef.current.applyNewData(klineData);
+          lastCandleTimestampRef.current = latestTimestamp;
+          isInitialLoadRef.current = false;
+        }
 
         // Fetch Koinonia signals if enabled
-        if (showKoinoniaSignals && userId) {
+        if (showKoinoniaSignals && userId && !isUpdate) {
           fetchKoinoniaSignals();
         }
       } else {
@@ -226,8 +255,10 @@ export const ProChartKit = ({
     } catch (error) {
       console.error("❌ Error fetching chart data:", error);
     } finally {
-      setLoading(false);
-      console.log("✅ Loading complete");
+      if (!isUpdate) {
+        setLoading(false);
+      }
+      console.log("✅ Data fetch complete");
     }
   };
 
