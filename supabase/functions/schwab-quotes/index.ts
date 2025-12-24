@@ -133,21 +133,43 @@ serve(async (req) => {
   }
 });
 
-function returnMockQuotes(symbols: string | string[]) {
+async function returnMockQuotes(symbols: string | string[]) {
   const symbolList = Array.isArray(symbols) ? symbols : symbols.split(',');
+  const POLYGON_API_KEY = Deno.env.get('POLYGON_API_KEY');
   
-  const mockQuotes = symbolList.map(symbol => {
-    const basePrice = symbol === 'AAPL' ? 175 : 
-                      symbol === 'MSFT' ? 375 : 
-                      symbol === 'GOOGL' ? 140 :
-                      symbol === 'AMZN' ? 180 :
-                      symbol === 'TSLA' ? 250 :
-                      100 + Math.random() * 200;
+  // Try to get real prices from Polygon first
+  const mockQuotes = await Promise.all(symbolList.map(async (symbol) => {
+    const sym = symbol.trim().toUpperCase();
+    let basePrice = sym === 'AAPL' ? 250 : 
+                    sym === 'MSFT' ? 430 : 
+                    sym === 'GOOGL' ? 190 :
+                    sym === 'AMZN' ? 220 :
+                    sym === 'TSLA' ? 420 :
+                    sym === 'SPY' ? 600 :
+                    sym === 'QQQ' ? 520 :
+                    sym === 'NVDA' ? 140 :
+                    100 + Math.random() * 200;
     
-    const change = (Math.random() - 0.5) * 5;
+    // Try to get real price from Polygon
+    if (POLYGON_API_KEY) {
+      try {
+        const prevResponse = await fetch(
+          `https://api.polygon.io/v2/aggs/ticker/${sym}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`
+        );
+        const prevData = await prevResponse.json();
+        if (prevData.results?.[0]?.c) {
+          basePrice = prevData.results[0].c;
+          console.log(`[schwab-quotes] Got ${sym} price from Polygon: $${basePrice}`);
+        }
+      } catch (e) {
+        console.log(`[schwab-quotes] Could not fetch ${sym} from Polygon`);
+      }
+    }
+    
+    const change = (Math.random() - 0.5) * (basePrice * 0.02); // 2% max change
     
     return {
-      symbol: symbol.trim().toUpperCase(),
+      symbol: sym,
       lastPrice: parseFloat(basePrice.toFixed(2)),
       bidPrice: parseFloat((basePrice - 0.02).toFixed(2)),
       askPrice: parseFloat((basePrice + 0.02).toFixed(2)),
@@ -163,18 +185,18 @@ function returnMockQuotes(symbols: string | string[]) {
       high52Week: parseFloat((basePrice * 1.3).toFixed(2)),
       low52Week: parseFloat((basePrice * 0.7).toFixed(2)),
       mark: parseFloat(basePrice.toFixed(2)),
-      description: `${symbol.trim().toUpperCase()} Inc.`,
+      description: `${sym} Inc.`,
       exchange: 'NASDAQ',
-      source: 'mock',
+      source: POLYGON_API_KEY ? 'polygon-fallback' : 'mock',
     };
-  });
+  }));
 
   return new Response(
     JSON.stringify({ 
       success: true,
       quotes: mockQuotes,
-      source: 'mock',
-      note: 'Using mock data - complete Schwab OAuth in Settings for live data',
+      source: POLYGON_API_KEY ? 'polygon-fallback' : 'mock',
+      note: 'Using fallback data - complete Schwab OAuth in Settings for live streaming',
     }),
     { 
       status: 200, 
