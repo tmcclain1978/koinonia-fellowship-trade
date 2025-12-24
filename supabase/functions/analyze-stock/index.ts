@@ -25,21 +25,66 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    console.log('Fetching news sentiment for:', symbol);
+    
+    // Fetch advanced news sentiment
+    const sentimentResponse = await fetch(`${supabaseUrl}/functions/v1/news-sentiment-scanner`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        symbol,
+        queries: [
+          `${symbol} stock`,
+          `${symbol} stock news`,
+          `${symbol} earnings`,
+          `${symbol} analyst`
+        ],
+        numArticlesPerQuery: 5
+      })
+    });
+    
+    const sentimentData = sentimentResponse.ok ? await sentimentResponse.json() : null;
+    const aggregate = sentimentData?.aggregate || { overallLabel: 'Neutral', overallScore: 0 };
+    const breakdown = sentimentData?.sentimentBreakdown || {};
+    
+    // Build sentiment context for AI
+    const sentimentContext = sentimentData ? `
+📰 NEWS SENTIMENT ANALYSIS:
+- Overall Sentiment: ${aggregate.overallLabel} (Score: ${(aggregate.overallScore * 100).toFixed(1)}%)
+- Articles Analyzed: ${sentimentData.totalArticlesAnalyzed || 0}
+- Breakdown: ${breakdown.bullishPercent?.toFixed(1)}% Bullish, ${breakdown.bearishPercent?.toFixed(1)}% Bearish, ${breakdown.neutralPercent?.toFixed(1)}% Neutral
+
+Top Bullish Headlines:
+${sentimentData.topBullish?.map((h: any) => `• ${h.title}`).join('\n') || 'None'}
+
+Top Bearish Headlines:
+${sentimentData.topBearish?.map((h: any) => `• ${h.title}`).join('\n') || 'None'}
+` : 'News sentiment data unavailable.';
+
     // AI analysis prompt
-    const systemPrompt = `You are an expert stock options trading analyst. Analyze the given stock symbol and provide:
+    const systemPrompt = `You are an expert stock options trading analyst with access to real-time news sentiment data. Analyze the given stock symbol and provide:
 1. Trading recommendation (CALL or PUT)
 2. Confidence score (0-100)
 3. Entry price suggestion
 4. Target price
 5. Stop loss level
 6. Risk analysis
-7. Market sentiment
+7. Market sentiment based on news
+8. News sentiment impact on trading decision
 
-Be specific and actionable. Base recommendations on technical analysis principles.`;
+Be specific and actionable. Base recommendations on technical analysis principles and the provided sentiment data.`;
 
-    const userPrompt = `Analyze ${symbol} for options trading. Timeframe: ${timeframe || 'day trading'}. 
-    
-    Provide a structured analysis with specific price levels and reasoning.`;
+    const userPrompt = `Analyze ${symbol} for options trading. Timeframe: ${timeframe || 'day trading'}.
+
+${sentimentContext}
+
+Provide a structured analysis with specific price levels and reasoning. Incorporate the news sentiment into your recommendation.`;
 
     console.log('Calling Lovable AI for stock analysis:', symbol);
 

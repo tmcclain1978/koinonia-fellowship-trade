@@ -27,6 +27,25 @@ interface KoinoniaSignal {
   riskReward: number;
   overallConfidence: number;
   analysis: string;
+  sentimentImpact?: {
+    direction: "bullish" | "bearish" | "neutral";
+    strength: number;
+    keyFactors: string[];
+  };
+}
+
+interface SentimentData {
+  overall: string;
+  score: number;
+  weightedScore: number;
+  articlesAnalyzed: number;
+  breakdown: {
+    bullishPercent: number;
+    bearishPercent: number;
+    neutralPercent: number;
+  };
+  topBullish: Array<{ title: string; score: number; confidence: number }>;
+  topBearish: Array<{ title: string; score: number; confidence: number }>;
 }
 
 interface KoinoniaIndicatorProps {
@@ -37,6 +56,7 @@ interface KoinoniaIndicatorProps {
 export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicatorProps) => {
   const [loading, setLoading] = useState(false);
   const [signal, setSignal] = useState<KoinoniaSignal | null>(null);
+  const [sentiment, setSentiment] = useState<SentimentData | null>(null);
   const { toast } = useToast();
   const { subscription, hasFeatureAccess } = useSubscription();
 
@@ -81,6 +101,7 @@ export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicat
       }
 
       setSignal(data.signals);
+      setSentiment(data.sentiment);
       
       if (onSignalGenerated) {
         // Generate timestamps for signals (entry now, exits in future)
@@ -171,6 +192,28 @@ export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicat
                 {signal.overallConfidence}% Confidence
               </Badge>
             </div>
+
+            {/* News Sentiment Analysis */}
+            {sentiment && (
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-semibold flex items-center gap-2">
+                    📰 News Sentiment
+                  </div>
+                  <Badge variant={sentiment.overall === 'Bullish' ? 'default' : sentiment.overall === 'Bearish' ? 'destructive' : 'secondary'}>
+                    {sentiment.overall}
+                  </Badge>
+                </div>
+                <div className="text-sm text-muted-foreground mb-2">
+                  {sentiment.articlesAnalyzed} articles analyzed • Score: {(sentiment.score * 100).toFixed(1)}%
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <span className="text-green-500">↑ {sentiment.breakdown.bullishPercent?.toFixed(0)}%</span>
+                  <span className="text-red-500">↓ {sentiment.breakdown.bearishPercent?.toFixed(0)}%</span>
+                  <span className="text-muted-foreground">— {sentiment.breakdown.neutralPercent?.toFixed(0)}%</span>
+                </div>
+              </div>
+            )}
 
             {/* Entry Signal */}
             <div className="flex items-start gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">

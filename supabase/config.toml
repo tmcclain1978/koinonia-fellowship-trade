@@ -65,3 +65,18 @@ verify_jwt = true
 
 [functions.schwab-oauth-callback]
 verify_jwt = false
+
+[functions.news-sentiment-scanner]
+verify_jwt = false
+
+[functions.schwab-accounts]
+verify_jwt = true
+
+[functions.schwab-orders]
+verify_jwt = true
+
+[functions.schwab-quotes]
+verify_jwt = true
+
+[functions.schwab-get-access-token]
+verify_jwt = true
