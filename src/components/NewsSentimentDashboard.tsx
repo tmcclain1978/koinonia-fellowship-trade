@@ -86,11 +86,11 @@ export const NewsSentimentDashboard = () => {
         ...prev,
         [symbol]: {
           symbol,
-          overall: data.overall,
-          score: data.score,
-          weightedScore: data.weightedScore,
-          articlesAnalyzed: data.articlesAnalyzed,
-          breakdown: data.breakdown,
+          overall: data.overall || "Unknown",
+          score: data.score || 0,
+          weightedScore: data.weightedScore || 0,
+          articlesAnalyzed: data.articlesAnalyzed || 0,
+          breakdown: data.breakdown || { bullishPercent: 0, bearishPercent: 0, neutralPercent: 0 },
           topBullish: data.topBullish || [],
           topBearish: data.topBearish || [],
           loading: false
