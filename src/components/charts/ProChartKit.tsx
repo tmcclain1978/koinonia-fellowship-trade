@@ -395,22 +395,146 @@ export const ProChartKit = ({
     return map[interval] || "daily";
   };
 
-  // Get indicator configuration
-  const getIndicatorConfig = (indicator: string) => {
-    const configs: Record<string, { name: string; params?: any }> = {
-      "SMA(20)": { name: "MA", params: { period: 20, maType: "SMA" } },
-      "EMA(20)": { name: "MA", params: { period: 20, maType: "EMA" } },
-      "EMA(50)": { name: "MA", params: { period: 50, maType: "EMA" } },
-      "RSI(14)": { name: "RSI", params: { period: 14 } },
-      "MACD": { name: "MACD", params: { fast: 12, slow: 26, signal: 9 } },
-      "BB(20,2)": { name: "BOLL", params: { period: 20, multiplier: 2 } },
+  // Get indicator configuration - comprehensive mapping for 60+ indicators
+  const getIndicatorConfig = (indicator: string): { name: string; params?: any } | null => {
+    // Parse indicator string for period values
+    const periodMatch = indicator.match(/\((\d+)\)/);
+    const period = periodMatch ? parseInt(periodMatch[1]) : 14;
+    
+    // Moving Averages
+    if (indicator.startsWith("SMA")) {
+      return { name: "MA", params: { period, maType: "SMA" } };
+    }
+    if (indicator.startsWith("EMA")) {
+      return { name: "MA", params: { period, maType: "EMA" } };
+    }
+    if (indicator.startsWith("WMA")) {
+      return { name: "MA", params: { period, maType: "WMA" } };
+    }
+    if (indicator.startsWith("DEMA")) {
+      return { name: "MA", params: { period, maType: "DEMA" } };
+    }
+    if (indicator.startsWith("TEMA")) {
+      return { name: "MA", params: { period, maType: "TEMA" } };
+    }
+    if (indicator.startsWith("VWMA")) {
+      return { name: "MA", params: { period, maType: "VWMA" } };
+    }
+    
+    // Bollinger Bands
+    if (indicator.startsWith("BB")) {
+      const bbMatch = indicator.match(/BB\((\d+),(\d+\.?\d*)\)/);
+      const bbPeriod = bbMatch ? parseInt(bbMatch[1]) : 20;
+      const bbMultiplier = bbMatch ? parseFloat(bbMatch[2]) : 2;
+      return { name: "BOLL", params: { period: bbPeriod, multiplier: bbMultiplier } };
+    }
+    
+    // RSI
+    if (indicator.startsWith("RSI")) {
+      return { name: "RSI", params: { period } };
+    }
+    
+    // ATR
+    if (indicator.startsWith("ATR") || indicator.startsWith("NATR")) {
+      return { name: "ATR", params: { period } };
+    }
+    
+    // CCI
+    if (indicator.startsWith("CCI")) {
+      return { name: "CCI", params: { period } };
+    }
+    
+    // ROC / Momentum
+    if (indicator.startsWith("ROC") || indicator.startsWith("Momentum")) {
+      return { name: "ROC", params: { period } };
+    }
+    
+    // CMO
+    if (indicator.startsWith("CMO")) {
+      return { name: "CMO", params: { period } };
+    }
+    
+    // Donchian Channel
+    if (indicator.startsWith("DC")) {
+      return { name: "DC", params: { period } };
+    }
+    
+    // Standard Deviation
+    if (indicator.startsWith("StdDev")) {
+      return { name: "STDDEV", params: { period } };
+    }
+    
+    // Linear Regression
+    if (indicator.startsWith("LinearReg")) {
+      return { name: "LR", params: { period } };
+    }
+    
+    // CMF
+    if (indicator.startsWith("CMF")) {
+      return { name: "CMF", params: { period } };
+    }
+    
+    // VROC
+    if (indicator.startsWith("VROC")) {
+      return { name: "VROC", params: { period } };
+    }
+    
+    // ADX
+    if (indicator.startsWith("ADX")) {
+      return { name: "ADX", params: { period } };
+    }
+    
+    // MFI
+    if (indicator.startsWith("MFI")) {
+      return { name: "MFI", params: { period } };
+    }
+    
+    // Fixed-name indicators
+    const staticConfigs: Record<string, { name: string; params?: any }> = {
+      "MACD": { name: "MACD", params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 } },
+      "MACD(5,35,5)": { name: "MACD", params: { fastPeriod: 5, slowPeriod: 35, signalPeriod: 5 } },
+      "Stochastic": { name: "KDJ", params: { kPeriod: 14, dPeriod: 3, jPeriod: 3 } },
+      "StochRSI": { name: "STOCHRSI", params: { period: 14, kPeriod: 3, dPeriod: 3 } },
+      "Williams%R": { name: "WR", params: { period: 14 } },
+      "SAR": { name: "SAR", params: { step: 0.02, max: 0.2 } },
+      "PSAR": { name: "SAR", params: { step: 0.02, max: 0.2 } },
+      "Supertrend": { name: "SUPERTREND", params: { period: 10, multiplier: 3 } },
+      "Ichimoku": { name: "ICHIMOKU", params: { conversionPeriod: 9, basePeriod: 26, spanPeriod: 52 } },
       "VWAP": { name: "VOL" },
       "Volume": { name: "VOL" },
-      "Stochastic": { name: "KDJ", params: { k: 9, d: 3, j: 3 } },
-      "ATR(14)": { name: "ATR", params: { period: 14 } },
-      "SAR": { name: "SAR", params: { step: 0.02, max: 0.2 } }
+      "OBV": { name: "OBV" },
+      "AD": { name: "AD" },
+      "PVT": { name: "PVT" },
+      "VPT": { name: "VPT" },
+      "EOM": { name: "EMV" },
+      "NVI": { name: "NVI" },
+      "PVI": { name: "PVI" },
+      "UO": { name: "UO", params: { period1: 7, period2: 14, period3: 28 } },
+      "AO": { name: "AO" },
+      "TSI": { name: "TSI", params: { longPeriod: 25, shortPeriod: 13, signalPeriod: 13 } },
+      "TRIX": { name: "TRIX", params: { period: 18 } },
+      "KC(20,1.5)": { name: "KC", params: { period: 20, multiplier: 1.5 } },
+      "BBW": { name: "BBW", params: { period: 20, multiplier: 2 } },
+      "BB%B": { name: "BBP", params: { period: 20, multiplier: 2 } },
+      "Chaikin": { name: "CHV", params: { period: 10 } },
+      "DPO": { name: "DPO", params: { period: 20 } },
+      "KST": { name: "KST" },
+      "PPO": { name: "PPO", params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 } },
+      "PO": { name: "PO", params: { fastPeriod: 12, slowPeriod: 26 } },
+      "AROON": { name: "AROON", params: { period: 25 } },
+      "AroonOsc": { name: "AROONOSC", params: { period: 25 } },
+      "DMI": { name: "DMI", params: { period: 14 } },
+      "Pivot": { name: "PIVOT" },
+      "FibRetrace": { name: "FIBRETRACEMENT" },
+      "PivotHiLo": { name: "PIVOTHILO", params: { leftBars: 5, rightBars: 5 } },
+      "ZigZag": { name: "ZIGZAG", params: { deviation: 5 } },
+      "LinearRegSlope": { name: "LRSLOPE", params: { period: 14 } },
+      "Correlation": { name: "CORR", params: { period: 20 } },
+      "Beta": { name: "BETA", params: { period: 20 } },
+      "R2": { name: "R2", params: { period: 20 } },
     };
-    return configs[indicator];
+    
+    return staticConfigs[indicator] || null;
   };
 
   return (
