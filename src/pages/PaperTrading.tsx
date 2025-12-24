@@ -14,6 +14,8 @@ import { ProChartKit } from "@/components/charts/ProChartKit";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { IndicatorSelector } from "@/components/IndicatorSelector";
+import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAnalytics";
+import { PositionsRiskModule } from "@/components/paper-trading/PositionsRiskModule";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -1257,6 +1259,16 @@ const PaperTrading = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Positions & Risk Module */}
+        <div className="mb-6">
+          <PositionsRiskModule />
+        </div>
+
+        {/* Paper Trading Analytics */}
+        <div className="mb-6">
+          <PaperTradingAnalytics />
+        </div>
 
       </div>
     </>
