@@ -12,6 +12,50 @@ serve(async (req) => {
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Fetch sentiment for popular stocks
+    const stockSymbols = ['AAPL', 'TSLA', 'NVDA', 'META', 'GOOGL', 'MSFT', 'AMZN'];
+    
+    console.log('Fetching news sentiment for trade suggestions...');
+    
+    // Fetch market-wide sentiment
+    const sentimentResponse = await fetch(`${supabaseUrl}/functions/v1/news-sentiment-scanner`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`
+      },
+      body: JSON.stringify({
+        queries: [
+          'stock market today',
+          'tech stocks news',
+          'S&P 500',
+          'NASDAQ news',
+          'stock earnings today'
+        ],
+        numArticlesPerQuery: 4
+      })
+    });
+    
+    const marketSentiment = sentimentResponse.ok ? await sentimentResponse.json() : null;
+    const aggregate = marketSentiment?.aggregate || { overallLabel: 'Neutral', overallScore: 0 };
+    
+    // Build sentiment context
+    const sentimentContext = marketSentiment ? `
+CURRENT MARKET SENTIMENT:
+- Overall Market Mood: ${aggregate.overallLabel} (Score: ${(aggregate.overallScore * 100).toFixed(1)}%)
+- Articles Analyzed: ${marketSentiment.totalArticlesAnalyzed || 0}
+- Bullish Headlines: ${marketSentiment.topBullish?.length || 0}
+- Bearish Headlines: ${marketSentiment.topBearish?.length || 0}
+
+Key Bullish News:
+${marketSentiment.topBullish?.slice(0, 2).map((h: any) => `• ${h.title}`).join('\n') || 'None'}
+
+Key Bearish News:
+${marketSentiment.topBearish?.slice(0, 2).map((h: any) => `• ${h.title}`).join('\n') || 'None'}
+` : '';
 
     // Get market data and generate suggestions using AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -25,21 +69,25 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert stock market analyst specializing in options trading. Generate 3 high-confidence trade suggestions based on current market conditions. 
+            content: `You are an expert stock market analyst specializing in options trading with access to real-time news sentiment data. Generate 3 high-confidence trade suggestions based on current market conditions and sentiment analysis.
             
             For each suggestion, provide:
             1. Symbol (stock ticker)
             2. Action (BUY or SELL)
             3. Confidence level (70-95%)
             4. Target price
-            5. Brief reasoning (2-3 sentences)
+            5. Brief reasoning that incorporates sentiment analysis (2-3 sentences)
             
             Focus on liquid, well-known stocks with clear technical or fundamental signals.
-            Consider: momentum, volatility, support/resistance levels, and market sentiment.`,
+            Consider: momentum, volatility, support/resistance levels, and the provided news sentiment data.`,
           },
           {
             role: "user",
-            content: "Generate 3 trade suggestions for today based on current market analysis.",
+            content: `Generate 3 trade suggestions for today based on current market analysis.
+
+${sentimentContext}
+
+Consider the market sentiment when making your recommendations. If sentiment is bearish, consider more defensive plays or short positions. If bullish, consider momentum plays.`,
           },
         ],
         tools: [
