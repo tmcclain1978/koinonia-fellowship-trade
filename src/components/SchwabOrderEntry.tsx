@@ -57,9 +57,11 @@ export const SchwabOrderEntry = ({
         setNeedsOAuth(false);
       } catch (error: any) {
         console.log("Schwab OAuth not completed:", error?.message);
-        // Check if OAuth error
-        const errorMsg = error?.message || '';
-        if (errorMsg.includes('OAuth') || errorMsg.includes('access token')) {
+        // Check if OAuth error (either from flag or message)
+        const requiresOAuth = error?.requiresOAuth || 
+          (error?.message || '').includes('OAuth') || 
+          (error?.message || '').includes('access token');
+        if (requiresOAuth) {
           setNeedsOAuth(true);
         }
         // Use demo account

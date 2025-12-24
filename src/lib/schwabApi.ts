@@ -74,6 +74,17 @@ export interface SchwabOrder {
 
 class SchwabApiClient {
   /**
+   * Check if response indicates OAuth is required
+   */
+  private checkOAuthRequired(data: any): void {
+    if (data?.requires_oauth) {
+      const error = new Error('OAuth required');
+      (error as any).requiresOAuth = true;
+      throw error;
+    }
+  }
+
+  /**
    * Get all linked Schwab accounts
    */
   async getLinkedAccounts(): Promise<LinkedAccount[]> {
@@ -85,6 +96,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data || [];
@@ -106,6 +118,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data || [];
@@ -129,6 +142,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data;
@@ -146,6 +160,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data;
@@ -164,6 +179,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    // Note: schwab-quotes returns mock data when OAuth not available, no need to check requires_oauth
     if (data.error) throw new Error(data.error);
     
     return data.quotes || [];
@@ -193,6 +209,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data || [];
@@ -214,6 +231,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data;
@@ -222,7 +240,7 @@ class SchwabApiClient {
   /**
    * Place an order
    */
-  async placeOrder(accountHash: string, order: SchwabOrder): Promise<{ orderId?: string; success: boolean }> {
+  async placeOrder(accountHash: string, order: SchwabOrder): Promise<{ orderId?: string; success: boolean; requiresOAuth?: boolean }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
@@ -235,6 +253,9 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    if (data?.requires_oauth) {
+      return { success: false, requiresOAuth: true };
+    }
     if (data.error) throw new Error(data.error);
     
     return data.data;
@@ -256,6 +277,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data;
@@ -277,6 +299,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data;
@@ -299,6 +322,7 @@ class SchwabApiClient {
     });
 
     if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
     if (data.error) throw new Error(data.error);
     
     return data.data;

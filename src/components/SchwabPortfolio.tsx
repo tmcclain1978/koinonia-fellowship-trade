@@ -99,9 +99,12 @@ export const SchwabPortfolio = () => {
     } catch (error: any) {
       console.error("Error fetching portfolio:", error);
       
-      // Check if it's an OAuth error
-      const errorMsg = error?.message || '';
-      if (errorMsg.includes('OAuth') || errorMsg.includes('access token')) {
+      // Check if it's an OAuth error (either from error message or flag)
+      const requiresOAuth = error?.requiresOAuth || 
+        (error?.message || '').includes('OAuth') || 
+        (error?.message || '').includes('access token');
+      
+      if (requiresOAuth) {
         setPortfolios([]);
         setLoading(false);
         setRefreshing(false);
