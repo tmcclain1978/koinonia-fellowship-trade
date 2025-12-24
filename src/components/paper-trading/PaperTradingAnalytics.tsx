@@ -429,7 +429,7 @@ export const PaperTradingAnalytics = () => {
                         outerRadius={100}
                         paddingAngle={5}
                         dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }: { name?: string | number; percent?: number }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                       >
                         <Cell fill="#22c55e" />
                         <Cell fill="#ef4444" />
