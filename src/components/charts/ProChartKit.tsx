@@ -13,8 +13,10 @@ import { ChartReplayControls } from "./ChartReplayControls";
 import { HistoricalDatePicker } from "./HistoricalDatePicker";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
+import { useMarketDataStream } from "@/hooks/useMarketDataStream";
 
 interface ProChartKitProps {
   symbol: string;
@@ -27,6 +29,8 @@ interface ProChartKitProps {
   entryPrice?: number;
   exitPrice?: number;
   stopLoss?: number;
+  enableStreaming?: boolean;
+  onPriceUpdate?: (price: number) => void;
 }
 
 export const ProChartKit = ({
@@ -39,7 +43,9 @@ export const ProChartKit = ({
   userId,
   entryPrice,
   exitPrice,
-  stopLoss
+  stopLoss,
+  enableStreaming = true,
+  onPriceUpdate,
 }: ProChartKitProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -67,6 +73,38 @@ export const ProChartKit = ({
   const [historicalEndDate, setHistoricalEndDate] = useState<Date | undefined>();
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [showHistoricalPicker, setShowHistoricalPicker] = useState(false);
+
+  // Real-time streaming price state
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'unchanged'>('unchanged');
+
+  // Use streaming market data for real-time updates
+  const { prices, isConnected, dataSource } = useMarketDataStream({
+    symbols: [symbol],
+    enabled: enableStreaming && !replayMode,
+    useRealData: true,
+    onPriceUpdate: (price) => {
+      if (price.symbol === symbol) {
+        setCurrentPrice(price.price);
+        setPriceDirection(price.direction);
+        onPriceUpdate?.(price.price);
+        
+        // Update the last candle on the chart with the streaming price
+        if (chartRef.current && !replayMode) {
+          const lastCandle = chartRef.current.getDataList().slice(-1)[0];
+          if (lastCandle) {
+            const updatedCandle: KLineData = {
+              ...lastCandle,
+              close: price.price,
+              high: Math.max(lastCandle.high, price.price),
+              low: Math.min(lastCandle.low, price.price),
+            };
+            chartRef.current.updateData(updatedCandle);
+          }
+        }
+      }
+    },
+  });
 
   // Initialize chart
   useEffect(() => {
@@ -737,6 +775,33 @@ export const ProChartKit = ({
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}
         />
+
+        {/* Live Price Indicator */}
+        {enableStreaming && currentPrice && !replayMode && (
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+            priceDirection === 'up' ? 'bg-green-500/10 border-green-500/30' :
+            priceDirection === 'down' ? 'bg-red-500/10 border-red-500/30' :
+            'bg-muted border-border'
+          }`}>
+            <Badge 
+              variant={dataSource === 'polygon' ? "default" : "secondary"} 
+              className="flex items-center gap-1 text-xs"
+            >
+              <Zap className="w-3 h-3" />
+              {dataSource === 'polygon' ? 'LIVE' : 'SIM'}
+            </Badge>
+            <span className={`font-mono font-bold text-lg ${
+              priceDirection === 'up' ? 'text-green-500' :
+              priceDirection === 'down' ? 'text-red-500' :
+              'text-foreground'
+            }`}>
+              ${currentPrice.toFixed(2)}
+            </span>
+            {isConnected && (
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            )}
+          </div>
+        )}
 
         {/* Replay Mode Toggle */}
         <Button

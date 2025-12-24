@@ -26,6 +26,7 @@ import { StockScreener } from "@/components/StockScreener";
 import { BacktestingModule } from "@/components/BacktestingModule";
 import { OptionPnLChart } from "@/components/options/OptionPnLChart";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
+import { RealtimePnLTracker } from "@/components/RealtimePnLTracker";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -1003,6 +1004,25 @@ const Trading = () => {
           <div>
             <IndicatorSelector onIndicatorsChange={setChartIndicators} />
           </div>
+        </div>
+
+        {/* Real-Time P&L Tracker */}
+        <div className="mb-6">
+          <RealtimePnLTracker
+            positions={openPositions.map(pos => ({
+              symbol: pos.symbol,
+              quantity: pos.quantity,
+              entryPrice: pos.entryPrice,
+              side: pos.side === 'CALL' || pos.side === 'long' ? 'long' : 'short',
+              type: pos.strike ? 'option' : 'stock',
+              strike: pos.strike,
+              expiration: pos.expiration,
+              optionType: pos.side === 'CALL' || pos.side === 'PUT' ? pos.side : undefined,
+            }))}
+            onPositionUpdate={(position) => {
+              console.log('Position P&L updated:', position);
+            }}
+          />
         </div>
 
         {/* Open Positions Section */}
