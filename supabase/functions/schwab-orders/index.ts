@@ -33,7 +33,18 @@ serve(async (req) => {
     );
 
     if (tokenError || !tokenData?.access_token) {
-      throw new Error('Failed to get Schwab access token. Please complete OAuth in Settings.');
+      console.log('[schwab-orders] No access token available, OAuth required');
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          requires_oauth: true,
+          message: 'Please complete Schwab OAuth in Settings to place orders.',
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     const accessToken = tokenData.access_token;
