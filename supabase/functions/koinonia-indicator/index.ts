@@ -89,20 +89,30 @@ serve(async (req) => {
       timestamp: r.t
     })) || [];
 
+    // Handle case where no price data is available
+    if (prices.length === 0) {
+      console.log('No price data available for symbol:', symbol);
+      return new Response(
+        JSON.stringify({ error: `No price data available for ${symbol}. Please check the symbol and try again.` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Calculate EMAs (9, 20, 50)
     const calculateEMA = (data: number[], period: number) => {
+      if (!data || data.length === 0) return 0;
       const k = 2 / (period + 1);
-      let ema = data[0];
+      let ema = data[0] || 0;
       for (let i = 1; i < data.length; i++) {
-        ema = data[i] * k + ema * (1 - k);
+        ema = (data[i] || 0) * k + ema * (1 - k);
       }
       return ema;
     };
 
-    const closePrices = prices.map((p: any) => p.close);
-    const ema9 = calculateEMA(closePrices.slice(-9), 9);
-    const ema20 = calculateEMA(closePrices.slice(-20), 20);
-    const ema50 = calculateEMA(closePrices.slice(-50), 50);
+    const closePrices = prices.map((p: any) => p.close || 0).filter((p: number) => p > 0);
+    const ema9 = closePrices.length >= 9 ? calculateEMA(closePrices.slice(-9), 9) : closePrices[closePrices.length - 1] || 0;
+    const ema20 = closePrices.length >= 20 ? calculateEMA(closePrices.slice(-20), 20) : closePrices[closePrices.length - 1] || 0;
+    const ema50 = closePrices.length >= 50 ? calculateEMA(closePrices.slice(-50), 50) : closePrices[closePrices.length - 1] || 0;
 
     // Calculate VWAP
     const calculateVWAP = (data: any[]) => {
@@ -121,6 +131,7 @@ serve(async (req) => {
 
     // Calculate RSI
     const calculateRSI = (data: number[], period: number = 14) => {
+      if (!data || data.length < 2) return 50; // Neutral RSI if not enough data
       let gains = 0;
       let losses = 0;
       for (let i = 1; i < period && i < data.length; i++) {
@@ -138,8 +149,12 @@ serve(async (req) => {
 
     // Calculate Bollinger Bands
     const calculateBollingerBands = (data: number[], period: number = 20) => {
-      const sma = data.slice(-period).reduce((a, b) => a + b, 0) / period;
-      const variance = data.slice(-period).reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / period;
+      if (!data || data.length === 0) {
+        return { upper: 0, middle: 0, lower: 0 };
+      }
+      const slicedData = data.slice(-period);
+      const sma = slicedData.reduce((a, b) => a + b, 0) / slicedData.length;
+      const variance = slicedData.reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / slicedData.length;
       const stdDev = Math.sqrt(variance);
       return {
         upper: sma + (2 * stdDev),
@@ -167,29 +182,38 @@ Your analysis methodology includes:
 
 Provide entry and exit signals with high confidence levels (aim for 85-95% accuracy). Be precise about entry prices, stop losses, and profit targets.`;
 
-    const topBullishHeadlines = sentimentInfo.topBullish?.map((h: any) => `  • ${h.title} (${(h.score * 100).toFixed(0)}% bullish)`).join('\n') || 'None';
-    const topBearishHeadlines = sentimentInfo.topBearish?.map((h: any) => `  • ${h.title} (${(Math.abs(h.score) * 100).toFixed(0)}% bearish)`).join('\n') || 'None';
+    const topBullishHeadlines = sentimentInfo.topBullish?.map((h: any) => `  • ${h.title} (${((h.score || 0) * 100).toFixed(0)}% bullish)`).join('\n') || 'None';
+    const topBearishHeadlines = sentimentInfo.topBearish?.map((h: any) => `  • ${h.title} (${(Math.abs(h.score || 0) * 100).toFixed(0)}% bearish)`).join('\n') || 'None';
+    
+    // Safe number formatting helper
+    const safeFixed = (num: number | undefined | null, decimals: number = 2): string => {
+      if (num === undefined || num === null || isNaN(num)) return '0.00';
+      return num.toFixed(decimals);
+    };
+    
+    const priceMin = closePrices.length > 0 ? Math.min(...closePrices.slice(-20)) : 0;
+    const priceMax = closePrices.length > 0 ? Math.max(...closePrices.slice(-20)) : 0;
 
     const userPrompt = `Analyze ${symbol} for options trading signals.
 
 TECHNICAL DATA:
-- Current Price: $${currentPrice.toFixed(2)}
-- EMA9: $${ema9.toFixed(2)}
-- EMA20: $${ema20.toFixed(2)}
-- EMA50: $${ema50.toFixed(2)}
-- VWAP: $${vwap.toFixed(2)}
-- RSI: ${rsi.toFixed(2)}
-- Bollinger Bands: Upper ${bollingerBands.upper.toFixed(2)}, Middle ${bollingerBands.middle.toFixed(2)}, Lower ${bollingerBands.lower.toFixed(2)}
-- 20-Day Price Range: $${Math.min(...closePrices.slice(-20)).toFixed(2)} - $${Math.max(...closePrices.slice(-20)).toFixed(2)}
+- Current Price: $${safeFixed(currentPrice)}
+- EMA9: $${safeFixed(ema9)}
+- EMA20: $${safeFixed(ema20)}
+- EMA50: $${safeFixed(ema50)}
+- VWAP: $${safeFixed(vwap)}
+- RSI: ${safeFixed(rsi)}
+- Bollinger Bands: Upper ${safeFixed(bollingerBands.upper)}, Middle ${safeFixed(bollingerBands.middle)}, Lower ${safeFixed(bollingerBands.lower)}
+- 20-Day Price Range: $${safeFixed(priceMin)} - $${safeFixed(priceMax)}
 
 📰 ADVANCED NEWS SENTIMENT ANALYSIS:
-- Overall Sentiment: ${aggregate.overallLabel} (Score: ${(aggregate.overallScore * 100).toFixed(1)}%)
-- Weighted Confidence Score: ${(aggregate.weightedScore * 100).toFixed(1)}%
+- Overall Sentiment: ${aggregate.overallLabel || 'Unknown'} (Score: ${safeFixed((aggregate.overallScore || 0) * 100, 1)}%)
+- Weighted Confidence Score: ${safeFixed((aggregate.weightedScore || 0) * 100, 1)}%
 - Articles Analyzed: ${sentimentInfo.totalArticlesAnalyzed || 0}
 - Sentiment Breakdown:
-  • Bullish: ${breakdown.bullishPercent?.toFixed(1)}%
-  • Bearish: ${breakdown.bearishPercent?.toFixed(1)}%
-  • Neutral: ${breakdown.neutralPercent?.toFixed(1)}%
+  • Bullish: ${safeFixed(breakdown.bullishPercent, 1)}%
+  • Bearish: ${safeFixed(breakdown.bearishPercent, 1)}%
+  • Neutral: ${safeFixed(breakdown.neutralPercent, 1)}%
 
 Top Bullish Headlines:
 ${topBullishHeadlines}
