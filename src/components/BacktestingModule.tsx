@@ -1,0 +1,941 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Play,
+  Save,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  Activity,
+  Target,
+  AlertTriangle,
+  Plus,
+  Trash2,
+  History,
+  LineChart,
+  DollarSign,
+  Percent,
+  Calendar,
+  Clock,
+  Award,
+  XCircle,
+  Loader2
+} from "lucide-react";
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+  ReferenceLine
+} from "recharts";
+
+interface Strategy {
+  id: string;
+  name: string;
+  description: string;
+  entry_conditions: ConditionGroup[];
+  exit_conditions: ConditionGroup[];
+  indicators: string[];
+  stop_loss_percent: number | null;
+  take_profit_percent: number | null;
+}
+
+interface ConditionGroup {
+  id: string;
+  indicator: string;
+  operator: string;
+  value: string;
+  logic?: 'AND' | 'OR';
+}
+
+interface BacktestResult {
+  id: string;
+  strategy_id: string;
+  symbol: string;
+  timeframe: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  final_capital: number;
+  total_return_percent: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  profit_factor: number;
+  max_drawdown_percent: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  avg_trade_return: number;
+  avg_win: number;
+  avg_loss: number;
+  largest_win: number;
+  largest_loss: number;
+  avg_holding_period: string;
+  trades: Trade[];
+  equity_curve: EquityPoint[];
+  status: string;
+  created_at: string;
+}
+
+interface Trade {
+  entryDate: string;
+  exitDate: string;
+  entryPrice: number;
+  exitPrice: number;
+  direction: 'long' | 'short';
+  quantity: number;
+  pnl: number;
+  pnlPercent: number;
+}
+
+interface EquityPoint {
+  date: string;
+  equity: number;
+  drawdown: number;
+}
+
+const INDICATORS = [
+  { value: 'sma', label: 'SMA (Simple Moving Average)', params: ['period'] },
+  { value: 'ema', label: 'EMA (Exponential Moving Average)', params: ['period'] },
+  { value: 'rsi', label: 'RSI (Relative Strength Index)', params: ['period'] },
+  { value: 'macd', label: 'MACD', params: ['fast', 'slow', 'signal'] },
+  { value: 'bb', label: 'Bollinger Bands', params: ['period', 'stdDev'] },
+  { value: 'stoch', label: 'Stochastic', params: ['k', 'd'] },
+  { value: 'atr', label: 'ATR (Average True Range)', params: ['period'] },
+  { value: 'adx', label: 'ADX (Average Directional Index)', params: ['period'] },
+  { value: 'cci', label: 'CCI (Commodity Channel Index)', params: ['period'] },
+  { value: 'williams', label: 'Williams %R', params: ['period'] },
+  { value: 'price', label: 'Price', params: [] },
+  { value: 'volume', label: 'Volume', params: [] },
+  { value: 'vwap', label: 'VWAP', params: [] },
+];
+
+const OPERATORS = [
+  { value: 'crosses_above', label: 'Crosses Above' },
+  { value: 'crosses_below', label: 'Crosses Below' },
+  { value: 'above', label: 'Is Above' },
+  { value: 'below', label: 'Is Below' },
+  { value: 'equals', label: 'Equals' },
+  { value: 'greater_than', label: 'Greater Than' },
+  { value: 'less_than', label: 'Less Than' },
+];
+
+const TIMEFRAMES = [
+  { value: '1m', label: '1 Minute' },
+  { value: '5m', label: '5 Minutes' },
+  { value: '15m', label: '15 Minutes' },
+  { value: '1h', label: '1 Hour' },
+  { value: '4h', label: '4 Hours' },
+  { value: '1D', label: 'Daily' },
+  { value: '1W', label: 'Weekly' },
+];
+
+export function BacktestingModule() {
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [results, setResults] = useState<BacktestResult[]>([]);
+  const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
+  const [selectedResult, setSelectedResult] = useState<BacktestResult | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const { toast } = useToast();
+
+  // Form state for new strategy
+  const [strategyName, setStrategyName] = useState("");
+  const [strategyDescription, setStrategyDescription] = useState("");
+  const [entryConditions, setEntryConditions] = useState<ConditionGroup[]>([]);
+  const [exitConditions, setExitConditions] = useState<ConditionGroup[]>([]);
+  const [stopLoss, setStopLoss] = useState("");
+  const [takeProfit, setTakeProfit] = useState("");
+
+  // Backtest params
+  const [symbol, setSymbol] = useState("AAPL");
+  const [timeframe, setTimeframe] = useState("1D");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [initialCapital, setInitialCapital] = useState("10000");
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        fetchStrategies(session.user.id);
+        fetchResults(session.user.id);
+      }
+    });
+
+    // Set default dates
+    const end = new Date();
+    const start = new Date();
+    start.setFullYear(start.getFullYear() - 1);
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end.toISOString().split('T')[0]);
+  }, []);
+
+  const fetchStrategies = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('backtest_strategies')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setStrategies(data as unknown as Strategy[]);
+    }
+  };
+
+  const fetchResults = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('backtest_results')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (!error && data) {
+      setResults(data as unknown as BacktestResult[]);
+    }
+  };
+
+  const addCondition = (type: 'entry' | 'exit') => {
+    const newCondition: ConditionGroup = {
+      id: crypto.randomUUID(),
+      indicator: 'rsi',
+      operator: 'crosses_above',
+      value: '30',
+      logic: 'AND'
+    };
+
+    if (type === 'entry') {
+      setEntryConditions([...entryConditions, newCondition]);
+    } else {
+      setExitConditions([...exitConditions, newCondition]);
+    }
+  };
+
+  const updateCondition = (type: 'entry' | 'exit', id: string, field: string, value: string) => {
+    const update = (conditions: ConditionGroup[]) =>
+      conditions.map(c => c.id === id ? { ...c, [field]: value } : c);
+
+    if (type === 'entry') {
+      setEntryConditions(update(entryConditions));
+    } else {
+      setExitConditions(update(exitConditions));
+    }
+  };
+
+  const removeCondition = (type: 'entry' | 'exit', id: string) => {
+    if (type === 'entry') {
+      setEntryConditions(entryConditions.filter(c => c.id !== id));
+    } else {
+      setExitConditions(exitConditions.filter(c => c.id !== id));
+    }
+  };
+
+  const saveStrategy = async () => {
+    if (!user || !strategyName) {
+      toast({
+        title: "Error",
+        description: "Please provide a strategy name",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from('backtest_strategies')
+        .insert([{
+          user_id: user.id,
+          name: strategyName,
+          description: strategyDescription,
+          entry_conditions: entryConditions as any,
+          exit_conditions: exitConditions as any,
+          indicators: [...new Set([
+            ...entryConditions.map(c => c.indicator),
+            ...exitConditions.map(c => c.indicator)
+          ])] as any,
+          stop_loss_percent: stopLoss ? parseFloat(stopLoss) : null,
+          take_profit_percent: takeProfit ? parseFloat(takeProfit) : null
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Strategy Saved",
+        description: `"${strategyName}" has been saved successfully`
+      });
+
+      fetchStrategies(user.id);
+      resetStrategyForm();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const resetStrategyForm = () => {
+    setStrategyName("");
+    setStrategyDescription("");
+    setEntryConditions([]);
+    setExitConditions([]);
+    setStopLoss("");
+    setTakeProfit("");
+  };
+
+  const runBacktest = async () => {
+    if (!user) return;
+
+    if (!selectedStrategy && entryConditions.length === 0) {
+      toast({
+        title: "No Strategy",
+        description: "Please create or select a strategy first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsRunning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('run-backtest', {
+        body: {
+          userId: user.id,
+          strategyId: selectedStrategy?.id,
+          strategy: selectedStrategy || {
+            entry_conditions: entryConditions,
+            exit_conditions: exitConditions,
+            stop_loss_percent: stopLoss ? parseFloat(stopLoss) : null,
+            take_profit_percent: takeProfit ? parseFloat(takeProfit) : null
+          },
+          symbol,
+          timeframe,
+          startDate,
+          endDate,
+          initialCapital: parseFloat(initialCapital)
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.result) {
+        setSelectedResult(data.result);
+        fetchResults(user.id);
+        toast({
+          title: "Backtest Complete",
+          description: `Strategy achieved ${data.result.total_return_percent?.toFixed(2)}% return`
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Backtest Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const loadStrategy = (strategy: Strategy) => {
+    setSelectedStrategy(strategy);
+    setStrategyName(strategy.name);
+    setStrategyDescription(strategy.description || "");
+    setEntryConditions(strategy.entry_conditions || []);
+    setExitConditions(strategy.exit_conditions || []);
+    setStopLoss(strategy.stop_loss_percent?.toString() || "");
+    setTakeProfit(strategy.take_profit_percent?.toString() || "");
+  };
+
+  const deleteStrategy = async (id: string) => {
+    const { error } = await supabase
+      .from('backtest_strategies')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      toast({ title: "Strategy deleted" });
+      if (user) fetchStrategies(user.id);
+      if (selectedStrategy?.id === id) {
+        setSelectedStrategy(null);
+        resetStrategyForm();
+      }
+    }
+  };
+
+  const ConditionBuilder = ({ 
+    conditions, 
+    type, 
+    title 
+  }: { 
+    conditions: ConditionGroup[], 
+    type: 'entry' | 'exit',
+    title: string 
+  }) => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-medium">{title}</Label>
+        <Button variant="outline" size="sm" onClick={() => addCondition(type)}>
+          <Plus className="w-3 h-3 mr-1" />
+          Add Condition
+        </Button>
+      </div>
+      
+      {conditions.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No conditions defined</p>
+      ) : (
+        <div className="space-y-2">
+          {conditions.map((condition, index) => (
+            <div key={condition.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+              {index > 0 && (
+                <Select
+                  value={condition.logic}
+                  onValueChange={(v) => updateCondition(type, condition.id, 'logic', v)}
+                >
+                  <SelectTrigger className="w-16 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AND">AND</SelectItem>
+                    <SelectItem value="OR">OR</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              
+              <Select
+                value={condition.indicator}
+                onValueChange={(v) => updateCondition(type, condition.id, 'indicator', v)}
+              >
+                <SelectTrigger className="w-32 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDICATORS.map(ind => (
+                    <SelectItem key={ind.value} value={ind.value}>{ind.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={condition.operator}
+                onValueChange={(v) => updateCondition(type, condition.id, 'operator', v)}
+              >
+                <SelectTrigger className="w-32 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OPERATORS.map(op => (
+                    <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Input
+                value={condition.value}
+                onChange={(e) => updateCondition(type, condition.id, 'value', e.target.value)}
+                placeholder="Value"
+                className="w-20 h-8"
+              />
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => removeCondition(type, condition.id)}
+              >
+                <Trash2 className="w-3 h-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const MetricCard = ({ 
+    icon: Icon, 
+    label, 
+    value, 
+    suffix = "", 
+    isPositive 
+  }: { 
+    icon: any, 
+    label: string, 
+    value: string | number, 
+    suffix?: string,
+    isPositive?: boolean 
+  }) => (
+    <div className="bg-muted/50 rounded-lg p-3">
+      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+        <Icon className="w-4 h-4" />
+        <span className="text-xs">{label}</span>
+      </div>
+      <p className={`text-lg font-bold ${
+        isPositive === undefined ? '' : isPositive ? 'text-green-500' : 'text-red-500'
+      }`}>
+        {value}{suffix}
+      </p>
+    </div>
+  );
+
+  return (
+    <Card className="border-border">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-primary" />
+          Backtesting Module
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="builder" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="builder">Strategy Builder</TabsTrigger>
+            <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
+
+          {/* Strategy Builder Tab */}
+          <TabsContent value="builder" className="space-y-4">
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Strategy Configuration */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Strategy Name</Label>
+                    <Input
+                      value={strategyName}
+                      onChange={(e) => setStrategyName(e.target.value)}
+                      placeholder="My Strategy"
+                    />
+                  </div>
+                  <div>
+                    <Label>Description</Label>
+                    <Input
+                      value={strategyDescription}
+                      onChange={(e) => setStrategyDescription(e.target.value)}
+                      placeholder="Optional description"
+                    />
+                  </div>
+                </div>
+
+                <ConditionBuilder
+                  conditions={entryConditions}
+                  type="entry"
+                  title="Entry Conditions (Buy When)"
+                />
+
+                <ConditionBuilder
+                  conditions={exitConditions}
+                  type="exit"
+                  title="Exit Conditions (Sell When)"
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Stop Loss (%)</Label>
+                    <Input
+                      type="number"
+                      value={stopLoss}
+                      onChange={(e) => setStopLoss(e.target.value)}
+                      placeholder="e.g., 5"
+                    />
+                  </div>
+                  <div>
+                    <Label>Take Profit (%)</Label>
+                    <Input
+                      type="number"
+                      value={takeProfit}
+                      onChange={(e) => setTakeProfit(e.target.value)}
+                      placeholder="e.g., 15"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button onClick={saveStrategy} disabled={isSaving} className="flex-1">
+                    <Save className="w-4 h-4 mr-2" />
+                    {isSaving ? "Saving..." : "Save Strategy"}
+                  </Button>
+                  <Button variant="outline" onClick={resetStrategyForm}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
+              {/* Backtest Parameters & Saved Strategies */}
+              <div className="space-y-4">
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Backtest Parameters</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Symbol</Label>
+                        <Input
+                          value={symbol}
+                          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                          placeholder="AAPL"
+                        />
+                      </div>
+                      <div>
+                        <Label>Timeframe</Label>
+                        <Select value={timeframe} onValueChange={setTimeframe}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TIMEFRAMES.map(tf => (
+                              <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Start Date</Label>
+                        <Input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>End Date</Label>
+                        <Input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Initial Capital ($)</Label>
+                      <Input
+                        type="number"
+                        value={initialCapital}
+                        onChange={(e) => setInitialCapital(e.target.value)}
+                      />
+                    </div>
+
+                    <Button 
+                      onClick={runBacktest} 
+                      disabled={isRunning}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isRunning ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Running Backtest...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 mr-2" />
+                          Run Backtest
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Saved Strategies */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Saved Strategies</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {strategies.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No saved strategies yet</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {strategies.map(strategy => (
+                          <div
+                            key={strategy.id}
+                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                              selectedStrategy?.id === strategy.id 
+                                ? 'bg-primary/20 border border-primary' 
+                                : 'bg-background hover:bg-muted'
+                            }`}
+                            onClick={() => loadStrategy(strategy)}
+                          >
+                            <div>
+                              <p className="font-medium text-sm">{strategy.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {strategy.entry_conditions?.length || 0} entry, {strategy.exit_conditions?.length || 0} exit conditions
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteStrategy(strategy.id);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Results Tab */}
+          <TabsContent value="results" className="space-y-4">
+            {selectedResult ? (
+              <>
+                {/* Summary Metrics */}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  <MetricCard
+                    icon={DollarSign}
+                    label="Final Capital"
+                    value={`$${selectedResult.final_capital?.toLocaleString() || 0}`}
+                    isPositive={(selectedResult.final_capital || 0) > selectedResult.initial_capital}
+                  />
+                  <MetricCard
+                    icon={Percent}
+                    label="Total Return"
+                    value={selectedResult.total_return_percent?.toFixed(2) || 0}
+                    suffix="%"
+                    isPositive={(selectedResult.total_return_percent || 0) > 0}
+                  />
+                  <MetricCard
+                    icon={Target}
+                    label="Win Rate"
+                    value={selectedResult.win_rate?.toFixed(1) || 0}
+                    suffix="%"
+                    isPositive={(selectedResult.win_rate || 0) >= 50}
+                  />
+                  <MetricCard
+                    icon={Activity}
+                    label="Profit Factor"
+                    value={selectedResult.profit_factor?.toFixed(2) || 0}
+                    isPositive={(selectedResult.profit_factor || 0) > 1}
+                  />
+                  <MetricCard
+                    icon={AlertTriangle}
+                    label="Max Drawdown"
+                    value={selectedResult.max_drawdown_percent?.toFixed(2) || 0}
+                    suffix="%"
+                    isPositive={false}
+                  />
+                  <MetricCard
+                    icon={LineChart}
+                    label="Sharpe Ratio"
+                    value={selectedResult.sharpe_ratio?.toFixed(2) || 0}
+                    isPositive={(selectedResult.sharpe_ratio || 0) > 1}
+                  />
+                </div>
+
+                {/* Equity Curve */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Equity Curve</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={selectedResult.equity_curve || []}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis 
+                            dataKey="date" 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                            tickFormatter={(v) => `$${v.toLocaleString()}`}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--background))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '8px'
+                            }}
+                            formatter={(value: number) => [`$${value.toLocaleString()}`, 'Equity']}
+                          />
+                          <ReferenceLine y={selectedResult.initial_capital} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                          <Area
+                            type="monotone"
+                            dataKey="equity"
+                            stroke="hsl(var(--primary))"
+                            fill="hsl(var(--primary) / 0.2)"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Additional Metrics */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Card className="bg-muted/30">
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">Trade Statistics</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Total Trades</span>
+                        <span className="font-medium">{selectedResult.total_trades}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Winning Trades</span>
+                        <span className="font-medium text-green-500">{selectedResult.winning_trades}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Losing Trades</span>
+                        <span className="font-medium text-red-500">{selectedResult.losing_trades}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Avg Holding Period</span>
+                        <span className="font-medium">{selectedResult.avg_holding_period || 'N/A'}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-muted/30">
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">P&L Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Average Win</span>
+                        <span className="font-medium text-green-500">${selectedResult.avg_win?.toFixed(2) || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Average Loss</span>
+                        <span className="font-medium text-red-500">${selectedResult.avg_loss?.toFixed(2) || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Largest Win</span>
+                        <span className="font-medium text-green-500">${selectedResult.largest_win?.toFixed(2) || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Largest Loss</span>
+                        <span className="font-medium text-red-500">${selectedResult.largest_loss?.toFixed(2) || 0}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Trade List */}
+                {selectedResult.trades && selectedResult.trades.length > 0 && (
+                  <Card className="bg-muted/30">
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">Trade History</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="max-h-48 overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-muted-foreground">
+                            <tr>
+                              <th className="text-left p-2">Entry</th>
+                              <th className="text-left p-2">Exit</th>
+                              <th className="text-right p-2">Entry $</th>
+                              <th className="text-right p-2">Exit $</th>
+                              <th className="text-right p-2">P&L</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedResult.trades.slice(0, 20).map((trade, i) => (
+                              <tr key={i} className="border-t border-border">
+                                <td className="p-2">{new Date(trade.entryDate).toLocaleDateString()}</td>
+                                <td className="p-2">{new Date(trade.exitDate).toLocaleDateString()}</td>
+                                <td className="p-2 text-right">${trade.entryPrice.toFixed(2)}</td>
+                                <td className="p-2 text-right">${trade.exitPrice.toFixed(2)}</td>
+                                <td className={`p-2 text-right font-medium ${trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  ${trade.pnl.toFixed(2)} ({trade.pnlPercent.toFixed(1)}%)
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Run a backtest to see results here</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* History Tab */}
+          <TabsContent value="history">
+            {results.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No backtest history yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {results.map(result => (
+                  <div
+                    key={result.id}
+                    className="flex items-center justify-between p-4 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => setSelectedResult(result)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <Badge variant="outline">{result.symbol}</Badge>
+                      <div>
+                        <p className="font-medium">{result.timeframe} Backtest</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(result.start_date).toLocaleDateString()} - {new Date(result.end_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right">
+                        <p className={`font-bold ${(result.total_return_percent || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {result.total_return_percent?.toFixed(2) || 0}%
+                        </p>
+                        <p className="text-xs text-muted-foreground">{result.total_trades} trades</p>
+                      </div>
+                      <Badge variant={result.status === 'completed' ? 'default' : 'secondary'}>
+                        {result.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}

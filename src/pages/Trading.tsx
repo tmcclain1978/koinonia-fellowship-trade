@@ -23,6 +23,7 @@ import { SchwabLiveQuotes } from "@/components/SchwabLiveQuotes";
 import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 import { PriceAlertSystem } from "@/components/PriceAlertSystem";
 import { StockScreener } from "@/components/StockScreener";
+import { BacktestingModule } from "@/components/BacktestingModule";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -1024,6 +1025,11 @@ const Trading = () => {
           <div className="grid lg:grid-cols-2 gap-6 mb-6">
             <PriceAlertSystem />
             <StockScreener />
+          </div>
+
+          {/* Backtesting Module */}
+          <div className="mb-6">
+            <BacktestingModule />
           </div>
 
           {/* Portfolio & Order Entry Side by Side */}

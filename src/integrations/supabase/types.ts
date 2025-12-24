@@ -86,6 +86,161 @@ export type Database = {
         }
         Relationships: []
       }
+      backtest_results: {
+        Row: {
+          avg_holding_period: string | null
+          avg_loss: number | null
+          avg_trade_return: number | null
+          avg_win: number | null
+          completed_at: string | null
+          created_at: string
+          end_date: string
+          equity_curve: Json | null
+          error_message: string | null
+          final_capital: number | null
+          id: string
+          initial_capital: number
+          largest_loss: number | null
+          largest_win: number | null
+          losing_trades: number | null
+          max_drawdown_percent: number | null
+          profit_factor: number | null
+          sharpe_ratio: number | null
+          sortino_ratio: number | null
+          start_date: string
+          status: string | null
+          strategy_id: string | null
+          symbol: string
+          timeframe: string
+          total_return_percent: number | null
+          total_trades: number | null
+          trades: Json | null
+          user_id: string
+          win_rate: number | null
+          winning_trades: number | null
+        }
+        Insert: {
+          avg_holding_period?: string | null
+          avg_loss?: number | null
+          avg_trade_return?: number | null
+          avg_win?: number | null
+          completed_at?: string | null
+          created_at?: string
+          end_date: string
+          equity_curve?: Json | null
+          error_message?: string | null
+          final_capital?: number | null
+          id?: string
+          initial_capital?: number
+          largest_loss?: number | null
+          largest_win?: number | null
+          losing_trades?: number | null
+          max_drawdown_percent?: number | null
+          profit_factor?: number | null
+          sharpe_ratio?: number | null
+          sortino_ratio?: number | null
+          start_date: string
+          status?: string | null
+          strategy_id?: string | null
+          symbol: string
+          timeframe?: string
+          total_return_percent?: number | null
+          total_trades?: number | null
+          trades?: Json | null
+          user_id: string
+          win_rate?: number | null
+          winning_trades?: number | null
+        }
+        Update: {
+          avg_holding_period?: string | null
+          avg_loss?: number | null
+          avg_trade_return?: number | null
+          avg_win?: number | null
+          completed_at?: string | null
+          created_at?: string
+          end_date?: string
+          equity_curve?: Json | null
+          error_message?: string | null
+          final_capital?: number | null
+          id?: string
+          initial_capital?: number
+          largest_loss?: number | null
+          largest_win?: number | null
+          losing_trades?: number | null
+          max_drawdown_percent?: number | null
+          profit_factor?: number | null
+          sharpe_ratio?: number | null
+          sortino_ratio?: number | null
+          start_date?: string
+          status?: string | null
+          strategy_id?: string | null
+          symbol?: string
+          timeframe?: string
+          total_return_percent?: number | null
+          total_trades?: number | null
+          trades?: Json | null
+          user_id?: string
+          win_rate?: number | null
+          winning_trades?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backtest_results_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "backtest_strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      backtest_strategies: {
+        Row: {
+          created_at: string
+          description: string | null
+          entry_conditions: Json
+          exit_conditions: Json
+          id: string
+          indicators: Json
+          is_active: boolean | null
+          name: string
+          position_sizing: Json | null
+          stop_loss_percent: number | null
+          take_profit_percent: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          entry_conditions?: Json
+          exit_conditions?: Json
+          id?: string
+          indicators?: Json
+          is_active?: boolean | null
+          name: string
+          position_sizing?: Json | null
+          stop_loss_percent?: number | null
+          take_profit_percent?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          entry_conditions?: Json
+          exit_conditions?: Json
+          id?: string
+          indicators?: Json
+          is_active?: boolean | null
+          name?: string
+          position_sizing?: Json | null
+          stop_loss_percent?: number | null
+          take_profit_percent?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       bot_decisions: {
         Row: {
           analysis_data: Json | null
