@@ -161,28 +161,66 @@ serve(async (req) => {
 
     // No access token available or Schwab failed, try Polygon.io for historical data
     const polygonApiKey = Deno.env.get('POLYGON_API_KEY');
-    if (polygonApiKey && startDate && endDate) {
+    if (polygonApiKey) {
       try {
         console.log('Trying Polygon.io for historical data...');
         
         // Map interval to Polygon format
         const polygonIntervalMap: Record<string, { multiplier: number; timespan: string }> = {
+          '1': { multiplier: 1, timespan: 'minute' },
+          '5': { multiplier: 5, timespan: 'minute' },
+          '15': { multiplier: 15, timespan: 'minute' },
+          '30': { multiplier: 30, timespan: 'minute' },
+          '60': { multiplier: 1, timespan: 'hour' },
+          '1m': { multiplier: 1, timespan: 'minute' },
+          '5m': { multiplier: 5, timespan: 'minute' },
+          '15m': { multiplier: 15, timespan: 'minute' },
+          '30m': { multiplier: 30, timespan: 'minute' },
+          '1h': { multiplier: 1, timespan: 'hour' },
           'minute': { multiplier: 1, timespan: 'minute' },
           '5minute': { multiplier: 5, timespan: 'minute' },
           '15minute': { multiplier: 15, timespan: 'minute' },
           '30minute': { multiplier: 30, timespan: 'minute' },
           'hour': { multiplier: 1, timespan: 'hour' },
           'daily': { multiplier: 1, timespan: 'day' },
-          'weekly': { multiplier: 1, timespan: 'week' },
-          'monthly': { multiplier: 1, timespan: 'month' },
+          'D': { multiplier: 1, timespan: 'day' },
           '1D': { multiplier: 1, timespan: 'day' },
           '1W': { multiplier: 1, timespan: 'week' },
           '1M': { multiplier: 1, timespan: 'month' },
         };
         
-        const polyConfig = polygonIntervalMap[interval] || { multiplier: 1, timespan: 'day' };
+        const polyConfig = polygonIntervalMap[interval] || { multiplier: 5, timespan: 'minute' };
         
-        const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${polyConfig.multiplier}/${polyConfig.timespan}/${startDate}/${endDate}?adjusted=true&sort=asc&limit=50000&apiKey=${polygonApiKey}`;
+        // Calculate date range if not provided
+        let fromDate = startDate;
+        let toDate = endDate;
+        
+        if (!fromDate || !toDate) {
+          const now = new Date();
+          toDate = now.toISOString().split('T')[0];
+          
+          // Calculate from date based on interval
+          if (polyConfig.timespan === 'minute') {
+            // For minute data, get last 5 trading days
+            const from = new Date(now);
+            from.setDate(from.getDate() - 7); // 7 calendar days to ensure 5 trading days
+            fromDate = from.toISOString().split('T')[0];
+          } else if (polyConfig.timespan === 'hour') {
+            // For hourly, get last 30 days
+            const from = new Date(now);
+            from.setDate(from.getDate() - 30);
+            fromDate = from.toISOString().split('T')[0];
+          } else {
+            // For daily/weekly, get last year
+            const from = new Date(now);
+            from.setFullYear(from.getFullYear() - 1);
+            fromDate = from.toISOString().split('T')[0];
+          }
+        }
+        
+        const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${polyConfig.multiplier}/${polyConfig.timespan}/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000&apiKey=${polygonApiKey}`;
+        
+        console.log(`Polygon URL: ${polygonUrl.replace(polygonApiKey, 'HIDDEN')}`);
         
         const polygonResponse = await fetch(polygonUrl);
         
@@ -199,7 +237,7 @@ serve(async (req) => {
               volume: bar.v || 0,
             }));
             
-            console.log(`Processed ${candles.length} candles from Polygon.io`);
+            console.log(`✅ Processed ${candles.length} candles from Polygon.io for ${symbol}`);
             
             return new Response(
               JSON.stringify({ 
@@ -212,7 +250,12 @@ serve(async (req) => {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
               }
             );
+          } else {
+            console.log('Polygon returned no results:', polygonData);
           }
+        } else {
+          const errorText = await polygonResponse.text();
+          console.error('Polygon API error:', polygonResponse.status, errorText);
         }
       } catch (polygonError) {
         console.error('Error fetching from Polygon:', polygonError);
