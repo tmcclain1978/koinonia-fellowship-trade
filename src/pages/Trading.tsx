@@ -25,6 +25,7 @@ import { PriceAlertSystem } from "@/components/PriceAlertSystem";
 import { StockScreener } from "@/components/StockScreener";
 import { BacktestingModule } from "@/components/BacktestingModule";
 import { OptionPnLChart } from "@/components/options/OptionPnLChart";
+import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -434,6 +435,19 @@ const Trading = () => {
               </Card>
             )}
           </div>
+        </div>
+
+        {/* Live Price Display */}
+        <div className="mb-6">
+          <LivePriceDisplay 
+            initialSymbols={[symbol, 'SPY', 'QQQ', 'MSFT', 'NVDA']}
+            onPriceUpdate={(sym, price) => {
+              // Update chart if the main symbol price changes
+              if (sym === symbol) {
+                console.log(`Live price for ${sym}: $${price}`);
+              }
+            }}
+          />
         </div>
 
         {/* Indicators & Chart Intervals */}
