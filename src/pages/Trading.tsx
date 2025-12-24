@@ -24,6 +24,7 @@ import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 import { PriceAlertSystem } from "@/components/PriceAlertSystem";
 import { StockScreener } from "@/components/StockScreener";
 import { BacktestingModule } from "@/components/BacktestingModule";
+import { OptionPnLChart } from "@/components/options/OptionPnLChart";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -1030,6 +1031,11 @@ const Trading = () => {
           {/* Backtesting Module */}
           <div className="mb-6">
             <BacktestingModule />
+          </div>
+
+          {/* Options P&L Chart */}
+          <div className="mb-6">
+            <OptionPnLChart symbol={symbol} currentPrice={256} />
           </div>
 
           {/* Portfolio & Order Entry Side by Side */}
