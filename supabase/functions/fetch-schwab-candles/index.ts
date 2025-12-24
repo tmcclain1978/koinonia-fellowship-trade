@@ -286,22 +286,72 @@ serve(async (req) => {
     }
 
     // No access token available, use mock data with simulated live updates
-    console.log('No access token available, using mock data with live simulation');
+    console.log('No access token available, trying to get current price for realistic mock data');
+    
+    // Try to get current price from Polygon for accurate base price
+    let basePrice = 150;
+    if (polygonApiKey) {
+      try {
+        const prevResponse = await fetch(
+          `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apiKey=${polygonApiKey}`
+        );
+        const prevData = await prevResponse.json();
+        if (prevData.results?.[0]?.c) {
+          basePrice = prevData.results[0].c;
+          console.log(`Got current price from Polygon: $${basePrice}`);
+        }
+      } catch (e) {
+        console.log('Could not fetch current price from Polygon, using default');
+      }
+    }
+    
+    // Map interval to milliseconds for proper candle spacing
+    const intervalMs: Record<string, number> = {
+      '1': 60 * 1000,           // 1 minute
+      '5': 5 * 60 * 1000,       // 5 minutes
+      '15': 15 * 60 * 1000,     // 15 minutes
+      '30': 30 * 60 * 1000,     // 30 minutes
+      '60': 60 * 60 * 1000,     // 1 hour
+      '1m': 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '30m': 30 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      'minute': 60 * 1000,
+      '5minute': 5 * 60 * 1000,
+      '15minute': 15 * 60 * 1000,
+      '30minute': 30 * 60 * 1000,
+      'hour': 60 * 60 * 1000,
+      'D': 24 * 60 * 60 * 1000,
+      '1D': 24 * 60 * 60 * 1000,
+      'daily': 24 * 60 * 60 * 1000,
+    };
+    
+    const candleInterval = intervalMs[interval] || 60 * 1000;
+    const numCandles = 100;
     
     // Generate realistic mock candle data
     const now = Date.now();
+    // Align to current interval boundary
+    const currentCandleStart = Math.floor(now / candleInterval) * candleInterval;
     const mockCandles = [];
-    let basePrice = 150;
+    let currentPrice = basePrice;
     
-    // Generate historical candles (past 100 minutes)
-    for (let i = 101; i >= 1; i--) {
-      const time = Math.floor((now - (i * 60 * 1000)) / 1000); // 1-minute intervals
-      const variation = (Math.random() - 0.5) * 5;
-      const open = basePrice;
-      const close = basePrice + variation;
-      const high = Math.max(open, close) + Math.random() * 2;
-      const low = Math.min(open, close) - Math.random() * 2;
-      const volume = Math.floor(Math.random() * 1000000) + 100000;
+    // Generate historical candles working backwards
+    for (let i = numCandles; i >= 0; i--) {
+      const candleTime = currentCandleStart - (i * candleInterval);
+      const time = Math.floor(candleTime / 1000);
+      
+      // Random walk with slight upward bias matching actual stock behavior
+      const volatility = basePrice * 0.003; // 0.3% per candle
+      const variation = (Math.random() - 0.48) * volatility * 2;
+      
+      const open = currentPrice;
+      const close = currentPrice + variation;
+      const range = Math.abs(variation) + (Math.random() * volatility);
+      const high = Math.max(open, close) + Math.random() * range;
+      const low = Math.min(open, close) - Math.random() * range;
+      const volume = Math.floor(Math.random() * 500000) + 100000;
       
       mockCandles.push({
         time,
@@ -312,30 +362,17 @@ serve(async (req) => {
         volume,
       });
       
-      basePrice = close;
+      currentPrice = close;
     }
     
-    // Add current candle with live-like movement
-    const currentTime = Math.floor(now / 1000);
-    const currentVariation = (Math.random() - 0.5) * 3;
-    const currentOpen = basePrice;
-    const currentClose = basePrice + currentVariation;
-    mockCandles.push({
-      time: currentTime,
-      open: parseFloat(currentOpen.toFixed(2)),
-      high: parseFloat((Math.max(currentOpen, currentClose) + Math.random() * 1.5).toFixed(2)),
-      low: parseFloat((Math.min(currentOpen, currentClose) - Math.random() * 1.5).toFixed(2)),
-      close: parseFloat(currentClose.toFixed(2)),
-      volume: Math.floor(Math.random() * 500000) + 50000,
-    });
-    
-    console.log(`Generated ${mockCandles.length} mock candles`);
+    console.log(`Generated ${mockCandles.length} mock candles for ${symbol} at interval ${interval}ms, base price: $${basePrice}`);
     
     return new Response(
       JSON.stringify({ 
         data: mockCandles,
         source: 'mock',
         symbol,
+        note: `Mock data based on current price $${basePrice.toFixed(2)}. Connect Schwab for live data.`,
       }),
       { 
         status: 200, 
