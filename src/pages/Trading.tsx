@@ -17,6 +17,9 @@ import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { IndicatorSelector } from "@/components/IndicatorSelector";
 import { MultiChartGrid } from "@/components/charts/MultiChartGrid";
+import { SchwabOrderEntry } from "@/components/SchwabOrderEntry";
+import { SchwabPortfolio } from "@/components/SchwabPortfolio";
+import { SchwabLiveQuotes } from "@/components/SchwabLiveQuotes";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -975,6 +978,39 @@ const Trading = () => {
               setSymbol(position.symbol);
             }}
           />
+        </div>
+
+        {/* Schwab Integration Section */}
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            <Activity className="w-6 h-6 text-primary" />
+            Schwab Integration
+          </h2>
+          
+          {/* Live Quotes Streaming */}
+          <div className="mb-6">
+            <SchwabLiveQuotes 
+              initialSymbols={["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", symbol].filter((s, i, a) => a.indexOf(s) === i)}
+              onSymbolClick={(sym) => setSymbol(sym)}
+            />
+          </div>
+
+          {/* Portfolio & Order Entry Side by Side */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Schwab Order Entry */}
+            <SchwabOrderEntry 
+              symbol={symbol}
+              onOrderPlaced={(orderId) => {
+                toast({
+                  title: "Order Placed",
+                  description: `Order ${orderId} has been submitted`,
+                });
+              }}
+            />
+
+            {/* Schwab Portfolio */}
+            <SchwabPortfolio />
+          </div>
         </div>
         </div>
       </div>
