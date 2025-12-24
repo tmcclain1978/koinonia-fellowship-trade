@@ -21,6 +21,8 @@ import { SchwabOrderEntry } from "@/components/SchwabOrderEntry";
 import { SchwabPortfolio } from "@/components/SchwabPortfolio";
 import { SchwabLiveQuotes } from "@/components/SchwabLiveQuotes";
 import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
+import { PriceAlertSystem } from "@/components/PriceAlertSystem";
+import { StockScreener } from "@/components/StockScreener";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
