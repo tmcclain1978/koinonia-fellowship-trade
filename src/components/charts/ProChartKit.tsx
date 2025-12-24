@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { init, dispose, Chart, KLineData, CandleType } from "klinecharts";
+import { init, dispose, Chart, KLineData, CandleType, LineType } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowUp, ArrowDown, Target, Ban } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { DrawingToolbar } from "./DrawingToolbar";
 import { ChartSettings } from "./ChartSettings";
+import { CandleTypeSelector, CandleTypeOption } from "./CandleTypeSelector";
 
 interface ProChartKitProps {
   symbol: string;
@@ -18,6 +18,9 @@ interface ProChartKitProps {
   showKoinoniaSignals?: boolean;
   onSignalGenerated?: (signal: any) => void;
   userId?: string;
+  entryPrice?: number;
+  exitPrice?: number;
+  stopLoss?: number;
 }
 
 export const ProChartKit = ({
@@ -27,7 +30,10 @@ export const ProChartKit = ({
   theme = "dark",
   showKoinoniaSignals = false,
   onSignalGenerated,
-  userId
+  userId,
+  entryPrice,
+  exitPrice,
+  stopLoss
 }: ProChartKitProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -35,6 +41,7 @@ export const ProChartKit = ({
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
   const [showPremarket, setShowPremarket] = useState(false);
+  const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
   const unsubRef = useRef<(() => void) | null>(null);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -60,7 +67,7 @@ export const ProChartKit = ({
               vertical: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" }
             },
             candle: {
-              type: CandleType.CandleSolid,
+              type: candleType as CandleType,
               bar: {
                 upColor: "#26a69a",
                 downColor: "#ef5350",
@@ -124,7 +131,18 @@ export const ProChartKit = ({
         chartRef.current = null;
       }
     };
-  }, [symbol, interval, theme]);
+  }, [symbol, interval, theme, candleType]);
+
+  // Handle candle type changes dynamically
+  useEffect(() => {
+    if (!chartRef.current) return;
+    
+    chartRef.current.setStyles({
+      candle: {
+        type: candleType as CandleType
+      }
+    });
+  }, [candleType]);
 
   // Set up real-time updates
   useEffect(() => {
@@ -238,36 +256,109 @@ export const ProChartKit = ({
     }
   };
 
-  // Add signal overlays to chart
-  const addSignalOverlays = (signal: any) => {
+  // Add signal overlays to chart with colors
+  const addSignalOverlays = useCallback((signal: any) => {
     if (!chartRef.current) return;
 
     const chart = chartRef.current;
+    
+    // Remove existing overlays first
+    chart.removeOverlay();
 
-    // Entry point overlay
-    if (signal.signal.entry_price) {
+    // Entry point overlay - GREEN
+    if (signal.signal?.entry_price) {
       chart.createOverlay({
-        name: "horizontalRayLine",
-        points: [{ value: signal.signal.entry_price }]
+        name: "horizontalStraightLine",
+        points: [{ value: signal.signal.entry_price }],
+        styles: {
+          line: {
+            color: '#22c55e',
+            size: 2,
+            style: LineType.Solid
+          }
+        },
+        extendData: `Entry: $${signal.signal.entry_price.toFixed(2)}`
       });
     }
 
-    // Stop loss overlay
-    if (signal.signal.stop_loss) {
+    // Stop loss overlay - RED
+    if (signal.signal?.stop_loss) {
       chart.createOverlay({
-        name: "horizontalRayLine",
-        points: [{ value: signal.signal.stop_loss }]
+        name: "horizontalStraightLine",
+        points: [{ value: signal.signal.stop_loss }],
+        styles: {
+          line: {
+            color: '#ef4444',
+            size: 2,
+            style: LineType.Dashed
+          }
+        },
+        extendData: `Stop: $${signal.signal.stop_loss.toFixed(2)}`
       });
     }
 
-    // Target overlays
-    signal.signal.targets?.forEach((target: number) => {
+    // Target overlays - PURPLE/BLUE gradient
+    const targetColors = ['#a855f7', '#8b5cf6', '#6366f1'];
+    signal.signal?.targets?.forEach((target: number, index: number) => {
       chart.createOverlay({
-        name: "horizontalRayLine",
-        points: [{ value: target }]
+        name: "horizontalStraightLine",
+        points: [{ value: target }],
+        styles: {
+          line: {
+            color: targetColors[index % targetColors.length],
+            size: 1,
+            style: LineType.Dashed
+          }
+        },
+        extendData: `Target ${index + 1}: $${target.toFixed(2)}`
       });
     });
-  };
+  }, []);
+
+  // Add entry/exit/stop overlays from props
+  useEffect(() => {
+    if (!chartRef.current) return;
+    
+    const chart = chartRef.current;
+    
+    // Only add if we have prop-based values and no Koinonia signal
+    if (!koinoniaSignal && (entryPrice || exitPrice || stopLoss)) {
+      chart.removeOverlay();
+      
+      if (entryPrice) {
+        chart.createOverlay({
+          name: "horizontalStraightLine",
+          points: [{ value: entryPrice }],
+          styles: {
+            line: { color: '#22c55e', size: 2, style: LineType.Solid }
+          },
+          extendData: `Entry: $${entryPrice.toFixed(2)}`
+        });
+      }
+      
+      if (exitPrice) {
+        chart.createOverlay({
+          name: "horizontalStraightLine",
+          points: [{ value: exitPrice }],
+          styles: {
+            line: { color: '#a855f7', size: 2, style: LineType.Dashed }
+          },
+          extendData: `Exit: $${exitPrice.toFixed(2)}`
+        });
+      }
+      
+      if (stopLoss) {
+        chart.createOverlay({
+          name: "horizontalStraightLine",
+          points: [{ value: stopLoss }],
+          styles: {
+            line: { color: '#ef4444', size: 2, style: LineType.Dashed }
+          },
+          extendData: `Stop: $${stopLoss.toFixed(2)}`
+        });
+      }
+    }
+  }, [entryPrice, exitPrice, stopLoss, koinoniaSignal]);
 
   // Handle indicator changes
   const handleIndicatorChange = useCallback((indicators: string[]) => {
@@ -325,6 +416,11 @@ export const ProChartKit = ({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 items-center">
+        <CandleTypeSelector 
+          value={candleType}
+          onChange={setCandleType}
+        />
+        
         <div className="flex items-center space-x-2">
           <Switch
             id="premarket-toggle"
