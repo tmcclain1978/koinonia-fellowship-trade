@@ -80,3 +80,6 @@ verify_jwt = true
 
 [functions.schwab-get-access-token]
 verify_jwt = true
+
+[functions.run-backtest]
+verify_jwt = true
