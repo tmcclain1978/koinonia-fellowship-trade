@@ -20,6 +20,8 @@ interface BacktestParams {
   startDate: string;
   endDate: string;
   initialCapital: number;
+  runMonteCarlo?: boolean;
+  monteCarloRuns?: number;
 }
 
 interface ConditionGroup {
@@ -47,6 +49,15 @@ interface EquityPoint {
   drawdown: number;
 }
 
+interface HistoricalDataPoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -60,18 +71,37 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Generate simulated historical data for backtesting
-    // In production, this would fetch real historical data from a market data API
-    const historicalData = generateHistoricalData(params.symbol, params.startDate, params.endDate, params.timeframe);
-    
-    console.log(`Generated ${historicalData.length} data points for ${params.symbol}`);
+    // Fetch real historical data
+    let historicalData: HistoricalDataPoint[];
+    try {
+      historicalData = await fetchRealMarketData(params.symbol, params.startDate, params.endDate, params.timeframe);
+      console.log(`Fetched ${historicalData.length} real data points for ${params.symbol}`);
+    } catch (error) {
+      console.log(`Real data fetch failed, using simulated data: ${error.message}`);
+      historicalData = generateHistoricalData(params.symbol, params.startDate, params.endDate, params.timeframe);
+    }
 
-    // Run the backtest simulation
+    if (historicalData.length < 50) {
+      throw new Error(`Insufficient data points (${historicalData.length}). Need at least 50 for backtesting.`);
+    }
+
+    // Run the main backtest simulation
     const result = runBacktestSimulation(
       historicalData,
       params.strategy,
       params.initialCapital
     );
+
+    // Run Monte Carlo simulation if requested
+    let monteCarloResults = null;
+    if (params.runMonteCarlo && result.trades.length >= 5) {
+      monteCarloResults = runMonteCarloSimulation(
+        result.trades,
+        params.initialCapital,
+        params.monteCarloRuns || 1000
+      );
+      console.log("Monte Carlo simulation completed");
+    }
 
     // Save result to database
     const { data: savedResult, error: saveError } = await supabase
@@ -116,7 +146,12 @@ serve(async (req) => {
     console.log("Backtest completed successfully");
 
     return new Response(
-      JSON.stringify({ success: true, result: savedResult }),
+      JSON.stringify({ 
+        success: true, 
+        result: savedResult,
+        monteCarlo: monteCarloResults,
+        dataSource: historicalData.length > 0 ? 'real' : 'simulated'
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
@@ -129,15 +164,129 @@ serve(async (req) => {
   }
 });
 
-interface HistoricalDataPoint {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
+// Fetch real market data from Polygon.io or Alpha Vantage
+async function fetchRealMarketData(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+  timeframe: string
+): Promise<HistoricalDataPoint[]> {
+  // Try Polygon.io first (better for historical data)
+  const polygonKey = Deno.env.get('POLYGON_API_KEY');
+  if (polygonKey) {
+    try {
+      const data = await fetchFromPolygon(symbol, startDate, endDate, timeframe, polygonKey);
+      if (data.length > 0) return data;
+    } catch (e) {
+      console.log("Polygon fetch failed:", e.message);
+    }
+  }
+
+  // Fall back to Alpha Vantage
+  const alphaKey = Deno.env.get('ALPHA_VANTAGE_API_KEY');
+  if (alphaKey) {
+    try {
+      const data = await fetchFromAlphaVantage(symbol, timeframe, alphaKey);
+      // Filter by date range
+      const start = new Date(startDate).getTime();
+      const end = new Date(endDate).getTime();
+      return data.filter(d => {
+        const t = new Date(d.date).getTime();
+        return t >= start && t <= end;
+      });
+    } catch (e) {
+      console.log("Alpha Vantage fetch failed:", e.message);
+    }
+  }
+
+  throw new Error("No market data API available");
 }
 
+async function fetchFromPolygon(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+  timeframe: string,
+  apiKey: string
+): Promise<HistoricalDataPoint[]> {
+  // Map timeframe to Polygon multiplier/timespan
+  const timespanMap: Record<string, { multiplier: number; timespan: string }> = {
+    '1m': { multiplier: 1, timespan: 'minute' },
+    '5m': { multiplier: 5, timespan: 'minute' },
+    '15m': { multiplier: 15, timespan: 'minute' },
+    '1h': { multiplier: 1, timespan: 'hour' },
+    '4h': { multiplier: 4, timespan: 'hour' },
+    '1D': { multiplier: 1, timespan: 'day' },
+    '1W': { multiplier: 1, timespan: 'week' },
+  };
+
+  const { multiplier, timespan } = timespanMap[timeframe] || { multiplier: 1, timespan: 'day' };
+  
+  const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${multiplier}/${timespan}/${startDate}/${endDate}?adjusted=true&sort=asc&limit=50000&apiKey=${apiKey}`;
+  
+  console.log(`Fetching from Polygon: ${symbol} ${startDate} to ${endDate}`);
+  
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (data.status === 'ERROR' || !data.results) {
+    throw new Error(data.message || 'Failed to fetch from Polygon');
+  }
+
+  return data.results.map((bar: any) => ({
+    date: new Date(bar.t).toISOString(),
+    open: bar.o,
+    high: bar.h,
+    low: bar.l,
+    close: bar.c,
+    volume: bar.v
+  }));
+}
+
+async function fetchFromAlphaVantage(
+  symbol: string,
+  timeframe: string,
+  apiKey: string
+): Promise<HistoricalDataPoint[]> {
+  let func = 'TIME_SERIES_DAILY';
+  let interval = '';
+  let seriesKey = 'Time Series (Daily)';
+
+  if (timeframe !== '1D' && timeframe !== '1W') {
+    func = 'TIME_SERIES_INTRADAY';
+    interval = `&interval=${timeframe === '1h' ? '60min' : timeframe}`;
+    seriesKey = `Time Series (${timeframe === '1h' ? '60min' : timeframe})`;
+  }
+
+  const url = `https://www.alphavantage.co/query?function=${func}&symbol=${symbol}${interval}&outputsize=full&apikey=${apiKey}`;
+  
+  console.log(`Fetching from Alpha Vantage: ${symbol}`);
+  
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (data['Error Message'] || data['Note']) {
+    throw new Error(data['Error Message'] || data['Note']);
+  }
+
+  const series = data[seriesKey];
+  if (!series) {
+    throw new Error(`No data found for ${symbol}`);
+  }
+
+  return Object.entries(series)
+    .map(([timestamp, values]: [string, any]) => ({
+      date: new Date(timestamp).toISOString(),
+      open: parseFloat(values['1. open']),
+      high: parseFloat(values['2. high']),
+      low: parseFloat(values['3. low']),
+      close: parseFloat(values['4. close']),
+      volume: parseInt(values['5. volume'])
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+// Fallback: Generate simulated historical data
 function generateHistoricalData(
   symbol: string, 
   startDate: string, 
@@ -148,7 +297,6 @@ function generateHistoricalData(
   const start = new Date(startDate);
   const end = new Date(endDate);
   
-  // Base price based on symbol (simulated)
   let basePrice = symbol === 'AAPL' ? 150 : 
                   symbol === 'MSFT' ? 350 : 
                   symbol === 'GOOGL' ? 140 :
@@ -156,9 +304,8 @@ function generateHistoricalData(
                   symbol === 'AMZN' ? 175 : 100;
   
   let currentPrice = basePrice;
-  const volatility = 0.02; // 2% daily volatility
+  const volatility = 0.02;
   
-  // Determine interval based on timeframe
   const intervalMs = timeframe === '1m' ? 60000 :
                      timeframe === '5m' ? 300000 :
                      timeframe === '15m' ? 900000 :
@@ -170,7 +317,6 @@ function generateHistoricalData(
   let currentDate = new Date(start);
   
   while (currentDate <= end) {
-    // Skip weekends for daily+ data
     if (timeframe === '1D' || timeframe === '1W') {
       const day = currentDate.getDay();
       if (day === 0 || day === 6) {
@@ -179,8 +325,7 @@ function generateHistoricalData(
       }
     }
     
-    // Generate OHLCV data with some randomness and trend
-    const trend = Math.sin(data.length / 50) * 0.001; // Slight sinusoidal trend
+    const trend = Math.sin(data.length / 50) * 0.001;
     const change = (Math.random() - 0.5) * volatility + trend;
     
     const open = currentPrice;
@@ -205,14 +350,127 @@ function generateHistoricalData(
   return data;
 }
 
+// Monte Carlo Simulation
+interface MonteCarloResult {
+  percentile5: number;
+  percentile25: number;
+  median: number;
+  percentile75: number;
+  percentile95: number;
+  mean: number;
+  standardDeviation: number;
+  probabilityOfProfit: number;
+  probabilityOfLoss: number;
+  expectedValue: number;
+  confidenceInterval95: [number, number];
+  ruinProbability: number;
+  distribution: { bucket: string; count: number }[];
+  equityCurves: { run: number; equity: number[] }[];
+}
+
+function runMonteCarloSimulation(
+  trades: Trade[],
+  initialCapital: number,
+  numRuns: number = 1000
+): MonteCarloResult {
+  console.log(`Running ${numRuns} Monte Carlo simulations with ${trades.length} trades`);
+  
+  const tradeReturns = trades.map(t => t.pnlPercent);
+  const finalReturns: number[] = [];
+  const equityCurves: { run: number; equity: number[] }[] = [];
+  let ruinCount = 0;
+  
+  // Run simulations
+  for (let run = 0; run < numRuns; run++) {
+    let equity = initialCapital;
+    const curve: number[] = [equity];
+    
+    // Shuffle trades randomly (bootstrap sampling with replacement)
+    const shuffledReturns = [...tradeReturns].sort(() => Math.random() - 0.5);
+    
+    for (const ret of shuffledReturns) {
+      const tradeAmount = equity * 0.1; // Risk 10% per trade
+      const pnl = tradeAmount * (ret / 100);
+      equity += pnl;
+      curve.push(equity);
+      
+      // Check for ruin (equity drops below 10% of initial)
+      if (equity < initialCapital * 0.1) {
+        ruinCount++;
+        break;
+      }
+    }
+    
+    finalReturns.push(((equity - initialCapital) / initialCapital) * 100);
+    
+    // Store sample curves for visualization (first 10 runs)
+    if (run < 10) {
+      equityCurves.push({ run, equity: curve });
+    }
+  }
+  
+  // Sort for percentile calculations
+  finalReturns.sort((a, b) => a - b);
+  
+  // Calculate statistics
+  const mean = finalReturns.reduce((a, b) => a + b, 0) / numRuns;
+  const variance = finalReturns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / numRuns;
+  const standardDeviation = Math.sqrt(variance);
+  
+  const profitableRuns = finalReturns.filter(r => r > 0).length;
+  const losingRuns = finalReturns.filter(r => r < 0).length;
+  
+  // Percentiles
+  const getPercentile = (p: number) => finalReturns[Math.floor(p * numRuns / 100)];
+  
+  // Create distribution buckets
+  const minReturn = Math.floor(Math.min(...finalReturns) / 10) * 10;
+  const maxReturn = Math.ceil(Math.max(...finalReturns) / 10) * 10;
+  const buckets: Record<string, number> = {};
+  
+  for (let i = minReturn; i <= maxReturn; i += 10) {
+    buckets[`${i}% to ${i + 10}%`] = 0;
+  }
+  
+  for (const ret of finalReturns) {
+    const bucket = Math.floor(ret / 10) * 10;
+    const key = `${bucket}% to ${bucket + 10}%`;
+    if (buckets[key] !== undefined) {
+      buckets[key]++;
+    }
+  }
+  
+  const distribution = Object.entries(buckets)
+    .map(([bucket, count]) => ({ bucket, count }))
+    .filter(d => d.count > 0);
+  
+  return {
+    percentile5: parseFloat(getPercentile(5).toFixed(2)),
+    percentile25: parseFloat(getPercentile(25).toFixed(2)),
+    median: parseFloat(getPercentile(50).toFixed(2)),
+    percentile75: parseFloat(getPercentile(75).toFixed(2)),
+    percentile95: parseFloat(getPercentile(95).toFixed(2)),
+    mean: parseFloat(mean.toFixed(2)),
+    standardDeviation: parseFloat(standardDeviation.toFixed(2)),
+    probabilityOfProfit: parseFloat(((profitableRuns / numRuns) * 100).toFixed(2)),
+    probabilityOfLoss: parseFloat(((losingRuns / numRuns) * 100).toFixed(2)),
+    expectedValue: parseFloat((mean * initialCapital / 100).toFixed(2)),
+    confidenceInterval95: [
+      parseFloat(getPercentile(2.5).toFixed(2)),
+      parseFloat(getPercentile(97.5).toFixed(2))
+    ],
+    ruinProbability: parseFloat(((ruinCount / numRuns) * 100).toFixed(2)),
+    distribution,
+    equityCurves
+  };
+}
+
 function calculateIndicators(data: HistoricalDataPoint[], index: number): Record<string, number> {
   const indicators: Record<string, number> = {};
   const closes = data.slice(0, index + 1).map(d => d.close);
   
-  // Price
   indicators['price'] = closes[closes.length - 1];
   
-  // SMA calculations
   if (closes.length >= 20) {
     indicators['sma_20'] = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   }
@@ -220,7 +478,6 @@ function calculateIndicators(data: HistoricalDataPoint[], index: number): Record
     indicators['sma_50'] = closes.slice(-50).reduce((a, b) => a + b, 0) / 50;
   }
   
-  // EMA calculation (simplified)
   if (closes.length >= 12) {
     const multiplier = 2 / (12 + 1);
     let ema = closes.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
@@ -230,7 +487,6 @@ function calculateIndicators(data: HistoricalDataPoint[], index: number): Record
     indicators['ema_12'] = ema;
   }
   
-  // RSI calculation
   if (closes.length >= 14) {
     const changes = [];
     for (let i = closes.length - 14; i < closes.length; i++) {
@@ -242,14 +498,12 @@ function calculateIndicators(data: HistoricalDataPoint[], index: number): Record
     indicators['rsi'] = 100 - (100 / (1 + rs));
   }
   
-  // MACD (simplified)
   if (closes.length >= 26) {
     const ema12 = indicators['ema_12'] || closes.slice(-12).reduce((a, b) => a + b, 0) / 12;
     const ema26 = closes.slice(-26).reduce((a, b) => a + b, 0) / 26;
     indicators['macd'] = ema12 - ema26;
   }
   
-  // Bollinger Bands
   if (closes.length >= 20) {
     const sma = indicators['sma_20'];
     const variance = closes.slice(-20).reduce((sum, c) => sum + Math.pow(c - sma, 2), 0) / 20;
@@ -259,7 +513,6 @@ function calculateIndicators(data: HistoricalDataPoint[], index: number): Record
     indicators['bb_middle'] = sma;
   }
   
-  // Volume
   indicators['volume'] = data[index].volume;
   
   return indicators;
@@ -322,7 +575,6 @@ function evaluateConditions(
 }
 
 function getIndicatorValue(indicator: string, indicators: Record<string, number>): number {
-  // Map indicator names to calculated values
   const mapping: Record<string, string> = {
     'rsi': 'rsi',
     'sma': 'sma_20',
@@ -373,12 +625,10 @@ function runBacktestSimulation(
   
   const returns: number[] = [];
   
-  // Process each data point
-  for (let i = 50; i < data.length; i++) { // Start after enough data for indicators
+  for (let i = 50; i < data.length; i++) {
     const currentData = data[i];
     const currentIndicators = calculateIndicators(data, i);
     
-    // Check for entry
     if (!position && evaluateConditions(strategy.entry_conditions, currentIndicators, previousIndicators)) {
       const quantity = Math.floor(capital / currentData.close);
       if (quantity > 0) {
@@ -387,26 +637,20 @@ function runBacktestSimulation(
           entryPrice: currentData.close,
           quantity
         };
-        console.log(`Entry at ${currentData.date}: $${currentData.close}`);
       }
     }
     
-    // Check for exit or stop loss / take profit
     if (position) {
       const pnlPercent = ((currentData.close - position.entryPrice) / position.entryPrice) * 100;
       
       let shouldExit = evaluateConditions(strategy.exit_conditions, currentIndicators, previousIndicators);
       
-      // Check stop loss
       if (strategy.stop_loss_percent && pnlPercent <= -strategy.stop_loss_percent) {
         shouldExit = true;
-        console.log(`Stop loss triggered at ${currentData.date}`);
       }
       
-      // Check take profit
       if (strategy.take_profit_percent && pnlPercent >= strategy.take_profit_percent) {
         shouldExit = true;
-        console.log(`Take profit triggered at ${currentData.date}`);
       }
       
       if (shouldExit) {
@@ -426,11 +670,9 @@ function runBacktestSimulation(
         
         returns.push(pnlPercent);
         position = null;
-        console.log(`Exit at ${currentData.date}: $${currentData.close}, P&L: $${pnl.toFixed(2)}`);
       }
     }
     
-    // Update equity curve
     const currentEquity = position 
       ? capital - (position.quantity * position.entryPrice) + (position.quantity * currentData.close)
       : capital;
@@ -439,7 +681,6 @@ function runBacktestSimulation(
     const drawdown = ((peakCapital - currentEquity) / peakCapital) * 100;
     if (drawdown > maxDrawdown) maxDrawdown = drawdown;
     
-    // Sample equity curve (every 5 points to reduce data size)
     if (i % 5 === 0) {
       equityCurve.push({
         date: currentData.date.split('T')[0],
@@ -451,7 +692,6 @@ function runBacktestSimulation(
     previousIndicators = currentIndicators;
   }
   
-  // Close any open position at the end
   if (position && data.length > 0) {
     const lastData = data[data.length - 1];
     const pnl = (lastData.close - position.entryPrice) * position.quantity;
@@ -472,14 +712,12 @@ function runBacktestSimulation(
     returns.push(pnlPercent);
   }
   
-  // Calculate statistics
   const winningTrades = trades.filter(t => t.pnl > 0);
   const losingTrades = trades.filter(t => t.pnl < 0);
   
   const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
   
-  // Calculate Sharpe Ratio (annualized, assuming daily returns)
   const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
   const variance = returns.length > 0 
     ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length 
@@ -487,7 +725,6 @@ function runBacktestSimulation(
   const stdDev = Math.sqrt(variance);
   const sharpeRatio = stdDev !== 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
   
-  // Calculate Sortino Ratio (using downside deviation)
   const negativeReturns = returns.filter(r => r < 0);
   const downsideVariance = negativeReturns.length > 0 
     ? negativeReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / negativeReturns.length 
@@ -495,7 +732,6 @@ function runBacktestSimulation(
   const downsideDeviation = Math.sqrt(downsideVariance);
   const sortinoRatio = downsideDeviation !== 0 ? (avgReturn / downsideDeviation) * Math.sqrt(252) : 0;
   
-  // Calculate average holding period
   const holdingPeriods = trades.map(t => {
     const entry = new Date(t.entryDate);
     const exit = new Date(t.exitDate);

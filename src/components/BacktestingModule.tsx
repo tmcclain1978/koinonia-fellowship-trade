@@ -27,7 +27,9 @@ import {
   Clock,
   Award,
   XCircle,
-  Loader2
+  Loader2,
+  Shuffle,
+  TrendingUp as TrendUp
 } from "lucide-react";
 import {
   LineChart as RechartsLineChart,
@@ -39,8 +41,28 @@ import {
   ResponsiveContainer,
   Area,
   AreaChart,
-  ReferenceLine
+  ReferenceLine,
+  BarChart,
+  Bar,
+  Cell
 } from "recharts";
+
+interface MonteCarloResult {
+  percentile5: number;
+  percentile25: number;
+  median: number;
+  percentile75: number;
+  percentile95: number;
+  mean: number;
+  standardDeviation: number;
+  probabilityOfProfit: number;
+  probabilityOfLoss: number;
+  expectedValue: number;
+  confidenceInterval95: [number, number];
+  ruinProbability: number;
+  distribution: { bucket: string; count: number }[];
+  equityCurves: { run: number; equity: number[] }[];
+}
 
 interface Strategy {
   id: string;
@@ -168,6 +190,12 @@ export function BacktestingModule() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [initialCapital, setInitialCapital] = useState("10000");
+  
+  // Monte Carlo state
+  const [runMonteCarlo, setRunMonteCarlo] = useState(true);
+  const [monteCarloRuns, setMonteCarloRuns] = useState("1000");
+  const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null);
+  const [dataSource, setDataSource] = useState<'real' | 'simulated' | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -318,6 +346,8 @@ export function BacktestingModule() {
     }
 
     setIsRunning(true);
+    setMonteCarloResult(null);
+    setDataSource(null);
     try {
       const { data, error } = await supabase.functions.invoke('run-backtest', {
         body: {
@@ -333,7 +363,9 @@ export function BacktestingModule() {
           timeframe,
           startDate,
           endDate,
-          initialCapital: parseFloat(initialCapital)
+          initialCapital: parseFloat(initialCapital),
+          runMonteCarlo,
+          monteCarloRuns: parseInt(monteCarloRuns)
         }
       });
 
@@ -341,10 +373,14 @@ export function BacktestingModule() {
 
       if (data?.result) {
         setSelectedResult(data.result);
+        setDataSource(data.dataSource || 'simulated');
+        if (data.monteCarlo) {
+          setMonteCarloResult(data.monteCarlo);
+        }
         fetchResults(user.id);
         toast({
           title: "Backtest Complete",
-          description: `Strategy achieved ${data.result.total_return_percent?.toFixed(2)}% return`
+          description: `Strategy achieved ${data.result.total_return_percent?.toFixed(2)}% return (${data.dataSource === 'real' ? 'Real Data' : 'Simulated'})`
         });
       }
     } catch (error: any) {
@@ -509,9 +545,10 @@ export function BacktestingModule() {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="builder" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="builder">Strategy Builder</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="montecarlo">Monte Carlo</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
@@ -640,6 +677,35 @@ export function BacktestingModule() {
                         value={initialCapital}
                         onChange={(e) => setInitialCapital(e.target.value)}
                       />
+                    </div>
+
+                    <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="monteCarlo"
+                          checked={runMonteCarlo}
+                          onChange={(e) => setRunMonteCarlo(e.target.checked)}
+                          className="rounded border-border"
+                        />
+                        <Label htmlFor="monteCarlo" className="text-sm cursor-pointer">
+                          <Shuffle className="w-4 h-4 inline mr-1" />
+                          Monte Carlo Simulation
+                        </Label>
+                      </div>
+                      {runMonteCarlo && (
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-muted-foreground">Runs:</Label>
+                          <Input
+                            type="number"
+                            value={monteCarloRuns}
+                            onChange={(e) => setMonteCarloRuns(e.target.value)}
+                            className="w-20 h-8"
+                            min="100"
+                            max="10000"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <Button 
@@ -890,6 +956,188 @@ export function BacktestingModule() {
               <div className="text-center py-12 text-muted-foreground">
                 <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>Run a backtest to see results here</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Monte Carlo Tab */}
+          <TabsContent value="montecarlo" className="space-y-4">
+            {monteCarloResult ? (
+              <>
+                {/* Monte Carlo Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <MetricCard
+                    icon={TrendUp}
+                    label="Probability of Profit"
+                    value={monteCarloResult.probabilityOfProfit}
+                    suffix="%"
+                    isPositive={monteCarloResult.probabilityOfProfit > 50}
+                  />
+                  <MetricCard
+                    icon={DollarSign}
+                    label="Expected Value"
+                    value={`$${monteCarloResult.expectedValue.toLocaleString()}`}
+                    isPositive={monteCarloResult.expectedValue > 0}
+                  />
+                  <MetricCard
+                    icon={Percent}
+                    label="Median Return"
+                    value={monteCarloResult.median}
+                    suffix="%"
+                    isPositive={monteCarloResult.median > 0}
+                  />
+                  <MetricCard
+                    icon={AlertTriangle}
+                    label="Ruin Probability"
+                    value={monteCarloResult.ruinProbability}
+                    suffix="%"
+                    isPositive={monteCarloResult.ruinProbability < 5}
+                  />
+                </div>
+
+                {/* Percentile Distribution */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Return Distribution Percentiles</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-5 gap-4 text-center">
+                      <div className="p-3 bg-red-500/10 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-1">5th %</p>
+                        <p className="font-bold text-red-500">{monteCarloResult.percentile5}%</p>
+                      </div>
+                      <div className="p-3 bg-orange-500/10 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-1">25th %</p>
+                        <p className="font-bold text-orange-500">{monteCarloResult.percentile25}%</p>
+                      </div>
+                      <div className="p-3 bg-blue-500/10 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-1">Median</p>
+                        <p className="font-bold text-blue-500">{monteCarloResult.median}%</p>
+                      </div>
+                      <div className="p-3 bg-green-500/10 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-1">75th %</p>
+                        <p className="font-bold text-green-500">{monteCarloResult.percentile75}%</p>
+                      </div>
+                      <div className="p-3 bg-emerald-500/10 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-1">95th %</p>
+                        <p className="font-bold text-emerald-500">{monteCarloResult.percentile95}%</p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">95% Confidence Interval:</span>
+                        <span className="font-medium">
+                          {monteCarloResult.confidenceInterval95[0]}% to {monteCarloResult.confidenceInterval95[1]}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm mt-2">
+                        <span className="text-muted-foreground">Standard Deviation:</span>
+                        <span className="font-medium">{monteCarloResult.standardDeviation}%</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Distribution Chart */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Return Distribution ({monteCarloRuns} Simulations)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monteCarloResult.distribution}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis 
+                            dataKey="bucket" 
+                            tick={{ fontSize: 9 }}
+                            stroke="hsl(var(--muted-foreground))"
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--background))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <Bar dataKey="count" fill="hsl(var(--primary))">
+                            {monteCarloResult.distribution.map((entry, index) => {
+                              const bucket = entry.bucket;
+                              const isNegative = bucket.includes('-') && !bucket.startsWith('-0');
+                              return (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={isNegative ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} 
+                                />
+                              );
+                            })}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Sample Equity Curves */}
+                {monteCarloResult.equityCurves.length > 0 && (
+                  <Card className="bg-muted/30">
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">Sample Equity Curves (10 Random Paths)</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RechartsLineChart>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis 
+                              tick={{ fontSize: 10 }}
+                              stroke="hsl(var(--muted-foreground))"
+                            />
+                            <YAxis 
+                              tick={{ fontSize: 10 }}
+                              stroke="hsl(var(--muted-foreground))"
+                              tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--background))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
+                              }}
+                              formatter={(value: number) => [`$${value.toLocaleString()}`, 'Equity']}
+                            />
+                            <ReferenceLine y={parseFloat(initialCapital)} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                            {monteCarloResult.equityCurves.map((curve, idx) => (
+                              <Line
+                                key={idx}
+                                type="monotone"
+                                data={curve.equity.map((eq, i) => ({ x: i, equity: eq }))}
+                                dataKey="equity"
+                                stroke={`hsl(${(idx * 36) % 360}, 70%, 50%)`}
+                                strokeWidth={1}
+                                dot={false}
+                              />
+                            ))}
+                          </RechartsLineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Shuffle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Enable Monte Carlo simulation and run a backtest to see robustness analysis</p>
+                <p className="text-xs mt-2">Monte Carlo simulation tests strategy robustness by randomizing trade sequences</p>
               </div>
             )}
           </TabsContent>
