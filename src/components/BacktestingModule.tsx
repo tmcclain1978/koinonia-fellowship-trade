@@ -29,8 +29,13 @@ import {
   XCircle,
   Loader2,
   Shuffle,
-  TrendingUp as TrendUp
+  TrendingUp as TrendUp,
+  GitCompare,
+  SplitSquareHorizontal,
+  Layers,
+  Check
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -62,6 +67,40 @@ interface MonteCarloResult {
   ruinProbability: number;
   distribution: { bucket: string; count: number }[];
   equityCurves: { run: number; equity: number[] }[];
+}
+
+interface WalkForwardResult {
+  inSamplePeriods: {
+    startDate: string;
+    endDate: string;
+    returnPercent: number;
+    winRate: number;
+    trades: number;
+  }[];
+  outOfSamplePeriods: {
+    startDate: string;
+    endDate: string;
+    returnPercent: number;
+    winRate: number;
+    trades: number;
+  }[];
+  inSampleAvgReturn: number;
+  outOfSampleAvgReturn: number;
+  robustnessRatio: number;
+  isRobust: boolean;
+  totalFolds: number;
+}
+
+interface StrategyComparisonResult {
+  strategyId: string;
+  strategyName: string;
+  totalReturn: number;
+  winRate: number;
+  profitFactor: number;
+  sharpeRatio: number;
+  maxDrawdown: number;
+  totalTrades: number;
+  equityCurve: EquityPoint[];
 }
 
 interface Strategy {
@@ -196,6 +235,18 @@ export function BacktestingModule() {
   const [monteCarloRuns, setMonteCarloRuns] = useState("1000");
   const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null);
   const [dataSource, setDataSource] = useState<'real' | 'simulated' | null>(null);
+  
+  // Walk-Forward Optimization state
+  const [runWalkForward, setRunWalkForward] = useState(false);
+  const [walkForwardFolds, setWalkForwardFolds] = useState("5");
+  const [walkForwardInSampleRatio, setWalkForwardInSampleRatio] = useState("70");
+  const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
+  
+  // Strategy Comparison state
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [selectedStrategiesForComparison, setSelectedStrategiesForComparison] = useState<string[]>([]);
+  const [comparisonResults, setComparisonResults] = useState<StrategyComparisonResult[]>([]);
+  const [isComparingStrategies, setIsComparingStrategies] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -365,7 +416,10 @@ export function BacktestingModule() {
           endDate,
           initialCapital: parseFloat(initialCapital),
           runMonteCarlo,
-          monteCarloRuns: parseInt(monteCarloRuns)
+          monteCarloRuns: parseInt(monteCarloRuns),
+          runWalkForward,
+          walkForwardFolds: parseInt(walkForwardFolds),
+          walkForwardInSampleRatio: parseFloat(walkForwardInSampleRatio) / 100
         }
       });
 
@@ -376,6 +430,9 @@ export function BacktestingModule() {
         setDataSource(data.dataSource || 'simulated');
         if (data.monteCarlo) {
           setMonteCarloResult(data.monteCarlo);
+        }
+        if (data.walkForward) {
+          setWalkForwardResult(data.walkForward);
         }
         fetchResults(user.id);
         toast({
@@ -391,6 +448,85 @@ export function BacktestingModule() {
       });
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const toggleStrategyForComparison = (strategyId: string) => {
+    setSelectedStrategiesForComparison(prev => 
+      prev.includes(strategyId) 
+        ? prev.filter(id => id !== strategyId)
+        : [...prev, strategyId]
+    );
+  };
+
+  const runStrategyComparison = async () => {
+    if (!user || selectedStrategiesForComparison.length < 2) {
+      toast({
+        title: "Select Strategies",
+        description: "Please select at least 2 strategies to compare",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsComparingStrategies(true);
+    setComparisonResults([]);
+
+    try {
+      const results: StrategyComparisonResult[] = [];
+
+      for (const strategyId of selectedStrategiesForComparison) {
+        const strategy = strategies.find(s => s.id === strategyId);
+        if (!strategy) continue;
+
+        const { data, error } = await supabase.functions.invoke('run-backtest', {
+          body: {
+            userId: user.id,
+            strategyId: strategy.id,
+            strategy: {
+              entry_conditions: strategy.entry_conditions,
+              exit_conditions: strategy.exit_conditions,
+              stop_loss_percent: strategy.stop_loss_percent,
+              take_profit_percent: strategy.take_profit_percent
+            },
+            symbol,
+            timeframe,
+            startDate,
+            endDate,
+            initialCapital: parseFloat(initialCapital),
+            runMonteCarlo: false,
+            runWalkForward: false
+          }
+        });
+
+        if (!error && data?.result) {
+          results.push({
+            strategyId: strategy.id,
+            strategyName: strategy.name,
+            totalReturn: data.result.total_return_percent || 0,
+            winRate: data.result.win_rate || 0,
+            profitFactor: data.result.profit_factor || 0,
+            sharpeRatio: data.result.sharpe_ratio || 0,
+            maxDrawdown: data.result.max_drawdown_percent || 0,
+            totalTrades: data.result.total_trades || 0,
+            equityCurve: data.result.equity_curve || []
+          });
+        }
+      }
+
+      setComparisonResults(results);
+      toast({
+        title: "Comparison Complete",
+        description: `Compared ${results.length} strategies`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Comparison Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsComparingStrategies(false);
     }
   };
 
@@ -545,9 +681,17 @@ export function BacktestingModule() {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="builder" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="builder">Strategy Builder</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="comparison">
+              <GitCompare className="w-3 h-3 mr-1" />
+              Compare
+            </TabsTrigger>
+            <TabsTrigger value="walkforward">
+              <Layers className="w-3 h-3 mr-1" />
+              Walk-Forward
+            </TabsTrigger>
             <TabsTrigger value="montecarlo">Monte Carlo</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
@@ -679,33 +823,74 @@ export function BacktestingModule() {
                       />
                     </div>
 
-                    <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="monteCarlo"
-                          checked={runMonteCarlo}
-                          onChange={(e) => setRunMonteCarlo(e.target.checked)}
-                          className="rounded border-border"
-                        />
-                        <Label htmlFor="monteCarlo" className="text-sm cursor-pointer">
-                          <Shuffle className="w-4 h-4 inline mr-1" />
-                          Monte Carlo Simulation
-                        </Label>
-                      </div>
-                      {runMonteCarlo && (
+                    <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                          <Label className="text-xs text-muted-foreground">Runs:</Label>
-                          <Input
-                            type="number"
-                            value={monteCarloRuns}
-                            onChange={(e) => setMonteCarloRuns(e.target.value)}
-                            className="w-20 h-8"
-                            min="100"
-                            max="10000"
+                          <input
+                            type="checkbox"
+                            id="monteCarlo"
+                            checked={runMonteCarlo}
+                            onChange={(e) => setRunMonteCarlo(e.target.checked)}
+                            className="rounded border-border"
                           />
+                          <Label htmlFor="monteCarlo" className="text-sm cursor-pointer">
+                            <Shuffle className="w-4 h-4 inline mr-1" />
+                            Monte Carlo
+                          </Label>
                         </div>
-                      )}
+                        {runMonteCarlo && (
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground">Runs:</Label>
+                            <Input
+                              type="number"
+                              value={monteCarloRuns}
+                              onChange={(e) => setMonteCarloRuns(e.target.value)}
+                              className="w-20 h-8"
+                              min="100"
+                              max="10000"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="walkForward"
+                            checked={runWalkForward}
+                            onChange={(e) => setRunWalkForward(e.target.checked)}
+                            className="rounded border-border"
+                          />
+                          <Label htmlFor="walkForward" className="text-sm cursor-pointer">
+                            <Layers className="w-4 h-4 inline mr-1" />
+                            Walk-Forward
+                          </Label>
+                        </div>
+                        {runWalkForward && (
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground">Folds:</Label>
+                            <Input
+                              type="number"
+                              value={walkForwardFolds}
+                              onChange={(e) => setWalkForwardFolds(e.target.value)}
+                              className="w-16 h-8"
+                              min="2"
+                              max="10"
+                            />
+                            <Label className="text-xs text-muted-foreground">In-Sample:</Label>
+                            <Input
+                              type="number"
+                              value={walkForwardInSampleRatio}
+                              onChange={(e) => setWalkForwardInSampleRatio(e.target.value)}
+                              className="w-16 h-8"
+                              min="50"
+                              max="90"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <Button 
@@ -956,6 +1141,346 @@ export function BacktestingModule() {
               <div className="text-center py-12 text-muted-foreground">
                 <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>Run a backtest to see results here</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Strategy Comparison Tab */}
+          <TabsContent value="comparison" className="space-y-4">
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Strategy Selection */}
+              <Card className="bg-muted/30">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <GitCompare className="w-4 h-4" />
+                    Select Strategies to Compare
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {strategies.length < 2 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Create at least 2 strategies in the Strategy Builder tab to use comparison feature.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {strategies.map(strategy => (
+                          <div
+                            key={strategy.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                              selectedStrategiesForComparison.includes(strategy.id)
+                                ? 'bg-primary/20 border border-primary'
+                                : 'bg-background hover:bg-muted'
+                            }`}
+                            onClick={() => toggleStrategyForComparison(strategy.id)}
+                          >
+                            <Checkbox
+                              checked={selectedStrategiesForComparison.includes(strategy.id)}
+                              onCheckedChange={() => toggleStrategyForComparison(strategy.id)}
+                            />
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{strategy.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {strategy.entry_conditions?.length || 0} entry, {strategy.exit_conditions?.length || 0} exit conditions
+                              </p>
+                            </div>
+                            {selectedStrategiesForComparison.includes(strategy.id) && (
+                              <Check className="w-4 h-4 text-primary" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{selectedStrategiesForComparison.length} strategies selected</span>
+                      </div>
+
+                      <Button
+                        onClick={runStrategyComparison}
+                        disabled={isComparingStrategies || selectedStrategiesForComparison.length < 2}
+                        className="w-full"
+                      >
+                        {isComparingStrategies ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Comparing Strategies...
+                          </>
+                        ) : (
+                          <>
+                            <GitCompare className="w-4 h-4 mr-2" />
+                            Compare {selectedStrategiesForComparison.length} Strategies
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Comparison Settings */}
+              <Card className="bg-muted/30">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Comparison Settings</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Symbol</Label>
+                      <Input
+                        value={symbol}
+                        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                        placeholder="AAPL"
+                      />
+                    </div>
+                    <div>
+                      <Label>Timeframe</Label>
+                      <Select value={timeframe} onValueChange={setTimeframe}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIMEFRAMES.map(tf => (
+                            <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Start Date</Label>
+                      <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>End Date</Label>
+                      <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Initial Capital ($)</Label>
+                    <Input type="number" value={initialCapital} onChange={(e) => setInitialCapital(e.target.value)} />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Comparison Results */}
+            {comparisonResults.length > 0 && (
+              <>
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Performance Comparison</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-muted-foreground border-b border-border">
+                          <tr>
+                            <th className="text-left p-3">Strategy</th>
+                            <th className="text-right p-3">Return</th>
+                            <th className="text-right p-3">Win Rate</th>
+                            <th className="text-right p-3">Profit Factor</th>
+                            <th className="text-right p-3">Sharpe</th>
+                            <th className="text-right p-3">Max DD</th>
+                            <th className="text-right p-3">Trades</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {comparisonResults
+                            .sort((a, b) => b.totalReturn - a.totalReturn)
+                            .map((result, idx) => (
+                              <tr key={result.strategyId} className="border-b border-border/50">
+                                <td className="p-3 font-medium">
+                                  {idx === 0 && <Badge className="mr-2 bg-amber-500">Best</Badge>}
+                                  {result.strategyName}
+                                </td>
+                                <td className={`p-3 text-right font-bold ${result.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {result.totalReturn.toFixed(2)}%
+                                </td>
+                                <td className={`p-3 text-right ${result.winRate >= 50 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {result.winRate.toFixed(1)}%
+                                </td>
+                                <td className={`p-3 text-right ${result.profitFactor >= 1 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {result.profitFactor.toFixed(2)}
+                                </td>
+                                <td className={`p-3 text-right ${result.sharpeRatio >= 1 ? 'text-green-500' : 'text-muted-foreground'}`}>
+                                  {result.sharpeRatio.toFixed(2)}
+                                </td>
+                                <td className="p-3 text-right text-red-500">
+                                  -{result.maxDrawdown.toFixed(1)}%
+                                </td>
+                                <td className="p-3 text-right">
+                                  {result.totalTrades}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Combined Equity Curves */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Equity Curves Comparison</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsLineChart>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis 
+                            dataKey="date"
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 10 }}
+                            stroke="hsl(var(--muted-foreground))"
+                            tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--background))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '8px'
+                            }}
+                          />
+                          <ReferenceLine y={parseFloat(initialCapital)} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                          {comparisonResults.map((result, idx) => (
+                            <Line
+                              key={result.strategyId}
+                              type="monotone"
+                              data={result.equityCurve.map(e => ({ date: e.date, [result.strategyName]: e.equity }))}
+                              dataKey={result.strategyName}
+                              stroke={`hsl(${(idx * 60) % 360}, 70%, 50%)`}
+                              strokeWidth={2}
+                              dot={false}
+                              name={result.strategyName}
+                            />
+                          ))}
+                        </RechartsLineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
+            {comparisonResults.length === 0 && selectedStrategiesForComparison.length >= 2 && !isComparingStrategies && (
+              <div className="text-center py-8 text-muted-foreground">
+                <GitCompare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Click "Compare Strategies" to run the comparison</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Walk-Forward Optimization Tab */}
+          <TabsContent value="walkforward" className="space-y-4">
+            {walkForwardResult ? (
+              <>
+                {/* Walk-Forward Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <MetricCard
+                    icon={TrendUp}
+                    label="In-Sample Avg Return"
+                    value={walkForwardResult.inSampleAvgReturn?.toFixed(2) || 0}
+                    suffix="%"
+                    isPositive={(walkForwardResult.inSampleAvgReturn || 0) > 0}
+                  />
+                  <MetricCard
+                    icon={Target}
+                    label="Out-of-Sample Avg Return"
+                    value={walkForwardResult.outOfSampleAvgReturn?.toFixed(2) || 0}
+                    suffix="%"
+                    isPositive={(walkForwardResult.outOfSampleAvgReturn || 0) > 0}
+                  />
+                  <MetricCard
+                    icon={Activity}
+                    label="Robustness Ratio"
+                    value={walkForwardResult.robustnessRatio?.toFixed(2) || 0}
+                    isPositive={(walkForwardResult.robustnessRatio || 0) >= 0.5}
+                  />
+                  <MetricCard
+                    icon={walkForwardResult.isRobust ? Award : AlertTriangle}
+                    label="Strategy Status"
+                    value={walkForwardResult.isRobust ? "Robust" : "Not Robust"}
+                    isPositive={walkForwardResult.isRobust}
+                  />
+                </div>
+
+                {/* Walk-Forward Periods */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Walk-Forward Analysis ({walkForwardResult.totalFolds} Folds)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {walkForwardResult.inSamplePeriods.map((inSample, idx) => {
+                        const outSample = walkForwardResult.outOfSamplePeriods[idx];
+                        return (
+                          <div key={idx} className="p-4 bg-muted/50 rounded-lg">
+                            <div className="flex items-center justify-between mb-3">
+                              <Badge variant="outline">Fold {idx + 1}</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(inSample.startDate).toLocaleDateString()} - {new Date(outSample?.endDate || inSample.endDate).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="p-3 bg-blue-500/10 rounded-lg">
+                                <p className="text-xs text-muted-foreground mb-1">In-Sample (Training)</p>
+                                <p className={`font-bold ${inSample.returnPercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {inSample.returnPercent.toFixed(2)}%
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {inSample.trades} trades | {inSample.winRate.toFixed(1)}% win rate
+                                </p>
+                              </div>
+                              {outSample && (
+                                <div className="p-3 bg-purple-500/10 rounded-lg">
+                                  <p className="text-xs text-muted-foreground mb-1">Out-of-Sample (Test)</p>
+                                  <p className={`font-bold ${outSample.returnPercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {outSample.returnPercent.toFixed(2)}%
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {outSample.trades} trades | {outSample.winRate.toFixed(1)}% win rate
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Interpretation */}
+                <Card className="bg-muted/30">
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Interpretation</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        <strong>Robustness Ratio:</strong> {walkForwardResult.robustnessRatio?.toFixed(2)} 
+                        {walkForwardResult.robustnessRatio >= 0.5 
+                          ? " - Strategy shows good out-of-sample performance relative to in-sample." 
+                          : " - Strategy may be overfitted to historical data."}
+                      </p>
+                      <p className="text-muted-foreground">
+                        A robustness ratio ≥ 0.5 indicates the strategy performs at least half as well on unseen data as on training data, suggesting it's not overfitted.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Layers className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Enable Walk-Forward optimization and run a backtest</p>
+                <p className="text-xs mt-2">Walk-Forward analysis tests strategy robustness by training on in-sample data and validating on out-of-sample data</p>
               </div>
             )}
           </TabsContent>

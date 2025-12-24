@@ -22,6 +22,9 @@ interface BacktestParams {
   initialCapital: number;
   runMonteCarlo?: boolean;
   monteCarloRuns?: number;
+  runWalkForward?: boolean;
+  walkForwardFolds?: number;
+  walkForwardInSampleRatio?: number;
 }
 
 interface ConditionGroup {
@@ -103,6 +106,19 @@ serve(async (req) => {
       console.log("Monte Carlo simulation completed");
     }
 
+    // Run Walk-Forward Optimization if requested
+    let walkForwardResults = null;
+    if (params.runWalkForward) {
+      walkForwardResults = runWalkForwardOptimization(
+        historicalData,
+        params.strategy,
+        params.initialCapital,
+        params.walkForwardFolds || 5,
+        params.walkForwardInSampleRatio || 0.7
+      );
+      console.log("Walk-Forward optimization completed");
+    }
+
     // Save result to database
     const { data: savedResult, error: saveError } = await supabase
       .from('backtest_results')
@@ -150,6 +166,7 @@ serve(async (req) => {
         success: true, 
         result: savedResult,
         monteCarlo: monteCarloResults,
+        walkForward: walkForwardResults,
         dataSource: historicalData.length > 0 ? 'real' : 'simulated'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -462,6 +479,87 @@ function runMonteCarloSimulation(
     ruinProbability: parseFloat(((ruinCount / numRuns) * 100).toFixed(2)),
     distribution,
     equityCurves
+  };
+}
+
+// Walk-Forward Optimization
+interface WalkForwardResult {
+  inSamplePeriods: { startDate: string; endDate: string; returnPercent: number; winRate: number; trades: number }[];
+  outOfSamplePeriods: { startDate: string; endDate: string; returnPercent: number; winRate: number; trades: number }[];
+  inSampleAvgReturn: number;
+  outOfSampleAvgReturn: number;
+  robustnessRatio: number;
+  isRobust: boolean;
+  totalFolds: number;
+}
+
+function runWalkForwardOptimization(
+  data: HistoricalDataPoint[],
+  strategy: BacktestParams['strategy'],
+  initialCapital: number,
+  folds: number = 5,
+  inSampleRatio: number = 0.7
+): WalkForwardResult {
+  console.log(`Running walk-forward with ${folds} folds, ${(inSampleRatio * 100).toFixed(0)}% in-sample`);
+  
+  const inSamplePeriods: WalkForwardResult['inSamplePeriods'] = [];
+  const outOfSamplePeriods: WalkForwardResult['outOfSamplePeriods'] = [];
+  
+  const foldSize = Math.floor(data.length / folds);
+  
+  for (let fold = 0; fold < folds; fold++) {
+    const foldStart = fold * foldSize;
+    const foldEnd = fold === folds - 1 ? data.length : (fold + 1) * foldSize;
+    const foldData = data.slice(foldStart, foldEnd);
+    
+    if (foldData.length < 60) continue;
+    
+    const inSampleSize = Math.floor(foldData.length * inSampleRatio);
+    const inSampleData = foldData.slice(0, inSampleSize);
+    const outOfSampleData = foldData.slice(inSampleSize);
+    
+    // Run backtest on in-sample data
+    if (inSampleData.length >= 50) {
+      const inResult = runBacktestSimulation(inSampleData, strategy, initialCapital);
+      inSamplePeriods.push({
+        startDate: inSampleData[0].date,
+        endDate: inSampleData[inSampleData.length - 1].date,
+        returnPercent: inResult.totalReturnPercent,
+        winRate: inResult.winRate,
+        trades: inResult.totalTrades
+      });
+    }
+    
+    // Run backtest on out-of-sample data
+    if (outOfSampleData.length >= 20) {
+      const outResult = runBacktestSimulation(outOfSampleData, strategy, initialCapital);
+      outOfSamplePeriods.push({
+        startDate: outOfSampleData[0].date,
+        endDate: outOfSampleData[outOfSampleData.length - 1].date,
+        returnPercent: outResult.totalReturnPercent,
+        winRate: outResult.winRate,
+        trades: outResult.totalTrades
+      });
+    }
+  }
+  
+  const inSampleAvgReturn = inSamplePeriods.length > 0 
+    ? inSamplePeriods.reduce((sum, p) => sum + p.returnPercent, 0) / inSamplePeriods.length 
+    : 0;
+  const outOfSampleAvgReturn = outOfSamplePeriods.length > 0 
+    ? outOfSamplePeriods.reduce((sum, p) => sum + p.returnPercent, 0) / outOfSamplePeriods.length 
+    : 0;
+  
+  const robustnessRatio = inSampleAvgReturn !== 0 ? outOfSampleAvgReturn / inSampleAvgReturn : 0;
+  
+  return {
+    inSamplePeriods,
+    outOfSamplePeriods,
+    inSampleAvgReturn: parseFloat(inSampleAvgReturn.toFixed(2)),
+    outOfSampleAvgReturn: parseFloat(outOfSampleAvgReturn.toFixed(2)),
+    robustnessRatio: parseFloat(robustnessRatio.toFixed(2)),
+    isRobust: robustnessRatio >= 0.5 && outOfSampleAvgReturn > 0,
+    totalFolds: inSamplePeriods.length
   };
 }
 
