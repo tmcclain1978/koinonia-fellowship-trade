@@ -1020,6 +1020,12 @@ const Trading = () => {
             <NewsSentimentDashboard />
           </div>
 
+          {/* Price Alert System & Stock Screener */}
+          <div className="grid lg:grid-cols-2 gap-6 mb-6">
+            <PriceAlertSystem />
+            <StockScreener />
+          </div>
+
           {/* Portfolio & Order Entry Side by Side */}
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Schwab Order Entry */}
