@@ -761,6 +761,54 @@ export type Database = {
         }
         Relationships: []
       }
+      price_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string
+          current_value: number | null
+          id: string
+          is_active: boolean | null
+          is_triggered: boolean | null
+          notes: string | null
+          notification_sent: boolean | null
+          symbol: string
+          target_value: number
+          triggered_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string
+          current_value?: number | null
+          id?: string
+          is_active?: boolean | null
+          is_triggered?: boolean | null
+          notes?: string | null
+          notification_sent?: boolean | null
+          symbol: string
+          target_value: number
+          triggered_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string
+          current_value?: number | null
+          id?: string
+          is_active?: boolean | null
+          is_triggered?: boolean | null
+          notes?: string | null
+          notification_sent?: boolean | null
+          symbol?: string
+          target_value?: number
+          triggered_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           account_status: string
@@ -844,6 +892,92 @@ export type Database = {
           uses_remaining?: number | null
         }
         Relationships: []
+      }
+      screener_presets: {
+        Row: {
+          conditions: Json
+          created_at: string
+          description: string | null
+          id: string
+          is_default: boolean | null
+          last_run_at: string | null
+          name: string
+          results_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conditions?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          last_run_at?: string | null
+          name: string
+          results_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conditions?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          last_run_at?: string | null
+          name?: string
+          results_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      screener_results: {
+        Row: {
+          change_percent: number | null
+          created_at: string
+          id: string
+          match_score: number | null
+          matched_conditions: Json | null
+          preset_id: string | null
+          price: number | null
+          symbol: string
+          user_id: string
+          volume: number | null
+        }
+        Insert: {
+          change_percent?: number | null
+          created_at?: string
+          id?: string
+          match_score?: number | null
+          matched_conditions?: Json | null
+          preset_id?: string | null
+          price?: number | null
+          symbol: string
+          user_id: string
+          volume?: number | null
+        }
+        Update: {
+          change_percent?: number | null
+          created_at?: string
+          id?: string
+          match_score?: number | null
+          matched_conditions?: Json | null
+          preset_id?: string | null
+          price?: number | null
+          symbol?: string
+          user_id?: string
+          volume?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "screener_results_preset_id_fkey"
+            columns: ["preset_id"]
+            isOneToOne: false
+            referencedRelation: "screener_presets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
