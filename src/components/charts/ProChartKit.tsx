@@ -58,6 +58,7 @@ export const ProChartKit = ({
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
   const lastCandleTimestampRef = useRef<number | null>(null);
+  const currentIntervalStartRef = useRef<number | null>(null);
 
   // Replay state
   const [replayMode, setReplayMode] = useState(false);
@@ -78,6 +79,32 @@ export const ProChartKit = ({
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'unchanged'>('unchanged');
 
+  // Helper to get interval duration in milliseconds
+  const getIntervalMs = useCallback((intervalStr: string): number => {
+    const intervalMap: Record<string, number> = {
+      '1': 60 * 1000,
+      '5': 5 * 60 * 1000,
+      '15': 15 * 60 * 1000,
+      '30': 30 * 60 * 1000,
+      '60': 60 * 60 * 1000,
+      '1m': 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '30m': 30 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      'minute': 60 * 1000,
+      '5minute': 5 * 60 * 1000,
+      '15minute': 15 * 60 * 1000,
+      '30minute': 30 * 60 * 1000,
+      'hour': 60 * 60 * 1000,
+      'daily': 24 * 60 * 60 * 1000,
+      'D': 24 * 60 * 60 * 1000,
+      '1D': 24 * 60 * 60 * 1000,
+      '1W': 7 * 24 * 60 * 60 * 1000,
+    };
+    return intervalMap[intervalStr] || 5 * 60 * 1000;
+  }, []);
+
   // Use streaming market data for real-time updates
   const { prices, isConnected, dataSource } = useMarketDataStream({
     symbols: [symbol],
@@ -89,17 +116,46 @@ export const ProChartKit = ({
         setPriceDirection(price.direction);
         onPriceUpdate?.(price.price);
         
-        // Update the last candle on the chart with the streaming price
+        // Update the chart with real-time streaming data
         if (chartRef.current && !replayMode) {
-          const lastCandle = chartRef.current.getDataList().slice(-1)[0];
+          const dataList = chartRef.current.getDataList();
+          const lastCandle = dataList[dataList.length - 1];
+          
           if (lastCandle) {
-            const updatedCandle: KLineData = {
-              ...lastCandle,
-              close: price.price,
-              high: Math.max(lastCandle.high, price.price),
-              low: Math.min(lastCandle.low, price.price),
-            };
-            chartRef.current.updateData(updatedCandle);
+            const now = Date.now();
+            const intervalMs = getIntervalMs(interval);
+            const currentIntervalStart = Math.floor(now / intervalMs) * intervalMs;
+            
+            // Check if we need to create a new candle
+            if (currentIntervalStartRef.current && currentIntervalStart > currentIntervalStartRef.current) {
+              // New interval started - create a new candle
+              const newCandle: KLineData = {
+                timestamp: currentIntervalStart,
+                open: price.price,
+                high: price.price,
+                low: price.price,
+                close: price.price,
+                volume: price.volume || 0,
+              };
+              chartRef.current.updateData(newCandle);
+              currentIntervalStartRef.current = currentIntervalStart;
+              console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
+            } else {
+              // Same interval - update the existing candle
+              const updatedCandle: KLineData = {
+                ...lastCandle,
+                close: price.price,
+                high: Math.max(lastCandle.high, price.price),
+                low: Math.min(lastCandle.low, price.price),
+                volume: (lastCandle.volume || 0) + (price.volume || 0),
+              };
+              chartRef.current.updateData(updatedCandle);
+              
+              // Set the interval start if not already set
+              if (!currentIntervalStartRef.current) {
+                currentIntervalStartRef.current = Math.floor(lastCandle.timestamp / intervalMs) * intervalMs;
+              }
+            }
           }
         }
       }
@@ -231,9 +287,16 @@ export const ProChartKit = ({
       // Reset tracking refs when premarket changes (treat as new data load)
       isInitialLoadRef.current = true;
       lastCandleTimestampRef.current = null;
+      currentIntervalStartRef.current = null;
       fetchAndLoadData(false);
     }
   }, [showPremarket]);
+
+  // Reset interval tracking when interval changes
+  useEffect(() => {
+    currentIntervalStartRef.current = null;
+    isInitialLoadRef.current = true;
+  }, [interval]);
 
   // Replay playback effect
   useEffect(() => {
@@ -330,10 +393,16 @@ export const ProChartKit = ({
           }
         } else {
           // Initial load - apply all data
-          console.log("✅ Initial load:", klineData.length, "candles");
+          console.log("✅ Initial load:", klineData.length, "candles, source:", data?.source || "unknown");
           chartRef.current.applyNewData(klineData);
           lastCandleTimestampRef.current = latestTimestamp;
           isInitialLoadRef.current = false;
+          
+          // Set the current interval start based on the last candle
+          if (latestTimestamp) {
+            const intervalMs = getIntervalMs(interval);
+            currentIntervalStartRef.current = Math.floor(latestTimestamp / intervalMs) * intervalMs;
+          }
         }
 
         // Fetch Koinonia signals if enabled
