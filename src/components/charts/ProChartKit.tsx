@@ -273,7 +273,7 @@ export const ProChartKit = ({
         chartRef.current = null;
       }
     };
-  }, [symbol, interval, theme, candleType]);
+  }, [symbol, interval, theme]);
 
   // Handle candle type changes dynamically
   useEffect(() => {
