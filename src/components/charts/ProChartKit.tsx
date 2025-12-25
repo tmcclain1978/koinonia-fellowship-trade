@@ -59,6 +59,11 @@ export const ProChartKit = ({
   const isInitialLoadRef = useRef(true);
   const lastCandleTimestampRef = useRef<number | null>(null);
   const currentIntervalStartRef = useRef<number | null>(null);
+  
+  // Volume tracking for real-time accumulation
+  const baseVolumeRef = useRef<number>(0); // Volume from initial candle load
+  const accumulatedVolumeRef = useRef<number>(0); // Volume accumulated from streaming
+  const lastVolumeUpdateRef = useRef<number>(0); // Last volume value from stream to calculate delta
 
   // Replay state
   const [replayMode, setReplayMode] = useState(false);
@@ -78,6 +83,7 @@ export const ProChartKit = ({
   // Real-time streaming price state
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'unchanged'>('unchanged');
+  const [streamingVolume, setStreamingVolume] = useState<number>(0);
 
   // Helper to get interval duration in milliseconds
   const getIntervalMs = useCallback((intervalStr: string): number => {
@@ -126,30 +132,49 @@ export const ProChartKit = ({
             const intervalMs = getIntervalMs(interval);
             const currentIntervalStart = Math.floor(now / intervalMs) * intervalMs;
             
+            // Calculate volume delta from streaming data
+            const streamVolume = price.volume || 0;
+            let volumeDelta = 0;
+            
+            if (lastVolumeUpdateRef.current > 0 && streamVolume > lastVolumeUpdateRef.current) {
+              // Calculate the delta since last update
+              volumeDelta = streamVolume - lastVolumeUpdateRef.current;
+            }
+            lastVolumeUpdateRef.current = streamVolume;
+            
             // Check if we need to create a new candle
             if (currentIntervalStartRef.current && currentIntervalStart > currentIntervalStartRef.current) {
-              // New interval started - create a new candle
+              // New interval started - reset volume tracking and create new candle
+              baseVolumeRef.current = 0;
+              accumulatedVolumeRef.current = volumeDelta;
+              lastVolumeUpdateRef.current = streamVolume;
+              
               const newCandle: KLineData = {
                 timestamp: currentIntervalStart,
                 open: price.price,
                 high: price.price,
                 low: price.price,
                 close: price.price,
-                volume: price.volume || 0,
+                volume: accumulatedVolumeRef.current,
               };
               chartRef.current.updateData(newCandle);
               currentIntervalStartRef.current = currentIntervalStart;
+              setStreamingVolume(accumulatedVolumeRef.current);
               console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
             } else {
-              // Same interval - update the existing candle
+              // Same interval - accumulate volume delta
+              accumulatedVolumeRef.current += volumeDelta;
+              const totalVolume = baseVolumeRef.current + accumulatedVolumeRef.current;
+              
               const updatedCandle: KLineData = {
                 ...lastCandle,
                 close: price.price,
                 high: Math.max(lastCandle.high, price.price),
                 low: Math.min(lastCandle.low, price.price),
-                volume: (lastCandle.volume || 0) + (price.volume || 0),
+                volume: totalVolume,
               };
               chartRef.current.updateData(updatedCandle);
+              setStreamingVolume(totalVolume);
               
               // Set the interval start if not already set
               if (!currentIntervalStartRef.current) {
@@ -288,6 +313,11 @@ export const ProChartKit = ({
       isInitialLoadRef.current = true;
       lastCandleTimestampRef.current = null;
       currentIntervalStartRef.current = null;
+      // Reset volume tracking
+      baseVolumeRef.current = 0;
+      accumulatedVolumeRef.current = 0;
+      lastVolumeUpdateRef.current = 0;
+      setStreamingVolume(0);
       fetchAndLoadData(false);
     }
   }, [showPremarket]);
@@ -296,6 +326,11 @@ export const ProChartKit = ({
   useEffect(() => {
     currentIntervalStartRef.current = null;
     isInitialLoadRef.current = true;
+    // Reset volume tracking for new interval
+    baseVolumeRef.current = 0;
+    accumulatedVolumeRef.current = 0;
+    lastVolumeUpdateRef.current = 0;
+    setStreamingVolume(0);
   }, [interval]);
 
   // Replay playback effect
@@ -402,6 +437,14 @@ export const ProChartKit = ({
           if (latestTimestamp) {
             const intervalMs = getIntervalMs(interval);
             currentIntervalStartRef.current = Math.floor(latestTimestamp / intervalMs) * intervalMs;
+          }
+          
+          // Set base volume from the last candle for streaming accumulation
+          const lastLoadedCandle = klineData[klineData.length - 1];
+          if (lastLoadedCandle) {
+            baseVolumeRef.current = lastLoadedCandle.volume || 0;
+            accumulatedVolumeRef.current = 0;
+            setStreamingVolume(baseVolumeRef.current);
           }
         }
 
@@ -845,9 +888,9 @@ export const ProChartKit = ({
           onRefresh={fetchAndLoadData}
         />
 
-        {/* Live Price Indicator */}
+        {/* Live Price & Volume Indicator */}
         {enableStreaming && currentPrice && !replayMode && (
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+          <div className={`flex items-center gap-3 px-3 py-1.5 rounded-lg border ${
             priceDirection === 'up' ? 'bg-green-500/10 border-green-500/30' :
             priceDirection === 'down' ? 'bg-red-500/10 border-red-500/30' :
             'bg-muted border-border'
@@ -859,13 +902,24 @@ export const ProChartKit = ({
               <Zap className="w-3 h-3" />
               {dataSource === 'polygon' ? 'LIVE' : 'SIM'}
             </Badge>
-            <span className={`font-mono font-bold text-lg ${
-              priceDirection === 'up' ? 'text-green-500' :
-              priceDirection === 'down' ? 'text-red-500' :
-              'text-foreground'
-            }`}>
-              ${currentPrice.toFixed(2)}
-            </span>
+            <div className="flex flex-col">
+              <span className={`font-mono font-bold text-lg leading-tight ${
+                priceDirection === 'up' ? 'text-green-500' :
+                priceDirection === 'down' ? 'text-red-500' :
+                'text-foreground'
+              }`}>
+                ${currentPrice.toFixed(2)}
+              </span>
+              {streamingVolume > 0 && (
+                <span className="font-mono text-xs text-muted-foreground leading-tight">
+                  Vol: {streamingVolume >= 1000000 
+                    ? `${(streamingVolume / 1000000).toFixed(2)}M` 
+                    : streamingVolume >= 1000 
+                      ? `${(streamingVolume / 1000).toFixed(1)}K`
+                      : streamingVolume.toLocaleString()}
+                </span>
+              )}
+            </div>
             {isConnected && (
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             )}
