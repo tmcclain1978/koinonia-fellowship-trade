@@ -47,14 +47,79 @@ serve(async (req) => {
     const userTier = roleData?.role || 'free_user';
     const isEnterprise = userTier === 'enterprise' || roleData?.role === 'admin';
 
-    // Fetch market data from Polygon
-    const today = new Date().toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Helper to fetch price data with retry and fallback
+    const fetchPriceData = async (sym: string, retries = 3): Promise<any[]> => {
+      const today = new Date().toISOString().split('T')[0];
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          console.log(`[koinonia] Fetching price data for ${sym}, attempt ${attempt}`);
+          const response = await fetch(
+            `https://api.polygon.io/v2/aggs/ticker/${sym}/range/1/day/${thirtyDaysAgo}/${today}?adjusted=true&apiKey=${POLYGON_API_KEY}`
+          );
+          
+          if (response.status === 429) {
+            console.log(`[koinonia] Rate limited, waiting before retry...`);
+            await new Promise(r => setTimeout(r, 1000 * attempt));
+            continue;
+          }
+          
+          if (!response.ok) {
+            console.log(`[koinonia] Polygon returned ${response.status}`);
+            continue;
+          }
+          
+          const data = await response.json();
+          if (data.results && data.results.length > 0) {
+            console.log(`[koinonia] Got ${data.results.length} candles for ${sym}`);
+            return data.results.map((r: any) => ({
+              close: r.c,
+              high: r.h,
+              low: r.l,
+              volume: r.v,
+              timestamp: r.t
+            }));
+          }
+        } catch (e) {
+          console.log(`[koinonia] Fetch error on attempt ${attempt}:`, e.message);
+        }
+        
+        // Wait before retry
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 500 * attempt));
+        }
+      }
+      
+      // Try previous day endpoint as fallback
+      try {
+        console.log(`[koinonia] Trying prev endpoint for ${sym}`);
+        const prevResponse = await fetch(
+          `https://api.polygon.io/v2/aggs/ticker/${sym}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`
+        );
+        const prevData = await prevResponse.json();
+        if (prevData.results?.[0]) {
+          const r = prevData.results[0];
+          console.log(`[koinonia] Got prev day data for ${sym}: $${r.c}`);
+          // Return single candle as array
+          return [{
+            close: r.c,
+            high: r.h,
+            low: r.l,
+            volume: r.v,
+            timestamp: r.t
+          }];
+        }
+      } catch (e) {
+        console.log(`[koinonia] Prev endpoint failed:`, e.message);
+      }
+      
+      return [];
+    };
 
-    const [priceData, sentimentData, learningInsights] = await Promise.all([
-      // Fetch historical price data for technical analysis
-      fetch(`https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${thirtyDaysAgo}/${today}?apiKey=${POLYGON_API_KEY}`)
-        .then(res => res.json()),
+    // Fetch all data in parallel
+    const [prices, sentimentData, learningInsights] = await Promise.all([
+      fetchPriceData(symbol),
       
       // Fetch advanced news sentiment analysis
       supabase.functions.invoke('news-sentiment-scanner', { 
@@ -80,21 +145,15 @@ serve(async (req) => {
         .limit(5)
     ]);
 
-    // Calculate technical indicators
-    const prices = priceData.results?.map((r: any) => ({
-      close: r.c,
-      high: r.h,
-      low: r.l,
-      volume: r.v,
-      timestamp: r.t
-    })) || [];
-
     // Handle case where no price data is available
     if (prices.length === 0) {
-      console.log('No price data available for symbol:', symbol);
+      console.log('[koinonia] No price data available for symbol:', symbol);
       return new Response(
-        JSON.stringify({ error: `No price data available for ${symbol}. Please check the symbol and try again.` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: `No price data available for ${symbol}. The market may be closed or there's a temporary API issue. Please try again in a few moments.`,
+          retryable: true
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
