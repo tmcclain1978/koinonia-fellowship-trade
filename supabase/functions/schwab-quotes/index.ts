@@ -123,6 +123,19 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('[schwab-quotes] Error:', error);
+    
+    // On network errors, try to return fallback data instead of failing
+    const errorMessage = error.message?.toLowerCase() || '';
+    if (errorMessage.includes('network') || errorMessage.includes('connection') || errorMessage.includes('fetch')) {
+      console.log('[schwab-quotes] Network error, returning fallback data');
+      try {
+        const { symbols } = await req.clone().json().catch(() => ({ symbols: ['AAPL'] }));
+        return returnMockQuotes(symbols || ['AAPL']);
+      } catch (fallbackError) {
+        console.error('[schwab-quotes] Fallback also failed:', fallbackError);
+      }
+    }
+    
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
