@@ -224,6 +224,43 @@ serve(async (req) => {
         
         const polygonResponse = await fetch(polygonUrl);
         
+        // Handle rate limiting with retry
+        if (polygonResponse.status === 429) {
+          console.log('Polygon rate limited, waiting 1 second and retrying...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const retryResponse = await fetch(polygonUrl);
+          if (retryResponse.ok) {
+            const polygonData = await retryResponse.json();
+            if (polygonData.results && polygonData.results.length > 0) {
+              const candles = polygonData.results.map((bar: any) => ({
+                time: Math.floor(bar.t / 1000),
+                open: bar.o,
+                high: bar.h,
+                low: bar.l,
+                close: bar.c,
+                volume: bar.v || 0,
+              }));
+              
+              console.log(`✅ Processed ${candles.length} candles from Polygon.io (retry) for ${symbol}`);
+              
+              return new Response(
+                JSON.stringify({ 
+                  data: candles,
+                  source: 'polygon',
+                  symbol,
+                }),
+                { 
+                  status: 200, 
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                }
+              );
+            }
+          }
+          // Fall through if retry also fails
+          console.error('Polygon retry also failed');
+        }
+        
         if (polygonResponse.ok) {
           const polygonData = await polygonResponse.json();
           
@@ -282,69 +319,110 @@ serve(async (req) => {
           avUrl += `&interval=${avIntervalMap[interval] || '5min'}`;
         }
         
+        console.log(`Alpha Vantage URL: ${avUrl.replace(alphaVantageKey, 'HIDDEN')}`);
+        
         const avResponse = await fetch(avUrl);
         
         if (avResponse.ok) {
           const avData = await avResponse.json();
-          const timeSeriesKey = Object.keys(avData).find(k => k.includes('Time Series'));
           
-          if (timeSeriesKey && avData[timeSeriesKey]) {
-            const timeSeries = avData[timeSeriesKey];
-            const candles = Object.entries(timeSeries)
-              .map(([datetime, values]: [string, any]) => ({
-                time: Math.floor(new Date(datetime).getTime() / 1000),
-                open: parseFloat(values['1. open']),
-                high: parseFloat(values['2. high']),
-                low: parseFloat(values['3. low']),
-                close: parseFloat(values['4. close']),
-                volume: parseInt(values['5. volume'] || '0'),
-              }))
-              .filter(candle => {
-                if (!startDate || !endDate) return true;
-                const candleDate = new Date(candle.time * 1000);
-                return candleDate >= new Date(startDate) && candleDate <= new Date(endDate);
-              })
-              .sort((a, b) => a.time - b.time);
+          // Check for API error messages
+          if (avData['Error Message']) {
+            console.error('Alpha Vantage error:', avData['Error Message']);
+          } else if (avData['Note']) {
+            console.log('Alpha Vantage note (rate limit?):', avData['Note']);
+          } else {
+            const timeSeriesKey = Object.keys(avData).find(k => k.includes('Time Series'));
             
-            if (candles.length > 0) {
-              console.log(`Processed ${candles.length} candles from Alpha Vantage`);
+            if (timeSeriesKey && avData[timeSeriesKey]) {
+              const timeSeries = avData[timeSeriesKey];
+              const candles = Object.entries(timeSeries)
+                .map(([datetime, values]: [string, any]) => ({
+                  time: Math.floor(new Date(datetime).getTime() / 1000),
+                  open: parseFloat(values['1. open']),
+                  high: parseFloat(values['2. high']),
+                  low: parseFloat(values['3. low']),
+                  close: parseFloat(values['4. close']),
+                  volume: parseInt(values['5. volume'] || '0'),
+                }))
+                .filter(candle => {
+                  if (!startDate || !endDate) return true;
+                  const candleDate = new Date(candle.time * 1000);
+                  return candleDate >= new Date(startDate) && candleDate <= new Date(endDate);
+                })
+                .sort((a, b) => a.time - b.time);
               
-              return new Response(
-                JSON.stringify({ 
-                  data: candles,
-                  source: 'alphavantage',
-                  symbol,
-                }),
-                { 
-                  status: 200, 
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-                }
-              );
+              if (candles.length > 0) {
+                console.log(`✅ Processed ${candles.length} candles from Alpha Vantage`);
+                
+                return new Response(
+                  JSON.stringify({ 
+                    data: candles,
+                    source: 'alphavantage',
+                    symbol,
+                  }),
+                  { 
+                    status: 200, 
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                  }
+                );
+              } else {
+                console.log('Alpha Vantage returned no matching candles for date range');
+              }
+            } else {
+              console.log('Alpha Vantage returned unexpected data structure:', Object.keys(avData));
             }
           }
+        } else {
+          console.error('Alpha Vantage HTTP error:', avResponse.status);
         }
       } catch (avError) {
         console.error('Error fetching from Alpha Vantage:', avError);
       }
     }
 
-    // No access token available, use mock data with simulated live updates
-    console.log('No access token available, trying to get current price for realistic mock data');
+    // All real data sources failed, try to get accurate current price for mock data
+    console.log('All data sources failed, generating mock data with current price...');
     
-    // Try to get current price from Polygon for accurate base price
     let basePrice = 150;
+    
+    // Try Polygon previous close for accurate base price (with delay to avoid rate limit)
     if (polygonApiKey) {
       try {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to avoid rate limit
         const prevResponse = await fetch(
           `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apiKey=${polygonApiKey}`
         );
-        const prevData = await prevResponse.json();
-        if (prevData.results?.[0]?.c) {
-          basePrice = prevData.results[0].c;
-          console.log(`Got current price from Polygon: $${basePrice}`);
+        if (prevResponse.ok) {
+          const prevData = await prevResponse.json();
+          if (prevData.results?.[0]?.c) {
+            basePrice = prevData.results[0].c;
+            console.log(`Got current price from Polygon prev: $${basePrice}`);
+          }
+        } else if (prevResponse.status === 429) {
+          console.log('Polygon prev endpoint rate limited');
         }
       } catch (e) {
-        console.log('Could not fetch current price from Polygon, using default');
+        console.log('Could not fetch current price from Polygon');
+      }
+    }
+    
+    // Try FMP as another source for current price
+    const fmpKey = Deno.env.get('FMP_API_KEY');
+    if (fmpKey && basePrice === 150) {
+      try {
+        const fmpResponse = await fetch(
+          `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${fmpKey}`
+        );
+        if (fmpResponse.ok) {
+          const fmpData = await fmpResponse.json();
+          if (fmpData?.[0]?.price) {
+            basePrice = fmpData[0].price;
+            console.log(`Got current price from FMP: $${basePrice}`);
+          }
+        }
+      } catch (e) {
+        console.log('Could not fetch current price from FMP');
       }
     }
     
