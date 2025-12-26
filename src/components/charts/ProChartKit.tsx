@@ -482,12 +482,23 @@ export const ProChartKit = ({
       const startDateStr = format(historicalStartDate, "yyyy-MM-dd");
       const endDateStr = format(historicalEndDate, "yyyy-MM-dd");
       
-      console.log("📊 Fetching historical data from", startDateStr, "to", endDateStr);
+      // Calculate the date range in days
+      const daysDiff = Math.ceil((historicalEndDate.getTime() - historicalStartDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // For longer date ranges, use daily interval for better data availability
+      // Polygon.io minute data is limited to ~2 years
+      let historicalInterval = interval;
+      if (daysDiff > 30 && (interval.includes('m') || interval === '1' || interval === '5' || interval === '15' || interval === '30' || interval === '60')) {
+        historicalInterval = '1D';
+        console.log(`📊 Switching to daily interval for ${daysDiff} day range`);
+      }
+      
+      console.log("📊 Fetching historical data from", startDateStr, "to", endDateStr, "interval:", historicalInterval);
 
       const { data, error } = await supabase.functions.invoke("fetch-schwab-candles", {
         body: {
           symbol,
-          interval: mapInterval(interval),
+          interval: mapInterval(historicalInterval),
           startDate: startDateStr,
           endDate: endDateStr,
           premarket: showPremarket
@@ -511,7 +522,7 @@ export const ProChartKit = ({
           volume: candle.volume || 0
         }));
 
-        console.log("✅ Loaded", klineData.length, "historical candles");
+        console.log("✅ Loaded", klineData.length, "historical candles from", data?.source || "unknown");
         setAllCandleData(klineData);
         chartRef.current.applyNewData(klineData);
         
@@ -519,6 +530,8 @@ export const ProChartKit = ({
         setReplayMode(true);
         setReplayIndex(klineData.length - 1);
         setShowReplayControls(true);
+      } else {
+        console.warn("⚠️ No historical data returned");
       }
     } catch (error) {
       console.error("❌ Error fetching historical data:", error);
