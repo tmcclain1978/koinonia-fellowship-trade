@@ -9,9 +9,9 @@ import { ChevronDown, CandlestickChart } from "lucide-react";
 
 export type CandleTypeOption = 
   | 'candle_solid' 
-  | 'candle_stroke'
-  | 'candle_up_stroke'
-  | 'candle_down_stroke'
+  | 'candle_hollow'
+  | 'candle_up_hollow'
+  | 'candle_down_hollow'
   | 'ohlc'
   | 'area'
   | 'line';
@@ -23,9 +23,9 @@ interface CandleTypeSelectorProps {
 
 const candleTypes: { value: CandleTypeOption; label: string; description: string }[] = [
   { value: 'candle_solid', label: 'Candlestick', description: 'Solid filled candles' },
-  { value: 'candle_stroke', label: 'Hollow Candles', description: 'All hollow candles' },
-  { value: 'candle_up_stroke', label: 'Hollow Up', description: 'Hollow on up, solid on down' },
-  { value: 'candle_down_stroke', label: 'Hollow Down', description: 'Hollow on down, solid on up' },
+  { value: 'candle_hollow', label: 'Hollow Candles', description: 'All hollow candles' },
+  { value: 'candle_up_hollow', label: 'Hollow Up', description: 'Hollow on up, solid on down' },
+  { value: 'candle_down_hollow', label: 'Hollow Down', description: 'Hollow on down, solid on up' },
   { value: 'ohlc', label: 'OHLC Bars', description: 'Open-High-Low-Close bars' },
   { value: 'area', label: 'Area', description: 'Filled area chart' },
   { value: 'line', label: 'Line', description: 'Simple line chart' },
