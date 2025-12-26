@@ -69,6 +69,9 @@ export const HistoricalDatePicker = ({
       <div className="flex items-center gap-2">
         <History className="h-4 w-4 text-muted-foreground" />
         <Label className="text-xs font-medium">Historical Data</Label>
+        <span className="text-xs text-muted-foreground ml-auto">
+          Tip: For dates &gt;30 days, daily candles are used for better coverage
+        </span>
       </div>
       
       <div className="flex flex-wrap items-center gap-2">
@@ -99,13 +102,14 @@ export const HistoricalDatePicker = ({
               {startDate ? format(startDate, "MMM dd, yyyy") : "Start date"}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
+          <PopoverContent className="w-auto p-0 pointer-events-auto" align="start">
             <Calendar
               mode="single"
               selected={startDate}
               onSelect={onStartDateChange}
               disabled={(date) => date > new Date()}
               initialFocus
+              className="pointer-events-auto"
             />
           </PopoverContent>
         </Popover>
@@ -120,13 +124,14 @@ export const HistoricalDatePicker = ({
               {endDate ? format(endDate, "MMM dd, yyyy") : "End date"}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
+          <PopoverContent className="w-auto p-0 pointer-events-auto" align="start">
             <Calendar
               mode="single"
               selected={endDate}
               onSelect={onEndDateChange}
               disabled={(date) => date > new Date() || (startDate ? date < startDate : false)}
               initialFocus
+              className="pointer-events-auto"
             />
           </PopoverContent>
         </Popover>
@@ -144,6 +149,9 @@ export const HistoricalDatePicker = ({
       {startDate && endDate && (
         <div className="text-xs text-muted-foreground">
           Showing data from {format(startDate, "MMM dd, yyyy")} to {format(endDate, "MMM dd, yyyy")}
+          {Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) > 30 && (
+            <span className="text-amber-500 ml-2">(daily candles)</span>
+          )}
         </div>
       )}
     </div>
