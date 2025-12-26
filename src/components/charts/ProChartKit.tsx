@@ -85,6 +85,9 @@ export const ProChartKit = ({
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'unchanged'>('unchanged');
   const [streamingVolume, setStreamingVolume] = useState<number>(0);
 
+  // Chart data source tracking (schwab | polygon | alphavantage | mock)
+  const [chartDataSource, setChartDataSource] = useState<string>('loading');
+
   // Helper to get interval duration in milliseconds
   const getIntervalMs = useCallback((intervalStr: string): number => {
     const intervalMap: Record<string, number> = {
@@ -435,10 +438,14 @@ export const ProChartKit = ({
           }
         } else {
           // Initial load - apply all data
-          console.log("✅ Initial load:", klineData.length, "candles, source:", data?.source || "unknown");
+          const source = data?.source || "unknown";
+          console.log("✅ Initial load:", klineData.length, "candles, source:", source);
           chartRef.current.applyNewData(klineData);
           lastCandleTimestampRef.current = latestTimestamp;
           isInitialLoadRef.current = false;
+          
+          // Track the data source for UI display
+          setChartDataSource(source);
           
           // Set the current interval start based on the last candle
           if (latestTimestamp) {
@@ -882,6 +889,29 @@ export const ProChartKit = ({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 items-center">
+        {/* Chart Data Source Indicator - Always visible */}
+        <Badge 
+          variant={chartDataSource === 'schwab' ? "default" : chartDataSource === 'polygon' ? "secondary" : chartDataSource === 'mock' ? "destructive" : "outline"}
+          className="flex items-center gap-1.5 px-2.5 py-1"
+        >
+          <span className={`w-2 h-2 rounded-full ${
+            chartDataSource === 'schwab' ? 'bg-green-500 animate-pulse' :
+            chartDataSource === 'polygon' ? 'bg-blue-500 animate-pulse' :
+            chartDataSource === 'alphavantage' ? 'bg-yellow-500 animate-pulse' :
+            chartDataSource === 'mock' ? 'bg-red-500' :
+            'bg-gray-400'
+          }`} />
+          <span className="text-xs font-medium uppercase">
+            {chartDataSource === 'schwab' ? 'LIVE (Schwab)' :
+             chartDataSource === 'polygon' ? 'LIVE (Polygon)' :
+             chartDataSource === 'alphavantage' ? 'LIVE (Alpha Vantage)' :
+             chartDataSource === 'polygon-fallback' ? 'DELAYED (Polygon)' :
+             chartDataSource === 'mock' ? 'MOCK DATA' :
+             chartDataSource === 'loading' ? 'Loading...' :
+             chartDataSource.toUpperCase()}
+          </span>
+        </Badge>
+
         <CandleTypeSelector 
           value={candleType}
           onChange={setCandleType}
@@ -920,7 +950,7 @@ export const ProChartKit = ({
               className="flex items-center gap-1 text-xs"
             >
               <Zap className="w-3 h-3" />
-              {dataSource === 'polygon' ? 'LIVE' : 'SIM'}
+              {dataSource === 'polygon' ? 'STREAM' : 'SIM'}
             </Badge>
             <div className="flex flex-col">
               <span className={`font-mono font-bold text-lg leading-tight ${

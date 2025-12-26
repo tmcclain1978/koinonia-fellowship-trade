@@ -1,6 +1,5 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +23,43 @@ interface ArticleSentiment extends NewsArticle {
   sentiment: SentimentResult;
 }
 
+// Parse RSS XML using regex (Deno edge functions don't support DOMParser for XML)
+function parseRssXml(xmlText: string): NewsArticle[] {
+  const articles: NewsArticle[] = [];
+  
+  // Match all <item> blocks
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  let itemMatch;
+  
+  while ((itemMatch = itemRegex.exec(xmlText)) !== null) {
+    const itemContent = itemMatch[1];
+    
+    // Extract title - handle CDATA
+    const titleMatch = itemContent.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+    let title = titleMatch ? titleMatch[1].trim() : '';
+    // Clean up any remaining CDATA markers and HTML tags
+    title = title.replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]*>/g, '').trim();
+    
+    // Extract link
+    const linkMatch = itemContent.match(/<link>([\s\S]*?)<\/link>/i);
+    const link = linkMatch ? linkMatch[1].trim() : '';
+    
+    // Extract pubDate
+    const pubDateMatch = itemContent.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+    const published = pubDateMatch ? pubDateMatch[1].trim() : '';
+    
+    // Extract source
+    const sourceMatch = itemContent.match(/<source[^>]*>([\s\S]*?)<\/source>/i);
+    const source = sourceMatch ? sourceMatch[1].trim() : 'Unknown';
+    
+    if (title) {
+      articles.push({ title, link, published, source });
+    }
+  }
+  
+  return articles;
+}
+
 // Fetch news from Google News RSS
 async function fetchGoogleNews(query: string, numArticles: number = 10): Promise<NewsArticle[]> {
   try {
@@ -44,33 +80,10 @@ async function fetchGoogleNews(query: string, numArticles: number = 10): Promise
     }
     
     const xmlText = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlText, 'text/xml');
     
-    if (!doc) {
-      console.error('Failed to parse RSS XML');
-      return [];
-    }
-    
-    const items = doc.querySelectorAll('item');
-    const articles: NewsArticle[] = [];
-    
-    for (let i = 0; i < Math.min(items.length, numArticles); i++) {
-      const item = items[i];
-      const title = item.querySelector('title')?.textContent || '';
-      const link = item.querySelector('link')?.textContent || '';
-      const pubDate = item.querySelector('pubDate')?.textContent || '';
-      const source = item.querySelector('source')?.textContent || 'Unknown';
-      
-      if (title) {
-        articles.push({
-          title: title.replace(/<[^>]*>/g, ''), // Strip any HTML
-          link,
-          published: pubDate,
-          source
-        });
-      }
-    }
+    // Use regex-based parsing instead of DOMParser
+    const allArticles = parseRssXml(xmlText);
+    const articles = allArticles.slice(0, numArticles);
     
     console.log(`Found ${articles.length} articles for ${query}`);
     return articles;
@@ -275,10 +288,9 @@ serve(async (req) => {
     // Generate search queries based on symbol or use provided queries
     const searchQueries = queries || [
       `${symbol} stock`,
-      `${symbol} stock price`,
       `${symbol} stock news`,
       `${symbol} earnings`,
-      `${symbol} company news`
+      `${symbol} analyst`
     ];
 
     console.log(`Scanning news sentiment for: ${symbol || 'custom queries'}`);
@@ -325,22 +337,38 @@ serve(async (req) => {
       .filter(a => a.sentiment.label === 'Bearish')
       .slice(0, 3);
 
+    // Calculate breakdown percentages safely
+    const totalArticles = analyzedArticles.length;
+    const sentimentBreakdown = totalArticles > 0 ? {
+      bullishPercent: (aggregate.bullishCount / totalArticles) * 100,
+      bearishPercent: (aggregate.bearishCount / totalArticles) * 100,
+      neutralPercent: (aggregate.neutralCount / totalArticles) * 100
+    } : {
+      bullishPercent: 0,
+      bearishPercent: 0,
+      neutralPercent: 0
+    };
+
+    // Build result with both old field names (for backward compatibility) and new ones
     const result = {
       symbol,
       timestamp: new Date().toISOString(),
-      totalArticlesAnalyzed: analyzedArticles.length,
+      totalArticlesAnalyzed: totalArticles,
+      // New field names that frontend expects
+      overall: aggregate.overallLabel,
+      score: aggregate.overallScore,
+      weightedScore: aggregate.weightedScore,
+      articlesAnalyzed: totalArticles,
+      breakdown: sentimentBreakdown,
+      // Legacy field names
       aggregate,
       topBullish: topBullish.map(a => ({ title: a.title, score: a.sentiment.score, confidence: a.sentiment.confidence })),
       topBearish: topBearish.map(a => ({ title: a.title, score: a.sentiment.score, confidence: a.sentiment.confidence })),
       articles: analyzedArticles.slice(0, 20), // Return top 20 articles
-      sentimentBreakdown: {
-        bullishPercent: (aggregate.bullishCount / analyzedArticles.length) * 100,
-        bearishPercent: (aggregate.bearishCount / analyzedArticles.length) * 100,
-        neutralPercent: (aggregate.neutralCount / analyzedArticles.length) * 100
-      }
+      sentimentBreakdown
     };
 
-    console.log(`Sentiment analysis complete: ${aggregate.overallLabel} (${aggregate.overallScore.toFixed(2)})`);
+    console.log(`Sentiment analysis complete: ${aggregate.overallLabel} (${aggregate.overallScore.toFixed(2)}) from ${totalArticles} articles`);
 
     return new Response(
       JSON.stringify(result),

@@ -77,20 +77,31 @@ export const NewsSentimentDashboard = () => {
 
     try {
       const { data, error } = await supabase.functions.invoke("news-sentiment-scanner", {
-        body: { symbol, maxArticles: 10 }
+        body: { symbol, numArticlesPerQuery: 5 }
       });
 
       if (error) throw error;
+
+      // Handle both new and legacy field names from the API
+      const overall = data.overall || data.aggregate?.overallLabel || "Neutral";
+      const score = data.score ?? data.aggregate?.overallScore ?? 0;
+      const weightedScore = data.weightedScore ?? data.aggregate?.weightedScore ?? 0;
+      const articlesAnalyzed = data.articlesAnalyzed ?? data.totalArticlesAnalyzed ?? 0;
+      const breakdown = data.breakdown || data.sentimentBreakdown || { 
+        bullishPercent: 0, 
+        bearishPercent: 0, 
+        neutralPercent: 0 
+      };
 
       setSentimentData(prev => ({
         ...prev,
         [symbol]: {
           symbol,
-          overall: data.overall || "Unknown",
-          score: data.score || 0,
-          weightedScore: data.weightedScore || 0,
-          articlesAnalyzed: data.articlesAnalyzed || 0,
-          breakdown: data.breakdown || { bullishPercent: 0, bearishPercent: 0, neutralPercent: 0 },
+          overall,
+          score,
+          weightedScore,
+          articlesAnalyzed,
+          breakdown,
           topBullish: data.topBullish || [],
           topBearish: data.topBearish || [],
           loading: false
