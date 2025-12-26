@@ -275,16 +275,23 @@ export const ProChartKit = ({
     };
   }, [symbol, interval, theme]);
 
-  // Handle candle type changes dynamically
+  // Handle candle type changes dynamically - also reapply after chart re-init (interval/symbol change)
   useEffect(() => {
     if (!chartRef.current) return;
     
-    chartRef.current.setStyles({
-      candle: {
-        type: candleType as CandleType
+    // Small delay to ensure chart is fully initialized after re-creation
+    const timer = setTimeout(() => {
+      if (chartRef.current) {
+        chartRef.current.setStyles({
+          candle: {
+            type: candleType as CandleType
+          }
+        });
       }
-    });
-  }, [candleType]);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [candleType, symbol, interval]);
 
   // Set up real-time updates (only when not in replay mode)
   useEffect(() => {
