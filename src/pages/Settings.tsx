@@ -18,6 +18,7 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [hasRefreshToken, setHasRefreshToken] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<'connected' | 'expired' | 'disconnected'>('disconnected');
   const [brokerType, setBrokerType] = useState("schwab");
   const [credentials, setCredentials] = useState({
     schwab_client_id: "",
@@ -88,7 +89,16 @@ const Settings = () => {
 
       if (data?.credentials) {
         setBrokerType(data.credentials.broker_type || "schwab");
-        setHasRefreshToken(!!data.credentials.schwab_refresh_token);
+        const hasToken = !!data.credentials.schwab_refresh_token;
+        setHasRefreshToken(hasToken);
+        
+        // If we have a refresh token, test if it actually works
+        if (hasToken && data.credentials.schwab_client_id) {
+          testOAuthConnection();
+        } else {
+          setOauthStatus('disconnected');
+        }
+        
         setCredentials({
           schwab_client_id: data.credentials.schwab_client_id || "",
           schwab_client_secret: data.credentials.schwab_client_secret || "",
@@ -104,6 +114,23 @@ const Settings = () => {
       }
     } catch (error) {
       console.error("Error fetching credentials:", error);
+    }
+  };
+
+  const testOAuthConnection = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("schwab-get-access-token");
+      if (error || data?.error || data?.requiresOAuth) {
+        console.log('OAuth test failed:', error || data?.error);
+        setOauthStatus('expired');
+      } else if (data?.accessToken) {
+        setOauthStatus('connected');
+      } else {
+        setOauthStatus('expired');
+      }
+    } catch (e) {
+      console.log('OAuth test exception:', e);
+      setOauthStatus('expired');
     }
   };
 
@@ -376,13 +403,13 @@ const Settings = () => {
                     Clear All Credentials
                   </Button>
 
-                  <Alert>
+                  <Alert className={oauthStatus === 'connected' ? 'border-green-500' : oauthStatus === 'expired' ? 'border-red-500' : 'border-yellow-500'}>
                     <AlertDescription className="flex items-start gap-2">
-                      {hasRefreshToken ? (
+                      {oauthStatus === 'connected' ? (
                         <>
                           <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
                           <div className="flex-1">
-                            <p className="font-medium">OAuth Connected</p>
+                            <p className="font-medium text-green-600">OAuth Connected</p>
                             <p className="text-sm text-muted-foreground">Your Schwab account is authorized and ready for trading.</p>
                             <div className="mt-3 flex gap-2">
                               <Button 
@@ -397,6 +424,30 @@ const Settings = () => {
                             </div>
                           </div>
                         </>
+                      ) : oauthStatus === 'expired' ? (
+                        <>
+                          <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="font-medium text-red-600">OAuth Token Expired</p>
+                            <div className="text-sm text-muted-foreground space-y-2 mb-3">
+                              <p>Your Schwab authorization has expired. Schwab tokens expire after 7 days.</p>
+                              <p><strong>Important:</strong> Make sure this callback URL is registered in your Schwab Developer Portal:</p>
+                              <code className="block bg-muted p-2 rounded text-xs break-all select-all">
+                                https://cxsfpxsbejzpukrdrulu.supabase.co/functions/v1/schwab-oauth-callback
+                              </code>
+                              <p className="text-xs text-yellow-600">A 400 error means the callback URL is not registered in your Schwab app settings.</p>
+                            </div>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={handleSchwabOAuth}
+                              disabled={oauthLoading}
+                            >
+                              <LinkIcon className="mr-2 h-4 w-4" />
+                              {oauthLoading ? "Reconnecting..." : "Re-authorize Schwab"}
+                            </Button>
+                          </div>
+                        </>
                       ) : (
                         <>
                           <AlertCircle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
@@ -404,7 +455,7 @@ const Settings = () => {
                             <p className="font-medium">OAuth Setup Required</p>
                             <div className="text-sm text-muted-foreground space-y-2 mb-3">
                               <p><strong>Before connecting</strong>, register this callback URL in your Schwab Developer Portal:</p>
-                              <code className="block bg-muted p-2 rounded text-xs break-all">
+                              <code className="block bg-muted p-2 rounded text-xs break-all select-all">
                                 https://cxsfpxsbejzpukrdrulu.supabase.co/functions/v1/schwab-oauth-callback
                               </code>
                               <p className="mt-2">Then click the button below to authorize trading with your Schwab account.</p>
