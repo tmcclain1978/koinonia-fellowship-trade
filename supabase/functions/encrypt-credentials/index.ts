@@ -189,6 +189,81 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
 
+    } else if (operation === "debug") {
+      // Return diagnostic info for OAuth debugging
+      const { data, error } = await supabase
+        .from("user_api_credentials")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error loading credentials for debug:", error);
+        throw new Error("Failed to load credentials");
+      }
+
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const callbackUrl = `${supabaseUrl}/functions/v1/schwab-oauth-callback`;
+
+      if (!data) {
+        return new Response(
+          JSON.stringify({
+            debug: {
+              clientIdPresent: false,
+              clientIdDecryptOk: false,
+              secretPresent: false,
+              secretDecryptOk: false,
+              refreshTokenPresent: false,
+              refreshTokenDecryptOk: false,
+              lastRefreshFailure: null,
+              callbackUrl,
+              rawClientIdPreview: null,
+              rawSecretPreview: null,
+              rawRefreshTokenPreview: null,
+            }
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Test decryption for each field
+      const testDecrypt = async (value: string | null): Promise<{ present: boolean; decryptOk: boolean; preview: string | null }> => {
+        if (!value) return { present: false, decryptOk: false, preview: null };
+        try {
+          const decrypted = await decryptText(value);
+          // Show first 4 chars only for privacy
+          const preview = decrypted.length > 4 ? decrypted.substring(0, 4) + "..." : decrypted;
+          return { present: true, decryptOk: true, preview };
+        } catch (e) {
+          // Decryption failed - show raw preview to help diagnose
+          const preview = value.length > 8 ? value.substring(0, 8) + "..." : value;
+          return { present: true, decryptOk: false, preview: `(raw) ${preview}` };
+        }
+      };
+
+      const clientIdResult = await testDecrypt(data.schwab_client_id);
+      const secretResult = await testDecrypt(data.schwab_client_secret);
+      const refreshTokenResult = await testDecrypt(data.schwab_refresh_token);
+
+      return new Response(
+        JSON.stringify({
+          debug: {
+            clientIdPresent: clientIdResult.present,
+            clientIdDecryptOk: clientIdResult.decryptOk,
+            clientIdPreview: clientIdResult.preview,
+            secretPresent: secretResult.present,
+            secretDecryptOk: secretResult.decryptOk,
+            secretPreview: secretResult.preview,
+            refreshTokenPresent: refreshTokenResult.present,
+            refreshTokenDecryptOk: refreshTokenResult.decryptOk,
+            refreshTokenPreview: refreshTokenResult.preview,
+            updatedAt: data.updated_at,
+            callbackUrl,
+          }
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+
     } else {
       throw new Error("Invalid operation");
     }
