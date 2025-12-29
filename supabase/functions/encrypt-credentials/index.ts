@@ -108,10 +108,14 @@ serve(async (req) => {
     const { operation, credentials } = await req.json();
 
     if (operation === "save") {
+      const nowIso = new Date().toISOString();
+
       // Encrypt and save credentials
       const encryptedData: any = {
         user_id: user.id,
+        broker_type: credentials.broker_type,
         trading_mode: credentials.trading_mode || "paper",
+        updated_at: nowIso,
       };
 
       if (credentials.schwab_client_id) {

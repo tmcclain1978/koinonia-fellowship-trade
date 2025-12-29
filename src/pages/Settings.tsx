@@ -171,12 +171,14 @@ const Settings = () => {
           description: "Failed to save credentials",
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: "Success",
-          description: "Credentials encrypted and saved successfully",
-        });
-      }
+        } else {
+          toast({
+            title: "Success",
+            description: "Credentials encrypted and saved successfully",
+          });
+          // Reload from backend so inputs don't get overwritten by stale stored values
+          fetchCredentials();
+        }
     } catch (error) {
       console.error("Error saving credentials:", error);
       toast({
