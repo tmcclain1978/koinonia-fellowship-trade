@@ -45,14 +45,32 @@ async function decryptText(encrypted: string): Promise<string> {
   const combined = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
   const iv = combined.slice(0, 12);
   const ciphertext = combined.slice(12);
-  
+
   const decrypted = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv },
     key,
     ciphertext
   );
-  
+
   return new TextDecoder().decode(decrypted);
+}
+
+async function encryptText(text: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoder = new TextEncoder();
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    encoder.encode(text)
+  );
+
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+
+  return btoa(String.fromCharCode(...combined));
 }
 
 serve(async (req) => {
@@ -173,11 +191,13 @@ serve(async (req) => {
 
     const tokens = await tokenResponse.json();
 
-    // Store the refresh token
+    // Store the refresh token (encrypted)
+    const encryptedRefreshToken = await encryptText(tokens.refresh_token);
+
     const { error: updateError } = await supabase
       .from('user_api_credentials')
       .update({
-        schwab_refresh_token: tokens.refresh_token,
+        schwab_refresh_token: encryptedRefreshToken,
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId);
