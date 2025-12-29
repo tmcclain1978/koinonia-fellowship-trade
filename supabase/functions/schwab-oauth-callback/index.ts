@@ -223,14 +223,40 @@ serve(async (req) => {
       throw new Error('Failed to store refresh token');
     }
 
-    // Redirect back to settings page with success
-    const redirectUrl = returnUrl ? `${returnUrl}/settings?oauth=success` : '/settings?oauth=success';
-    
-    return new Response(null, {
-      status: 302,
+    // Return an HTML page that notifies the opener and closes itself
+    const successHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Schwab Connected</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0; }
+    .container { text-align: center; }
+    .checkmark { font-size: 48px; margin-bottom: 16px; }
+    p { margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="checkmark">✓</div>
+    <p>Schwab connected successfully!</p>
+    <p style="font-size: 14px; opacity: 0.7;">This window will close automatically...</p>
+  </div>
+  <script>
+    // Notify parent window of success
+    if (window.opener) {
+      window.opener.postMessage({ type: 'schwab-oauth-success' }, '*');
+    }
+    // Close after a brief delay so user sees the success message
+    setTimeout(() => window.close(), 1500);
+  </script>
+</body>
+</html>`;
+
+    return new Response(successHtml, {
+      status: 200,
       headers: {
         ...corsHeaders,
-        'Location': redirectUrl,
+        'Content-Type': 'text/html',
       },
     });
 
@@ -248,16 +274,40 @@ serve(async (req) => {
       }
     } catch {}
     
-    // Redirect back to settings with error
-    const redirectUrl = returnUrl 
-      ? `${returnUrl}/settings?oauth=error&message=${encodeURIComponent(error.message)}`
-      : `/settings?oauth=error&message=${encodeURIComponent(error.message)}`;
-    
-    return new Response(null, {
-      status: 302,
+    // Return an HTML page that shows the error and closes
+    const errorHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Schwab Connection Failed</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0; }
+    .container { text-align: center; max-width: 400px; padding: 20px; }
+    .error-icon { font-size: 48px; margin-bottom: 16px; }
+    p { margin: 8px 0; }
+    .error-msg { color: #f87171; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error-icon">✗</div>
+    <p>Connection failed</p>
+    <p class="error-msg">${error.message}</p>
+    <p style="font-size: 14px; opacity: 0.7; margin-top: 16px;">This window will close automatically...</p>
+  </div>
+  <script>
+    if (window.opener) {
+      window.opener.postMessage({ type: 'schwab-oauth-error', message: '${error.message.replace(/'/g, "\\'")}' }, '*');
+    }
+    setTimeout(() => window.close(), 3000);
+  </script>
+</body>
+</html>`;
+
+    return new Response(errorHtml, {
+      status: 200,
       headers: {
         ...corsHeaders,
-        'Location': redirectUrl,
+        'Content-Type': 'text/html',
       },
     });
   }
