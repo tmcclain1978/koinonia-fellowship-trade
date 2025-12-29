@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Prevent hammering Schwab token endpoint when refresh token is invalid
+const REFRESH_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+const lastRefreshFailureByUser = new Map<string, number>();
+
 // Decryption helper
 async function getEncryptionKey(): Promise<CryptoKey> {
   const ENCRYPTION_KEY_B64 = Deno.env.get("CREDENTIALS_ENCRYPTION_KEY");
@@ -130,7 +134,31 @@ serve(async (req) => {
     cachedAccessToken = await safeDecrypt(cachedAccessToken);
 
     if (!clientId || !clientSecret || !refreshToken) {
-      throw new Error('Missing Schwab credentials. Please complete OAuth flow in Settings.');
+      return new Response(
+        JSON.stringify({
+          requiresOAuth: true,
+          error: 'Missing Schwab credentials. Please complete OAuth flow in Settings.',
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // If we recently failed to refresh for this user, don't keep retrying
+    const lastFail = lastRefreshFailureByUser.get(user.id);
+    if (lastFail && Date.now() - lastFail < REFRESH_FAILURE_COOLDOWN_MS) {
+      return new Response(
+        JSON.stringify({
+          requiresOAuth: true,
+          error: 'Schwab token refresh recently failed. Please re-authenticate in Settings.',
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     // Check if we have a valid cached access token (with 5 min buffer)
@@ -174,9 +202,23 @@ serve(async (req) => {
     });
 
     if (!tokenResponse.ok) {
-      const error = await tokenResponse.text();
-      console.error('[schwab-get-access-token] Token refresh failed:', error);
-      throw new Error('Failed to refresh access token. Please re-authenticate in Settings.');
+      const errorText = await tokenResponse.text();
+      console.error('[schwab-get-access-token] Token refresh failed:', errorText);
+
+      // Remember the failure briefly so we don't spam Schwab with refresh attempts
+      lastRefreshFailureByUser.set(user.id, Date.now());
+
+      return new Response(
+        JSON.stringify({
+          requiresOAuth: true,
+          error: 'Failed to refresh access token. Please re-authenticate in Settings.',
+          details: errorText,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const tokens = await tokenResponse.json();
