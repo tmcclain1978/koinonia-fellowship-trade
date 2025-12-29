@@ -162,28 +162,23 @@ serve(async (req) => {
 
       const decryptedData: any = {
         trading_mode: data.trading_mode,
+        broker_type: data.broker_type,
       };
 
-      try {
-        if (data.schwab_client_id) {
-          decryptedData.schwab_client_id = await decryptText(data.schwab_client_id);
+      const safeDecrypt = async (value: string | null) => {
+        if (!value) return null;
+        try {
+          return await decryptText(value);
+        } catch (e) {
+          // Value might already be plain text (e.g., older data or other functions wrote it)
+          console.warn("[encrypt-credentials] Could not decrypt value, returning as-is");
+          return value;
         }
-        if (data.schwab_client_secret) {
-          decryptedData.schwab_client_secret = await decryptText(data.schwab_client_secret);
-        }
-        if (data.schwab_refresh_token) {
-          decryptedData.schwab_refresh_token = await decryptText(data.schwab_refresh_token);
-        }
-      } catch (decryptError) {
-        console.error("Decryption error:", decryptError);
-        // If decryption fails, it might be plain text from before encryption was implemented
-        // Return the data as-is but log a warning
-        console.warn("Failed to decrypt, returning original data");
-        return new Response(
-          JSON.stringify({ credentials: data }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      };
+
+      decryptedData.schwab_client_id = await safeDecrypt(data.schwab_client_id);
+      decryptedData.schwab_client_secret = await safeDecrypt(data.schwab_client_secret);
+      decryptedData.schwab_refresh_token = await safeDecrypt(data.schwab_refresh_token);
 
       return new Response(
         JSON.stringify({ credentials: decryptedData }),

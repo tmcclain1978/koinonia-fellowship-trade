@@ -106,21 +106,28 @@ serve(async (req) => {
       throw new Error('No Schwab credentials found');
     }
 
-    // Decrypt credentials
+    // Decrypt credentials (robust: per-field fallback to plain text)
     let clientId = data.schwab_client_id;
     let clientSecret = data.schwab_client_secret;
     let refreshToken = data.schwab_refresh_token;
     let cachedAccessToken = data.schwab_access_token;
     let tokenExpiresAt = data.schwab_token_expires_at;
-    
-    try {
-      if (clientId) clientId = await decryptText(clientId);
-      if (clientSecret) clientSecret = await decryptText(clientSecret);
-      if (refreshToken) refreshToken = await decryptText(refreshToken);
-      if (cachedAccessToken) cachedAccessToken = await decryptText(cachedAccessToken);
-    } catch (decryptError) {
-      console.error('Decryption failed, using plain text:', decryptError);
-    }
+
+    const safeDecrypt = async (value: string | null) => {
+      if (!value) return null;
+      try {
+        return await decryptText(value);
+      } catch (e) {
+        // Value might already be plain text (e.g. refresh token written by older code)
+        console.warn('[schwab-get-access-token] Could not decrypt value, treating as plain text');
+        return value;
+      }
+    };
+
+    clientId = await safeDecrypt(clientId);
+    clientSecret = await safeDecrypt(clientSecret);
+    refreshToken = await safeDecrypt(refreshToken);
+    cachedAccessToken = await safeDecrypt(cachedAccessToken);
 
     if (!clientId || !clientSecret || !refreshToken) {
       throw new Error('Missing Schwab credentials. Please complete OAuth flow in Settings.');
