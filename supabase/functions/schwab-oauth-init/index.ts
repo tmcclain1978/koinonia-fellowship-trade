@@ -89,7 +89,7 @@ serve(async (req) => {
       .from('user_api_credentials')
       .select('schwab_client_id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!credentials?.schwab_client_id) {
       throw new Error('Schwab Client ID not configured. Please add it in Settings first.');
@@ -104,22 +104,33 @@ serve(async (req) => {
       // If decryption fails, assume plain text (for backward compatibility)
     }
 
+    clientId = clientId.trim();
+
     // Build Schwab OAuth URL
     // Note: The callback URL must be registered in your Schwab Developer Portal app
     const redirectUri = `${supabaseUrl}/functions/v1/schwab-oauth-callback`;
-    
-    // The state parameter contains the user ID and return URL
-    const state = JSON.stringify({
+
+    // The state parameter MUST be URL-safe; Schwab can reject JSON-looking state.
+    // We'll base64url-encode the JSON payload.
+    const statePayload = JSON.stringify({
       userId: user.id,
-      returnUrl: appOrigin
+      returnUrl: appOrigin,
     });
-    
+
+    const toBase64Url = (input: string) => {
+      const b64 = btoa(input);
+      return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    };
+
+    const state = toBase64Url(statePayload);
+
     console.log('Building OAuth URL with:', {
       clientId: clientId.substring(0, 10) + '...', // Log partial for debugging
       redirectUri,
-      state
+      state: state.substring(0, 16) + '...',
+      appOrigin,
     });
-    
+
     // Build the auth URL - use the standard OAuth endpoint
     // Schwab OAuth doesn't require scope parameter
     const authUrl = new URL('https://api.schwabapi.com/v1/oauth/authorize');
