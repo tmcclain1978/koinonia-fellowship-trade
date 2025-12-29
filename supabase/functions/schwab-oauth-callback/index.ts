@@ -56,6 +56,8 @@ async function decryptText(encrypted: string): Promise<string> {
 }
 
 serve(async (req) => {
+  console.log('[schwab-oauth-callback] Request received:', req.method, req.url);
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -64,6 +66,21 @@ serve(async (req) => {
     const url = new URL(req.url);
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
+    const error = url.searchParams.get('error');
+    const errorDescription = url.searchParams.get('error_description');
+
+    console.log('[schwab-oauth-callback] Params:', { 
+      hasCode: !!code, 
+      hasState: !!state, 
+      error, 
+      errorDescription 
+    });
+
+    // Check if Schwab returned an error
+    if (error) {
+      console.error('[schwab-oauth-callback] Schwab returned error:', error, errorDescription);
+      throw new Error(`Schwab OAuth error: ${error} - ${errorDescription || 'Unknown error'}`);
+    }
 
     if (!code || !state) {
       throw new Error('Missing authorization code or state');
