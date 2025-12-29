@@ -6,10 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Save, CheckCircle2, AlertCircle, Link as LinkIcon } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle2, AlertCircle, Link as LinkIcon, Bug, Copy, Check, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
+
+interface OAuthDebugInfo {
+  clientIdPresent: boolean;
+  clientIdDecryptOk: boolean;
+  clientIdPreview: string | null;
+  secretPresent: boolean;
+  secretDecryptOk: boolean;
+  secretPreview: string | null;
+  refreshTokenPresent: boolean;
+  refreshTokenDecryptOk: boolean;
+  refreshTokenPreview: string | null;
+  updatedAt: string | null;
+  callbackUrl: string;
+}
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -20,6 +34,10 @@ const Settings = () => {
   const [hasRefreshToken, setHasRefreshToken] = useState(false);
   const [oauthStatus, setOauthStatus] = useState<'connected' | 'expired' | 'disconnected'>('disconnected');
   const [brokerType, setBrokerType] = useState("schwab");
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<OAuthDebugInfo | null>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
+  const [copiedCallback, setCopiedCallback] = useState(false);
   const [credentials, setCredentials] = useState({
     schwab_client_id: "",
     schwab_client_secret: "",
@@ -136,6 +154,45 @@ const Settings = () => {
     } catch (e) {
       console.log("OAuth test exception:", e);
       setOauthStatus("expired");
+    }
+  };
+
+  const fetchDebugInfo = async () => {
+    setDebugLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("encrypt-credentials", {
+        body: { operation: "debug" },
+      });
+
+      if (error) {
+        console.error("Error fetching debug info:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch debug info",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data?.debug) {
+        setDebugInfo(data.debug);
+      }
+    } catch (error) {
+      console.error("Error fetching debug info:", error);
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+
+  const copyCallbackUrl = async () => {
+    if (debugInfo?.callbackUrl) {
+      await navigator.clipboard.writeText(debugInfo.callbackUrl);
+      setCopiedCallback(true);
+      setTimeout(() => setCopiedCallback(false), 2000);
+      toast({
+        title: "Copied",
+        description: "Callback URL copied to clipboard",
+      });
     }
   };
 
@@ -481,6 +538,134 @@ const Settings = () => {
                       )}
                     </AlertDescription>
                   </Alert>
+
+                  {/* OAuth Debug Panel */}
+                  <div className="border border-border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bug className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">OAuth Debug</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowDebug(!showDebug);
+                          if (!showDebug && !debugInfo) {
+                            fetchDebugInfo();
+                          }
+                        }}
+                      >
+                        {showDebug ? "Hide" : "Show"} Debug Info
+                      </Button>
+                    </div>
+
+                    {showDebug && (
+                      <div className="space-y-3 pt-2 border-t border-border">
+                        {debugLoading ? (
+                          <p className="text-sm text-muted-foreground">Loading debug info...</p>
+                        ) : debugInfo ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                {debugInfo.clientIdPresent && debugInfo.clientIdDecryptOk ? (
+                                  <Check className="h-4 w-4 text-green-500" />
+                                ) : debugInfo.clientIdPresent ? (
+                                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                ) : (
+                                  <X className="h-4 w-4 text-red-500" />
+                                )}
+                                <span>Client ID</span>
+                              </div>
+                              <span className="text-muted-foreground font-mono text-xs">
+                                {debugInfo.clientIdPresent 
+                                  ? debugInfo.clientIdDecryptOk 
+                                    ? `✓ decrypted (${debugInfo.clientIdPreview})`
+                                    : `⚠ decrypt failed: ${debugInfo.clientIdPreview}`
+                                  : "not set"}
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                {debugInfo.secretPresent && debugInfo.secretDecryptOk ? (
+                                  <Check className="h-4 w-4 text-green-500" />
+                                ) : debugInfo.secretPresent ? (
+                                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                ) : (
+                                  <X className="h-4 w-4 text-red-500" />
+                                )}
+                                <span>Client Secret</span>
+                              </div>
+                              <span className="text-muted-foreground font-mono text-xs">
+                                {debugInfo.secretPresent 
+                                  ? debugInfo.secretDecryptOk 
+                                    ? `✓ decrypted (${debugInfo.secretPreview})`
+                                    : `⚠ decrypt failed: ${debugInfo.secretPreview}`
+                                  : "not set"}
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                {debugInfo.refreshTokenPresent && debugInfo.refreshTokenDecryptOk ? (
+                                  <Check className="h-4 w-4 text-green-500" />
+                                ) : debugInfo.refreshTokenPresent ? (
+                                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                                ) : (
+                                  <X className="h-4 w-4 text-red-500" />
+                                )}
+                                <span>Refresh Token</span>
+                              </div>
+                              <span className="text-muted-foreground font-mono text-xs">
+                                {debugInfo.refreshTokenPresent 
+                                  ? debugInfo.refreshTokenDecryptOk 
+                                    ? `✓ decrypted (${debugInfo.refreshTokenPreview})`
+                                    : `⚠ decrypt failed: ${debugInfo.refreshTokenPreview}`
+                                  : "not set"}
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                <span>Last Updated</span>
+                              </div>
+                              <span className="text-muted-foreground font-mono text-xs">
+                                {debugInfo.updatedAt 
+                                  ? new Date(debugInfo.updatedAt).toLocaleString()
+                                  : "never"}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-xs">Callback URL (copy for Schwab Developer Portal)</Label>
+                              <div className="flex items-center gap-2">
+                                <code className="flex-1 bg-muted p-2 rounded text-xs break-all select-all">
+                                  {debugInfo.callbackUrl}
+                                </code>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={copyCallbackUrl}
+                                >
+                                  {copiedCallback ? (
+                                    <Check className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={fetchDebugInfo}
+                              disabled={debugLoading}
+                            >
+                              Refresh Debug Info
+                            </Button>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No debug info available</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
