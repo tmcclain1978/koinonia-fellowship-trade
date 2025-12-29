@@ -202,22 +202,29 @@ const Settings = () => {
     if (!user) return;
 
     try {
+      // Trim to avoid invisible whitespace causing OAuth 400s
+      const trimmed = {
+        ...credentials,
+        schwab_client_id: credentials.schwab_client_id.trim(),
+        schwab_client_secret: credentials.schwab_client_secret.trim(),
+      };
+
       // Use the encryption edge function to save credentials
       const { data, error } = await supabase.functions.invoke("encrypt-credentials", {
         body: {
           operation: "save",
           credentials: {
             broker_type: brokerType,
-            schwab_client_id: credentials.schwab_client_id,
-            schwab_client_secret: credentials.schwab_client_secret,
-            td_client_id: credentials.td_client_id,
-            td_client_secret: credentials.td_client_secret,
-            etrade_consumer_key: credentials.etrade_consumer_key,
-            etrade_consumer_secret: credentials.etrade_consumer_secret,
-            alpaca_api_key: credentials.alpaca_api_key,
-            alpaca_secret_key: credentials.alpaca_secret_key,
-            alpaca_paper_mode: credentials.alpaca_paper_mode,
-            trading_mode: credentials.trading_mode,
+            schwab_client_id: trimmed.schwab_client_id,
+            schwab_client_secret: trimmed.schwab_client_secret,
+            td_client_id: trimmed.td_client_id,
+            td_client_secret: trimmed.td_client_secret,
+            etrade_consumer_key: trimmed.etrade_consumer_key,
+            etrade_consumer_secret: trimmed.etrade_consumer_secret,
+            alpaca_api_key: trimmed.alpaca_api_key,
+            alpaca_secret_key: trimmed.alpaca_secret_key,
+            alpaca_paper_mode: trimmed.alpaca_paper_mode,
+            trading_mode: trimmed.trading_mode,
           },
         },
       });

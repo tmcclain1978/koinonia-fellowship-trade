@@ -112,14 +112,30 @@ serve(async (req) => {
     // Parse the state parameter (contains user ID and return URL)
     let userId: string;
     let returnUrl: string;
+
+    const fromBase64Url = (input: string) => {
+      const b64 = input.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '==='.slice((b64.length + 3) % 4);
+      return atob(padded);
+    };
+
     try {
-      const stateData = JSON.parse(state);
+      // New format: base64url(JSON)
+      const decoded = fromBase64Url(state);
+      const stateData = JSON.parse(decoded);
       userId = stateData.userId;
       returnUrl = stateData.returnUrl || '';
     } catch {
-      // Fallback for old format (just user ID)
-      userId = state;
-      returnUrl = '';
+      try {
+        // Older format: raw JSON
+        const stateData = JSON.parse(state);
+        userId = stateData.userId;
+        returnUrl = stateData.returnUrl || '';
+      } catch {
+        // Oldest format: just user ID
+        userId = state;
+        returnUrl = '';
+      }
     }
 
     // Get user's Schwab credentials
