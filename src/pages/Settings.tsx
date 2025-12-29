@@ -120,17 +120,22 @@ const Settings = () => {
   const testOAuthConnection = async () => {
     try {
       const { data, error } = await supabase.functions.invoke("schwab-get-access-token");
-      if (error || data?.error || data?.requiresOAuth) {
-        console.log('OAuth test failed:', error || data?.error);
-        setOauthStatus('expired');
-      } else if (data?.accessToken) {
-        setOauthStatus('connected');
+
+      if (error || data?.error) {
+        console.log("OAuth test failed:", error || data?.error);
+        setOauthStatus("expired");
+        return;
+      }
+
+      // schwab-get-access-token returns { access_token, expires_in, cached }
+      if (data?.access_token) {
+        setOauthStatus("connected");
       } else {
-        setOauthStatus('expired');
+        setOauthStatus("expired");
       }
     } catch (e) {
-      console.log('OAuth test exception:', e);
-      setOauthStatus('expired');
+      console.log("OAuth test exception:", e);
+      setOauthStatus("expired");
     }
   };
 
