@@ -7,6 +7,7 @@ interface Subscription {
   tier: SubscriptionTier;
   status: "active" | "cancelled" | "expired";
   endDate: string | null;
+  isFamilyMember?: boolean;
 }
 
 export const TIER_LIMITS = {
@@ -68,6 +69,14 @@ export const useSubscription = () => {
         .limit(1)
         .maybeSingle();
 
+      // Check if user is an active family member
+      const { data: familyData } = await supabase
+        .from("family_members")
+        .select("*")
+        .eq("member_user_id", session.user.id)
+        .eq("status", "active")
+        .maybeSingle();
+
       // Map role to subscription tier
       const mapRoleToTier = (role: string | undefined): SubscriptionTier => {
         // Admins get enterprise-level access
@@ -92,8 +101,14 @@ export const useSubscription = () => {
       let finalTier: SubscriptionTier = mapRoleToTier(roleData?.role);
       let finalStatus: "active" | "cancelled" | "expired" = "active";
       let finalEndDate: string | null = null;
+      let isFamilyMember = false;
 
-      if (subData) {
+      // Family members get enterprise access
+      if (familyData) {
+        finalTier = "enterprise";
+        finalStatus = "active";
+        isFamilyMember = true;
+      } else if (subData) {
         const subIsActive = isSubscriptionActive(subData);
         
         // If subscription is expired, downgrade to free_user unless they're admin
@@ -115,6 +130,7 @@ export const useSubscription = () => {
         tier: finalTier,
         status: finalStatus,
         endDate: finalEndDate,
+        isFamilyMember,
       });
     } catch (error) {
       console.error("Error loading subscription:", error);
