@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown, UserPlus, Heart } from "lucide-react";
+import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown, UserPlus, Heart, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface UserData {
@@ -149,6 +149,13 @@ const Admin = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Get admin's name for the invite email
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single();
+
       const { error } = await supabase
         .from("family_members")
         .insert({
@@ -164,10 +171,26 @@ const Admin = () => {
         throw error;
       }
 
-      toast({
-        title: "Success",
-        description: "Family member added successfully. They will get enterprise access when they sign up with this email.",
+      // Send invite email
+      const { error: emailError } = await supabase.functions.invoke('send-family-invite', {
+        body: { 
+          memberEmail: newFamilyEmail.trim().toLowerCase(),
+          inviterName: profileData?.full_name || "An admin"
+        }
       });
+
+      if (emailError) {
+        console.error("Error sending invite email:", emailError);
+        toast({
+          title: "Member Added",
+          description: "Family member added but invite email failed to send. They can still sign up with this email to get access.",
+        });
+      } else {
+        toast({
+          title: "Invite Sent!",
+          description: `Family invitation sent to ${newFamilyEmail}. They'll get enterprise access when they sign up.`,
+        });
+      }
       
       setNewFamilyEmail("");
       setIsFamilyDialogOpen(false);
@@ -177,6 +200,40 @@ const Admin = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to add family member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const resendFamilyInvite = async (email: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single();
+
+      const { error } = await supabase.functions.invoke('send-family-invite', {
+        body: { 
+          memberEmail: email,
+          inviterName: profileData?.full_name || "An admin"
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Invite Resent",
+        description: `Invitation resent to ${email}`,
+      });
+    } catch (error: any) {
+      console.error("Error resending invite:", error);
+      toast({
+        title: "Error",
+        description: "Failed to resend invite",
         variant: "destructive",
       });
     }
@@ -1192,7 +1249,18 @@ const Admin = () => {
                             {new Date(member.created_at).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
+                              {!member.member_user_id && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => resendFamilyInvite(member.member_email)}
+                                  className="gap-1"
+                                >
+                                  <Mail className="h-3 w-3" />
+                                  Resend Invite
+                                </Button>
+                              )}
                               {member.status === "pending" && (
                                 <Button 
                                   size="sm" 
