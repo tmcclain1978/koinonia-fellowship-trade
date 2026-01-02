@@ -67,7 +67,7 @@ serve(async (req) => {
     console.log(`Sending family invite to: ${memberEmail}`);
 
     const emailResponse = await resend.emails.send({
-      from: "Koinonia Trading <onboarding@resend.dev>",
+      from: "Koinonia Trading <invites@koinoniatrading.org>",
       to: [memberEmail],
       subject: "🎉 You've Been Invited to Koinonia Trading Family Subscription!",
       html: `
