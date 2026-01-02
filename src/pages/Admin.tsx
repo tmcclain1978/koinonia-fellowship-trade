@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown } from "lucide-react";
+import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown, UserPlus, Heart } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface UserData {
   id: string;
@@ -53,6 +54,16 @@ interface PodcastData {
   updated_at?: string;
 }
 
+interface FamilyMemberData {
+  id: string;
+  primary_user_id: string;
+  member_email: string;
+  member_user_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 const Admin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -65,6 +76,9 @@ const Admin = () => {
   const [isPodcastDialogOpen, setIsPodcastDialogOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<VideoData | null>(null);
   const [editingPodcast, setEditingPodcast] = useState<PodcastData | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberData[]>([]);
+  const [isFamilyDialogOpen, setIsFamilyDialogOpen] = useState(false);
+  const [newFamilyEmail, setNewFamilyEmail] = useState("");
 
   useEffect(() => {
     checkAdminAccess();
@@ -99,6 +113,123 @@ const Admin = () => {
     fetchUsers();
     fetchVideos();
     fetchPodcasts();
+    fetchFamilyMembers();
+  };
+
+  const fetchFamilyMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("family_members")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setFamilyMembers((data as FamilyMemberData[]) || []);
+    } catch (error) {
+      console.error("Error fetching family members:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch family members",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const addFamilyMember = async () => {
+    if (!newFamilyEmail.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("family_members")
+        .insert({
+          primary_user_id: user.id,
+          member_email: newFamilyEmail.trim().toLowerCase(),
+          status: "pending",
+        });
+
+      if (error) {
+        if (error.code === "23505") {
+          throw new Error("This email is already added as a family member");
+        }
+        throw error;
+      }
+
+      toast({
+        title: "Success",
+        description: "Family member added successfully. They will get enterprise access when they sign up with this email.",
+      });
+      
+      setNewFamilyEmail("");
+      setIsFamilyDialogOpen(false);
+      fetchFamilyMembers();
+    } catch (error: any) {
+      console.error("Error adding family member:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add family member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateFamilyMemberStatus = async (id: string, status: string) => {
+    try {
+      const { error } = await supabase
+        .from("family_members")
+        .update({ status })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Family member ${status === "active" ? "activated" : status === "removed" ? "removed" : "updated"}`,
+      });
+      fetchFamilyMembers();
+    } catch (error) {
+      console.error("Error updating family member:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update family member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const deleteFamilyMember = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this family member?")) return;
+    
+    try {
+      const { error } = await supabase
+        .from("family_members")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Family member removed successfully",
+      });
+      fetchFamilyMembers();
+    } catch (error) {
+      console.error("Error deleting family member:", error);
+      toast({
+        title: "Error",
+        description: "Failed to remove family member",
+        variant: "destructive",
+      });
+    }
   };
 
   const fetchVideos = async () => {
@@ -493,7 +624,7 @@ const Admin = () => {
           <h1 className="text-3xl font-bold">Admin Portal</h1>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
+        <div className="grid md:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -539,6 +670,18 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Family Members</CardTitle>
+              <Heart className="h-4 w-4 text-pink-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-pink-500">
+                {familyMembers.filter(f => f.status === "active").length}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
@@ -554,6 +697,10 @@ const Admin = () => {
             <TabsTrigger value="podcasts">
               <Podcast className="mr-2 h-4 w-4" />
               Podcasts
+            </TabsTrigger>
+            <TabsTrigger value="family">
+              <Heart className="mr-2 h-4 w-4" />
+              Family
             </TabsTrigger>
           </TabsList>
 
@@ -954,6 +1101,139 @@ const Admin = () => {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="family">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Heart className="h-5 w-5 text-pink-500" />
+                    Family Subscription
+                  </CardTitle>
+                  <CardDescription>Add family members who will receive enterprise-level access</CardDescription>
+                </div>
+                <Dialog open={isFamilyDialogOpen} onOpenChange={setIsFamilyDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Add Family Member
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Family Member</DialogTitle>
+                      <DialogDescription>
+                        Enter the email address of the family member. They will receive enterprise access when they sign up or log in with this email.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="family_email">Email Address</Label>
+                        <Input 
+                          id="family_email" 
+                          type="email" 
+                          placeholder="family@example.com"
+                          value={newFamilyEmail}
+                          onChange={(e) => setNewFamilyEmail(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsFamilyDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={addFamilyMember}>Add Member</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                {familyMembers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Heart className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                    <p>No family members added yet</p>
+                    <p className="text-sm">Add family members to give them enterprise access</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Linked Account</TableHead>
+                        <TableHead>Added</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {familyMembers.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell className="font-medium">{member.member_email}</TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={member.status === "active" ? "default" : member.status === "pending" ? "secondary" : "destructive"}
+                              className={member.status === "active" ? "bg-green-500" : ""}
+                            >
+                              {member.status === "active" ? "Active" : member.status === "pending" ? "Pending" : "Removed"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {member.member_user_id ? (
+                              <span className="text-green-500 flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                Linked
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Not yet signed up</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(member.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              {member.status === "pending" && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => updateFamilyMemberStatus(member.id, "active")}
+                                >
+                                  Activate
+                                </Button>
+                              )}
+                              {member.status === "active" && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => updateFamilyMemberStatus(member.id, "removed")}
+                                >
+                                  Deactivate
+                                </Button>
+                              )}
+                              {member.status === "removed" && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => updateFamilyMemberStatus(member.id, "active")}
+                                >
+                                  Reactivate
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteFamilyMember(member.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

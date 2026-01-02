@@ -41,6 +41,16 @@ const Auth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
+        // Check if user is a family member and link them
+        setTimeout(async () => {
+          try {
+            await supabase.functions.invoke('link-family-member', {
+              body: { userId: session.user.id, email: session.user.email }
+            });
+          } catch (err) {
+            console.log('Family link check:', err);
+          }
+        }, 0);
         navigate("/dashboard");
       }
     });

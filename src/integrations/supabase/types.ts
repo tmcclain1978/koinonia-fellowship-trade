@@ -649,6 +649,36 @@ export type Database = {
         }
         Relationships: []
       }
+      family_members: {
+        Row: {
+          created_at: string
+          id: string
+          member_email: string
+          member_user_id: string | null
+          primary_user_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_email: string
+          member_user_id?: string | null
+          primary_user_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_email?: string
+          member_user_id?: string | null
+          primary_user_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       paper_trades: {
         Row: {
           account_id: string
@@ -1484,6 +1514,10 @@ export type Database = {
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_family_enterprise_access: {
+        Args: { _user_id: string }
+        Returns: boolean
       }
       has_premium_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
