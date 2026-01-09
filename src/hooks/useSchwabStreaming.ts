@@ -339,23 +339,41 @@ export const useSchwabStreaming = ({
     }
   }, [enabled, useWebSocket, symbols, subscribeToAccountActivity, handleDataMessage, startPolling]);
 
+  // Persistent reconnection - no longer falls back to polling permanently
+  // Will keep trying to reconnect with increasing delays, max 60 seconds
   const scheduleReconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
 
-    if (reconnectAttemptsRef.current >= 3) {
-      console.log('[useSchwabStreaming] Max reconnects, falling back to polling');
-      startPolling();
-      return;
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (max)
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 60000);
     reconnectAttemptsRef.current++;
+
+    console.log(`[useSchwabStreaming] Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${delay/1000}s`);
+
+    // Start polling as temporary fallback while trying to reconnect
+    if (reconnectAttemptsRef.current === 1) {
+      startPolling();
+    }
 
     reconnectTimeoutRef.current = setTimeout(() => {
       console.log('[useSchwabStreaming] Attempting reconnect...');
-      connectWebSocket();
+      connectWebSocket().then(connected => {
+        if (connected) {
+          // Successfully reconnected - stop polling
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          console.log('[useSchwabStreaming] Reconnection successful');
+        } else if (reconnectAttemptsRef.current < 20) {
+          // Keep trying - schedule another attempt
+          scheduleReconnect();
+        } else {
+          console.log('[useSchwabStreaming] Max reconnects (20), staying on polling');
+        }
+      });
     }, delay);
   }, [connectWebSocket, startPolling]);
 
