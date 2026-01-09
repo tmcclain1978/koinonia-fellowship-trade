@@ -27,6 +27,8 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const POLYGON_API_KEY = Deno.env.get('POLYGON_API_KEY');
+    const FMP_API_KEY = Deno.env.get('FMP_API_KEY');
+    const authHeader = req.headers.get('authorization') || '';
 
     // Check user subscription tier
     const { data: roleData } = await supabase
