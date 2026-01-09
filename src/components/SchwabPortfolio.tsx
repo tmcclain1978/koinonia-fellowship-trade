@@ -242,10 +242,20 @@ export const SchwabPortfolio = () => {
     <Card className="border-border/50">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Briefcase className="w-5 h-5" />
-            Schwab Portfolio
-          </CardTitle>
+          <div className="flex items-center gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="w-5 h-5" />
+              Schwab Portfolio
+            </CardTitle>
+            {currentPortfolio && (
+              <Badge 
+                variant={currentPortfolio.accountType === 'MARGIN' ? 'default' : 'secondary'}
+                className="text-xs"
+              >
+                {currentPortfolio.accountType} Account
+              </Badge>
+            )}
+          </div>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
@@ -258,8 +268,14 @@ export const SchwabPortfolio = () => {
           <Tabs value={selectedAccount} onValueChange={setSelectedAccount}>
             <TabsList>
               {portfolios.map((p) => (
-                <TabsTrigger key={p.accountHash} value={p.accountHash}>
-                  {p.accountNumber}
+                <TabsTrigger key={p.accountHash} value={p.accountHash} className="flex items-center gap-2">
+                  <Badge 
+                    variant={p.accountType === 'MARGIN' ? 'default' : 'outline'} 
+                    className="text-[10px] px-1.5 py-0"
+                  >
+                    {p.accountType}
+                  </Badge>
+                  ****{p.accountNumber.slice(-4)}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -312,7 +328,7 @@ export const SchwabPortfolio = () => {
             </div>
 
             {/* Additional Balance Info */}
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div className="p-3 bg-muted/30 rounded-lg">
                 <span className="text-muted-foreground">Cash Balance</span>
                 <div className="font-mono font-medium">
@@ -325,11 +341,19 @@ export const SchwabPortfolio = () => {
                   ${currentPortfolio.currentBalances.availableFunds.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </div>
               </div>
-              {currentPortfolio.currentBalances.dayTradingBuyingPower !== undefined && (
+              {currentPortfolio.accountType === 'MARGIN' && currentPortfolio.currentBalances.dayTradingBuyingPower !== undefined && (
                 <div className="p-3 bg-muted/30 rounded-lg">
                   <span className="text-muted-foreground">Day Trading BP</span>
                   <div className="font-mono font-medium">
                     ${currentPortfolio.currentBalances.dayTradingBuyingPower.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              )}
+              {currentPortfolio.accountType === 'MARGIN' && currentPortfolio.currentBalances.maintenanceRequirement !== undefined && (
+                <div className="p-3 bg-muted/30 rounded-lg">
+                  <span className="text-muted-foreground">Maintenance Req</span>
+                  <div className="font-mono font-medium">
+                    ${currentPortfolio.currentBalances.maintenanceRequirement.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               )}
