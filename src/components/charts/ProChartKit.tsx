@@ -138,9 +138,36 @@ export const ProChartKit = ({
     return intervalMap[intervalStr] || 5 * 60 * 1000;
   }, []);
 
+  // Track last processed price to avoid redundant updates
+  const lastProcessedPriceRef = useRef<number | null>(null);
+  const pendingUpdateRef = useRef<KLineData | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+
+  // Debounced chart update using requestAnimationFrame for smooth rendering
+  const scheduleChartUpdate = useCallback((candle: KLineData, isNewCandle: boolean) => {
+    pendingUpdateRef.current = candle;
+    
+    if (rafIdRef.current) return; // Already scheduled
+    
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      if (pendingUpdateRef.current && chartRef.current) {
+        chartRef.current.updateData(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+    });
+  }, []);
+
   // Handle Schwab streaming price updates for chart
   const handleSchwabPriceUpdate = useCallback((price: SchwabPriceUpdate) => {
     if (price.symbol !== symbol) return;
+    
+    // Skip if price hasn't changed (avoid redundant updates causing jumping)
+    if (lastProcessedPriceRef.current !== null && 
+        Math.abs(price.price - lastProcessedPriceRef.current) < 0.001) {
+      return;
+    }
+    lastProcessedPriceRef.current = price.price;
     
     setCurrentPrice(price.price);
     setPriceDirection(price.direction);
@@ -180,7 +207,7 @@ export const ProChartKit = ({
             close: price.price,
             volume: accumulatedVolumeRef.current,
           };
-          chartRef.current.updateData(newCandle);
+          scheduleChartUpdate(newCandle, true);
           currentIntervalStartRef.current = currentIntervalStart;
           setStreamingVolume(accumulatedVolumeRef.current);
           console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
@@ -196,8 +223,8 @@ export const ProChartKit = ({
             low: Math.min(lastCandle.low, price.price),
             volume: totalVolume,
           };
-          // Use updateData for smooth animation (not applyNewData which reloads everything)
-          chartRef.current.updateData(updatedCandle);
+          // Use debounced update for smooth animation
+          scheduleChartUpdate(updatedCandle, false);
           setStreamingVolume(totalVolume);
           
           if (!currentIntervalStartRef.current) {
@@ -206,14 +233,14 @@ export const ProChartKit = ({
         }
       }
     }
-  }, [symbol, interval, replayMode, getIntervalMs, onPriceUpdate]);
+  }, [symbol, interval, replayMode, getIntervalMs, onPriceUpdate, scheduleChartUpdate]);
 
   // Use Schwab streaming for real-time chart updates
   const { isConnected, status: streamingStatus } = useSchwabStreaming({
     symbols: [symbol],
     enabled: enableStreaming && !replayMode,
     useWebSocket: true,
-    refreshInterval: 500, // Fast polling fallback (500ms)
+    refreshInterval: 2000, // Slower polling fallback (2s) to reduce jumping
     onPriceUpdate: handleSchwabPriceUpdate,
   });
 
@@ -321,6 +348,10 @@ export const ProChartKit = ({
       unsubRef.current?.();
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
+      }
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
       }
       if (chartRef.current) {
         dispose(containerRef.current!);
