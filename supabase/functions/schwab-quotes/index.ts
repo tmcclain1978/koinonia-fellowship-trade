@@ -8,6 +8,12 @@ const corsHeaders = {
 
 const SCHWAB_API_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
+// In-memory cache to prevent rate limiting
+const quoteCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL_MS = 3000; // 3 second cache TTL
+const lastApiCallTime = { value: 0 };
+const MIN_API_INTERVAL_MS = 2000; // Minimum 2 seconds between Schwab API calls
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -74,6 +80,50 @@ serve(async (req) => {
     
     console.log(`[schwab-quotes] Fetching quotes for: ${symbolList}`);
 
+    // Check cache first
+    const cacheKey = `${symbolList}-${fields}`;
+    const cachedResult = quoteCache.get(cacheKey);
+    const now = Date.now();
+    
+    if (cachedResult && (now - cachedResult.timestamp) < CACHE_TTL_MS) {
+      console.log(`[schwab-quotes] Returning cached data for: ${symbolList}`);
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          quotes: cachedResult.data,
+          source: 'schwab-cached',
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Rate limit API calls - minimum 2 seconds between calls
+    const timeSinceLastCall = now - lastApiCallTime.value;
+    if (timeSinceLastCall < MIN_API_INTERVAL_MS) {
+      console.log(`[schwab-quotes] Rate limiting - ${MIN_API_INTERVAL_MS - timeSinceLastCall}ms until next call allowed`);
+      // Return cached data if available, otherwise mock
+      if (cachedResult) {
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            quotes: cachedResult.data,
+            source: 'schwab-cached',
+            note: 'Rate limited - using cached data',
+          }),
+          { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      return returnMockQuotes(symbols);
+    }
+    
+    lastApiCallTime.value = now;
+
     // Build endpoint
     const params = new URLSearchParams();
     params.append('symbols', symbolList);
@@ -126,8 +176,10 @@ serve(async (req) => {
       highPrice: data.quote?.highPrice,
       lowPrice: data.quote?.lowPrice,
       closePrice: data.quote?.closePrice,
+      fetchedAt: Date.now(),
       netChange: data.quote?.netChange,
       netPercentChange: data.quote?.netPercentChange,
+      fetchedAt: Date.now(),
       high52Week: data.quote?.['52WeekHigh'],
       low52Week: data.quote?.['52WeekLow'],
       mark: data.quote?.mark,
@@ -145,6 +197,11 @@ serve(async (req) => {
       // Full raw data for advanced use
       raw: data,
     }));
+
+    // Cache the result
+    const cacheKey = `${symbolList}-${fields}`;
+    quoteCache.set(cacheKey, { data: formattedQuotes, timestamp: Date.now() });
+    console.log(`[schwab-quotes] Cached ${formattedQuotes.length} quotes`);
 
     return new Response(
       JSON.stringify({ 
