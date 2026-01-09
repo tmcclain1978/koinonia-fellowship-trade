@@ -229,9 +229,31 @@ export const useSchwabStreaming = ({
     setStatus('polling');
   }, [fetchQuotes, refreshInterval]);
 
-  // WebSocket connection
+  // WebSocket connection - with rate limiting to prevent spam
+  const wsConnectionAttemptRef = useRef<number>(0);
+  const lastWsAttemptTimeRef = useRef<number>(0);
+  
   const connectWebSocket = useCallback(async (): Promise<boolean> => {
     if (!enabled || !useWebSocket) return false;
+    
+    // Rate limit connection attempts - max 3 attempts per 30 seconds
+    const now = Date.now();
+    const timeSinceLastAttempt = now - lastWsAttemptTimeRef.current;
+    
+    if (timeSinceLastAttempt < 10000) { // Less than 10 seconds since last attempt
+      wsConnectionAttemptRef.current++;
+      if (wsConnectionAttemptRef.current > 3) {
+        console.log('[useSchwabStreaming] Too many connection attempts, using polling');
+        return false;
+      }
+    } else {
+      // Reset counter after 30 seconds
+      if (timeSinceLastAttempt > 30000) {
+        wsConnectionAttemptRef.current = 0;
+      }
+    }
+    
+    lastWsAttemptTimeRef.current = now;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -254,6 +276,7 @@ export const useSchwabStreaming = ({
         console.log('[useSchwabStreaming] WebSocket connected');
         setStatus('connected');
         reconnectAttemptsRef.current = 0;
+        wsConnectionAttemptRef.current = 0; // Reset on successful connection
       };
 
       ws.onmessage = (event) => {
@@ -308,20 +331,18 @@ export const useSchwabStreaming = ({
         }
       };
 
-      ws.onerror = (err) => {
-        console.error('[useSchwabStreaming] WebSocket error:', err);
-        setError('WebSocket connection error - using polling fallback');
-        setStatus('error');
+      ws.onerror = () => {
+        // Don't spam console - just silently fall back to polling
+        setStatus('polling');
         isWebSocketActiveRef.current = false;
       };
 
       ws.onclose = () => {
-        console.log('[useSchwabStreaming] WebSocket closed');
         wsRef.current = null;
         isWebSocketActiveRef.current = false;
         
-        // Start polling as fallback
-        if (enabled && symbols.length > 0) {
+        // Start polling as fallback - silently
+        if (enabled && symbols.length > 0 && !intervalRef.current) {
           setStatus('polling');
           startPolling();
         } else {
@@ -339,43 +360,41 @@ export const useSchwabStreaming = ({
     }
   }, [enabled, useWebSocket, symbols, subscribeToAccountActivity, handleDataMessage, startPolling]);
 
-  // Persistent reconnection - no longer falls back to polling permanently
-  // Will keep trying to reconnect with increasing delays, max 60 seconds
+  // Reconnection with rate limiting - max 5 attempts then stay on polling
   const scheduleReconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s (max)
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 60000);
+    // Max 5 reconnect attempts, then stay on polling permanently
+    if (reconnectAttemptsRef.current >= 5) {
+      console.log('[useSchwabStreaming] Max reconnects reached, staying on polling');
+      if (!intervalRef.current && enabled && symbols.length > 0) {
+        startPolling();
+      }
+      return;
+    }
+
+    // Exponential backoff: 5s, 10s, 20s, 40s, 60s
+    const delay = Math.min(5000 * Math.pow(2, reconnectAttemptsRef.current), 60000);
     reconnectAttemptsRef.current++;
 
-    console.log(`[useSchwabStreaming] Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${delay/1000}s`);
-
-    // Start polling as temporary fallback while trying to reconnect
-    if (reconnectAttemptsRef.current === 1) {
+    // Start polling immediately as fallback
+    if (!intervalRef.current && enabled && symbols.length > 0) {
       startPolling();
     }
 
     reconnectTimeoutRef.current = setTimeout(() => {
-      console.log('[useSchwabStreaming] Attempting reconnect...');
       connectWebSocket().then(connected => {
         if (connected) {
-          // Successfully reconnected - stop polling
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-          console.log('[useSchwabStreaming] Reconnection successful');
-        } else if (reconnectAttemptsRef.current < 20) {
-          // Keep trying - schedule another attempt
-          scheduleReconnect();
-        } else {
-          console.log('[useSchwabStreaming] Max reconnects (20), staying on polling');
         }
       });
     }, delay);
-  }, [connectWebSocket, startPolling]);
+  }, [connectWebSocket, startPolling, enabled, symbols]);
 
   // Helper to get a single quote
   const getQuote = useCallback((symbol: string): StreamingQuote | undefined => {
