@@ -32,7 +32,7 @@ export interface SchwabPriceUpdate {
 
 interface UseSchwabStreamingOptions {
   symbols: string[];
-  refreshInterval?: number; // in milliseconds, default 1000ms (for polling fallback)
+  refreshInterval?: number; // in milliseconds, default 5000ms (reduced from 1000 to prevent rate limiting)
   enabled?: boolean;
   useWebSocket?: boolean; // Try WebSocket first, fallback to polling
   subscribeToAccountActivity?: boolean;
@@ -43,7 +43,7 @@ type StreamingStatus = 'disconnected' | 'connecting' | 'connected' | 'authentica
 
 export const useSchwabStreaming = ({
   symbols,
-  refreshInterval = 1000,
+  refreshInterval = 5000, // Increased from 1000ms to 5000ms to reduce API calls
   enabled = true,
   useWebSocket = true,
   subscribeToAccountActivity = false,
