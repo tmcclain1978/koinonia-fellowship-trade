@@ -83,3 +83,18 @@ verify_jwt = true
 
 [functions.run-backtest]
 verify_jwt = true
+
+[functions.fetch-schwab-candles]
+verify_jwt = true
+
+[functions.fetch-schwab-options]
+verify_jwt = true
+
+[functions.schwab-streaming]
+verify_jwt = false
+
+[functions.market-data-stream]
+verify_jwt = false
+
+[functions.fetch-market-data]
+verify_jwt = false
