@@ -47,71 +47,91 @@ serve(async (req) => {
     const userTier = roleData?.role || 'free_user';
     const isEnterprise = userTier === 'enterprise' || roleData?.role === 'admin';
 
-    // Helper to fetch price data with retry and fallback
-    const fetchPriceData = async (sym: string, retries = 3): Promise<any[]> => {
+    // Helper to fetch price data - prioritize Schwab candles (same as chart), fallback to Polygon
+    const fetchPriceData = async (sym: string): Promise<any[]> => {
+      // Try Schwab candles first (same data source as the chart)
+      try {
+        console.log(`[koinonia] Fetching Schwab candles for ${sym}`);
+        const schwabResponse = await supabase.functions.invoke('fetch-schwab-candles', {
+          body: { symbol: sym, interval: 'daily', period: '1m' }
+        });
+        
+        if (schwabResponse.data?.candles && schwabResponse.data.candles.length > 0) {
+          console.log(`[koinonia] Got ${schwabResponse.data.candles.length} candles from Schwab for ${sym}`);
+          return schwabResponse.data.candles.map((c: any) => ({
+            open: c.open,
+            close: c.close,
+            high: c.high,
+            low: c.low,
+            volume: c.volume,
+            timestamp: c.timestamp || c.time
+          }));
+        }
+        console.log(`[koinonia] Schwab returned no candles for ${sym}`);
+      } catch (e) {
+        console.log(`[koinonia] Schwab candles failed:`, e.message);
+      }
+      
+      // Fallback to Polygon API
       const today = new Date().toISOString().split('T')[0];
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
-      for (let attempt = 1; attempt <= retries; attempt++) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          console.log(`[koinonia] Fetching price data for ${sym}, attempt ${attempt}`);
+          console.log(`[koinonia] Trying Polygon for ${sym}, attempt ${attempt}`);
           const response = await fetch(
             `https://api.polygon.io/v2/aggs/ticker/${sym}/range/1/day/${thirtyDaysAgo}/${today}?adjusted=true&apiKey=${POLYGON_API_KEY}`
           );
           
           if (response.status === 429) {
-            console.log(`[koinonia] Rate limited, waiting before retry...`);
-            await new Promise(r => setTimeout(r, 1000 * attempt));
+            console.log(`[koinonia] Polygon rate limited`);
+            await new Promise(r => setTimeout(r, 500 * attempt));
             continue;
           }
           
-          if (!response.ok) {
-            console.log(`[koinonia] Polygon returned ${response.status}`);
-            continue;
-          }
-          
-          const data = await response.json();
-          if (data.results && data.results.length > 0) {
-            console.log(`[koinonia] Got ${data.results.length} candles for ${sym}`);
-            return data.results.map((r: any) => ({
-              close: r.c,
-              high: r.h,
-              low: r.l,
-              volume: r.v,
-              timestamp: r.t
-            }));
+          if (response.ok) {
+            const data = await response.json();
+            if (data.results && data.results.length > 0) {
+              console.log(`[koinonia] Got ${data.results.length} candles from Polygon for ${sym}`);
+              return data.results.map((r: any) => ({
+                open: r.o,
+                close: r.c,
+                high: r.h,
+                low: r.l,
+                volume: r.v,
+                timestamp: r.t
+              }));
+            }
           }
         } catch (e) {
-          console.log(`[koinonia] Fetch error on attempt ${attempt}:`, e.message);
-        }
-        
-        // Wait before retry
-        if (attempt < retries) {
-          await new Promise(r => setTimeout(r, 500 * attempt));
+          console.log(`[koinonia] Polygon fetch error:`, e.message);
         }
       }
       
-      // Try previous day endpoint as fallback
+      // Try Schwab quotes for at least current price
       try {
-        console.log(`[koinonia] Trying prev endpoint for ${sym}`);
-        const prevResponse = await fetch(
-          `https://api.polygon.io/v2/aggs/ticker/${sym}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`
-        );
-        const prevData = await prevResponse.json();
-        if (prevData.results?.[0]) {
-          const r = prevData.results[0];
-          console.log(`[koinonia] Got prev day data for ${sym}: $${r.c}`);
-          // Return single candle as array
-          return [{
-            close: r.c,
-            high: r.h,
-            low: r.l,
-            volume: r.v,
-            timestamp: r.t
-          }];
+        console.log(`[koinonia] Trying Schwab quotes for current price of ${sym}`);
+        const quoteResponse = await supabase.functions.invoke('schwab-quotes', {
+          body: { symbols: [sym] }
+        });
+        
+        if (quoteResponse.data?.quotes?.[sym]) {
+          const q = quoteResponse.data.quotes[sym];
+          const price = q.lastPrice || q.mark || q.regularMarketLastPrice;
+          if (price && price > 0) {
+            console.log(`[koinonia] Got current quote from Schwab: $${price}`);
+            return [{
+              open: price,
+              close: price,
+              high: q.highPrice || price * 1.01,
+              low: q.lowPrice || price * 0.99,
+              volume: q.totalVolume || 1000000,
+              timestamp: Date.now()
+            }];
+          }
         }
       } catch (e) {
-        console.log(`[koinonia] Prev endpoint failed:`, e.message);
+        console.log(`[koinonia] Schwab quotes failed:`, e.message);
       }
       
       return [];
@@ -145,33 +165,27 @@ serve(async (req) => {
         .limit(5)
     ]);
 
-    // Handle case where no price data is available - use fallback data
+    // Handle case where no price data is available - inform user
     let finalPrices = prices;
     let usingFallbackData = false;
     
     if (prices.length === 0) {
-      console.log('[koinonia] No price data available for symbol:', symbol, '- using fallback');
+      console.log('[koinonia] No price data available for symbol:', symbol, '- cannot provide accurate analysis');
       usingFallbackData = true;
       
-      // Generate reasonable fallback data based on typical price ranges
-      const basePrices: Record<string, number> = {
-        'AAPL': 185, 'TSLA': 250, 'MSFT': 420, 'GOOGL': 175, 'AMZN': 190,
-        'META': 550, 'NVDA': 135, 'SPY': 590, 'QQQ': 505, 'AMD': 120
-      };
-      const basePrice = basePrices[symbol.toUpperCase()] || 100;
-      
-      // Generate 5 candles with slight variations
-      finalPrices = Array.from({ length: 5 }, (_, i) => {
-        const variation = (Math.random() - 0.5) * 0.02; // ±1% variation
-        const price = basePrice * (1 + variation);
-        return {
-          close: price,
-          high: price * 1.005,
-          low: price * 0.995,
-          volume: 1000000 + Math.floor(Math.random() * 500000),
-          timestamp: Date.now() - (4 - i) * 24 * 60 * 60 * 1000
-        };
-      });
+      // Return error instead of using stale fallback data
+      return new Response(
+        JSON.stringify({
+          error: 'Unable to fetch current price data',
+          symbol,
+          message: 'Market data is temporarily unavailable. Please try again in a moment.',
+          usingFallbackData: true
+        }),
+        {
+          status: 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     // Calculate EMAs (9, 20, 50)
