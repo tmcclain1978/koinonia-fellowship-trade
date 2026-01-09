@@ -63,6 +63,10 @@ export const useSchwabStreaming = ({
   const reconnectAttemptsRef = useRef(0);
   const subscribedSymbolsRef = useRef<string[]>([]);
   const isWebSocketActiveRef = useRef(false);
+  
+  // WebSocket connection rate limiting refs - must be with other refs for consistent hook ordering
+  const wsConnectionAttemptRef = useRef<number>(0);
+  const lastWsAttemptTimeRef = useRef<number>(0);
 
   // Refs for onPriceUpdate callback to avoid stale closures
   const onPriceUpdateRef = useRef(onPriceUpdate);
@@ -230,9 +234,6 @@ export const useSchwabStreaming = ({
   }, [fetchQuotes, refreshInterval]);
 
   // WebSocket connection - with rate limiting to prevent spam
-  const wsConnectionAttemptRef = useRef<number>(0);
-  const lastWsAttemptTimeRef = useRef<number>(0);
-  
   const connectWebSocket = useCallback(async (): Promise<boolean> => {
     if (!enabled || !useWebSocket) return false;
     
