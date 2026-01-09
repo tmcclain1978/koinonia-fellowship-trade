@@ -49,29 +49,95 @@ serve(async (req) => {
     const userTier = roleData?.role || 'free_user';
     const isEnterprise = userTier === 'enterprise' || roleData?.role === 'admin';
 
-    // Helper to fetch price data - prioritize Schwab candles (same as chart), fallback to Polygon
+    // Helper to fetch price data - prioritize Schwab candles (same as chart), fallback to FMP/Polygon
     const fetchPriceData = async (sym: string): Promise<any[]> => {
-      // Try Schwab candles first (same data source as the chart)
+      // Try Schwab candles first (same data source as the chart) - forward auth header
       try {
         console.log(`[koinonia] Fetching Schwab candles for ${sym}`);
         const schwabResponse = await supabase.functions.invoke('fetch-schwab-candles', {
-          body: { symbol: sym, interval: 'daily', period: '1m' }
+          body: { symbol: sym, interval: 'daily', period: '1m' },
+          headers: authHeader ? { Authorization: authHeader } : undefined
         });
         
-        if (schwabResponse.data?.candles && schwabResponse.data.candles.length > 0) {
-          console.log(`[koinonia] Got ${schwabResponse.data.candles.length} candles from Schwab for ${sym}`);
-          return schwabResponse.data.candles.map((c: any) => ({
+        // Response shape is { data: [...candles] } - parse correctly
+        const candles = schwabResponse.data?.data || schwabResponse.data?.candles || [];
+        if (candles.length > 0) {
+          console.log(`[koinonia] Got ${candles.length} candles from Schwab for ${sym}`);
+          // Sort by timestamp ascending and normalize
+          const normalized = candles.map((c: any) => ({
             open: c.open,
             close: c.close,
             high: c.high,
             low: c.low,
-            volume: c.volume,
-            timestamp: c.timestamp || c.time
-          }));
+            volume: c.volume || 0,
+            timestamp: c.timestamp || c.time || Date.now()
+          })).sort((a: any, b: any) => a.timestamp - b.timestamp);
+          
+          const latestPrice = normalized[normalized.length - 1]?.close;
+          console.log(`[koinonia] Schwab latest price for ${sym}: $${latestPrice}`);
+          return normalized;
         }
         console.log(`[koinonia] Schwab returned no candles for ${sym}`);
       } catch (e) {
         console.log(`[koinonia] Schwab candles failed:`, e.message);
+      }
+
+      // Try FMP for real-time quote first (most reliable for current price)
+      if (FMP_API_KEY) {
+        try {
+          console.log(`[koinonia] Trying FMP real-time quote for ${sym}`);
+          const fmpResponse = await fetch(
+            `https://financialmodelingprep.com/api/v3/quote/${sym}?apikey=${FMP_API_KEY}`
+          );
+          if (fmpResponse.ok) {
+            const fmpData = await fmpResponse.json();
+            if (fmpData?.[0]?.price) {
+              const q = fmpData[0];
+              console.log(`[koinonia] FMP current price for ${sym}: $${q.price}`);
+              // Get historical data from FMP too
+              const histResponse = await fetch(
+                `https://financialmodelingprep.com/api/v3/historical-price-full/${sym}?timeseries=30&apikey=${FMP_API_KEY}`
+              );
+              if (histResponse.ok) {
+                const histData = await histResponse.json();
+                if (histData?.historical?.length > 0) {
+                  const candles = histData.historical.map((h: any) => ({
+                    open: h.open,
+                    close: h.close,
+                    high: h.high,
+                    low: h.low,
+                    volume: h.volume || 0,
+                    timestamp: new Date(h.date).getTime()
+                  })).reverse(); // FMP returns newest first, we need oldest first
+                  
+                  // Add today's price as the latest candle
+                  candles.push({
+                    open: q.open || q.price,
+                    close: q.price,
+                    high: q.dayHigh || q.price,
+                    low: q.dayLow || q.price,
+                    volume: q.volume || 0,
+                    timestamp: Date.now()
+                  });
+                  
+                  console.log(`[koinonia] FMP returned ${candles.length} candles, latest: $${q.price}`);
+                  return candles;
+                }
+              }
+              // Fallback: just return current quote as single candle
+              return [{
+                open: q.open || q.price,
+                close: q.price,
+                high: q.dayHigh || q.price,
+                low: q.dayLow || q.price,
+                volume: q.volume || 1000000,
+                timestamp: Date.now()
+              }];
+            }
+          }
+        } catch (e) {
+          console.log(`[koinonia] FMP fetch error:`, e.message);
+        }
       }
       
       // Fallback to Polygon API
@@ -95,14 +161,16 @@ serve(async (req) => {
             const data = await response.json();
             if (data.results && data.results.length > 0) {
               console.log(`[koinonia] Got ${data.results.length} candles from Polygon for ${sym}`);
-              return data.results.map((r: any) => ({
+              const candles = data.results.map((r: any) => ({
                 open: r.o,
                 close: r.c,
                 high: r.h,
                 low: r.l,
                 volume: r.v,
                 timestamp: r.t
-              }));
+              })).sort((a: any, b: any) => a.timestamp - b.timestamp);
+              console.log(`[koinonia] Polygon latest price: $${candles[candles.length - 1]?.close}`);
+              return candles;
             }
           }
         } catch (e) {
@@ -110,11 +178,12 @@ serve(async (req) => {
         }
       }
       
-      // Try Schwab quotes for at least current price
+      // Try Schwab quotes for at least current price - forward auth header
       try {
         console.log(`[koinonia] Trying Schwab quotes for current price of ${sym}`);
         const quoteResponse = await supabase.functions.invoke('schwab-quotes', {
-          body: { symbols: [sym] }
+          body: { symbols: [sym] },
+          headers: authHeader ? { Authorization: authHeader } : undefined
         });
         
         if (quoteResponse.data?.quotes?.[sym]) {
@@ -123,7 +192,7 @@ serve(async (req) => {
           if (price && price > 0) {
             console.log(`[koinonia] Got current quote from Schwab: $${price}`);
             return [{
-              open: price,
+              open: q.openPrice || price,
               close: price,
               high: q.highPrice || price * 1.01,
               low: q.lowPrice || price * 0.99,
