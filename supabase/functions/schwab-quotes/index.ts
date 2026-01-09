@@ -150,12 +150,31 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[schwab-quotes] API Error ${response.status}:`, errorText);
-      
+
       if (response.status === 401) {
         console.log('[schwab-quotes] Token expired, returning mock data');
         return returnMockQuotes(symbols);
       }
-      
+
+      if (response.status === 429) {
+        console.log('[schwab-quotes] Schwab rate limit (429)');
+        if (cachedResult) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              quotes: cachedResult.data,
+              source: 'schwab-cached',
+              note: 'Schwab 429 - using cached data',
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
+          );
+        }
+        return returnMockQuotes(symbols);
+      }
+
       console.log('[schwab-quotes] API error, returning mock data');
       return returnMockQuotes(symbols);
     }
@@ -164,6 +183,7 @@ serve(async (req) => {
     console.log(`[schwab-quotes] Retrieved quotes for ${Object.keys(quotes).length} symbols`);
 
     // Transform to a more usable format
+    const fetchedAt = Date.now();
     const formattedQuotes = Object.entries(quotes).map(([symbol, data]: [string, any]) => ({
       symbol,
       lastPrice: data.quote?.lastPrice || data.regular?.regularMarketLastPrice,
@@ -176,10 +196,9 @@ serve(async (req) => {
       highPrice: data.quote?.highPrice,
       lowPrice: data.quote?.lowPrice,
       closePrice: data.quote?.closePrice,
-      fetchedAt: Date.now(),
+      fetchedAt,
       netChange: data.quote?.netChange,
       netPercentChange: data.quote?.netPercentChange,
-      fetchedAt: Date.now(),
       high52Week: data.quote?.['52WeekHigh'],
       low52Week: data.quote?.['52WeekLow'],
       mark: data.quote?.mark,
@@ -198,8 +217,7 @@ serve(async (req) => {
       raw: data,
     }));
 
-    // Cache the result
-    const cacheKey = `${symbolList}-${fields}`;
+    // Cache the result (reuse the cacheKey we computed above)
     quoteCache.set(cacheKey, { data: formattedQuotes, timestamp: Date.now() });
     console.log(`[schwab-quotes] Cached ${formattedQuotes.length} quotes`);
 
