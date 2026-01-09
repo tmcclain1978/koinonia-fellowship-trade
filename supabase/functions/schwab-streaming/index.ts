@@ -217,6 +217,7 @@ serve(async (req) => {
           
           // Handle subscription requests
           if (message.action === 'subscribe') {
+            // Default QUOTE service for standard quotes
             const subscribeRequest = {
               requests: [{
                 service: message.service || "QUOTE",
@@ -226,11 +227,33 @@ serve(async (req) => {
                 SchwabClientCorrelId: preferences?.streamerInfo?.schwabClientCorrelId || "",
                 parameters: {
                   keys: message.symbols?.join(',') || "",
-                  fields: message.fields || "0,1,2,3,4,5,6,7,8,9,10",
+                  fields: message.fields || "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
                 },
               }],
             };
             schwabSocket.send(JSON.stringify(subscribeRequest));
+          }
+          
+          // Handle chart-optimized subscription (LEVELONE_EQUITIES with extended fields)
+          if (message.action === 'subscribe_chart') {
+            // LEVELONE_EQUITIES provides: Symbol(0), Last(1), Bid(2), Ask(3), BidSize(4), AskSize(5),
+            // LastSize(8), TotalVol(9), Change(10), ChangePct(12), HighPrice(12), LowPrice(13), etc.
+            const chartRequest = {
+              requests: [{
+                service: "LEVELONE_EQUITIES",
+                command: "SUBS",
+                requestid: String(Date.now()),
+                SchwabClientCustomerId: preferences?.streamerInfo?.schwabClientCustomerId || "",
+                SchwabClientCorrelId: preferences?.streamerInfo?.schwabClientCorrelId || "",
+                parameters: {
+                  keys: message.symbols?.join(',') || "",
+                  // Extended fields for chart updates: including high(12), low(13), close(15), open(17)
+                  fields: "0,1,2,3,4,5,8,9,10,11,12,13,14,15,16,17,18,24,28,29,30,31",
+                },
+              }],
+            };
+            console.log('[schwab-streaming] Subscribing to chart data:', message.symbols);
+            schwabSocket.send(JSON.stringify(chartRequest));
           }
           
           // Handle account activity subscription

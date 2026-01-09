@@ -15,12 +15,28 @@ export interface AccountActivity {
   timestamp: Date;
 }
 
+// Price update callback for chart integration
+export interface SchwabPriceUpdate {
+  symbol: string;
+  price: number;
+  high: number;
+  low: number;
+  volume: number;
+  bid: number;
+  ask: number;
+  change: number;
+  changePercent: number;
+  timestamp: Date;
+  direction: 'up' | 'down' | 'unchanged';
+}
+
 interface UseSchwabStreamingOptions {
   symbols: string[];
   refreshInterval?: number; // in milliseconds, default 1000ms (for polling fallback)
   enabled?: boolean;
   useWebSocket?: boolean; // Try WebSocket first, fallback to polling
   subscribeToAccountActivity?: boolean;
+  onPriceUpdate?: (update: SchwabPriceUpdate) => void; // Real-time callback for chart updates
 }
 
 type StreamingStatus = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'error' | 'polling';
@@ -31,6 +47,7 @@ export const useSchwabStreaming = ({
   enabled = true,
   useWebSocket = true,
   subscribeToAccountActivity = false,
+  onPriceUpdate,
 }: UseSchwabStreamingOptions) => {
   const [quotes, setQuotes] = useState<Map<string, StreamingQuote>>(new Map());
   const [accountActivity, setAccountActivity] = useState<AccountActivity[]>([]);
@@ -46,6 +63,10 @@ export const useSchwabStreaming = ({
   const reconnectAttemptsRef = useRef(0);
   const subscribedSymbolsRef = useRef<string[]>([]);
   const isWebSocketActiveRef = useRef(false);
+
+  // Refs for onPriceUpdate callback to avoid stale closures
+  const onPriceUpdateRef = useRef(onPriceUpdate);
+  onPriceUpdateRef.current = onPriceUpdate;
 
   // Process quote updates (shared between WS and polling)
   const processQuotes = useCallback((fetchedQuotes: SchwabQuote[]) => {
@@ -63,14 +84,32 @@ export const useSchwabStreaming = ({
         }
       }
 
-      newQuotes.set(quote.symbol, {
+      const streamingQuote: StreamingQuote = {
         ...quote,
         lastUpdated: new Date(),
         previousPrice,
         priceDirection,
-      });
+      };
 
+      newQuotes.set(quote.symbol, streamingQuote);
       previousQuotesRef.current.set(quote.symbol, quote.lastPrice);
+
+      // Trigger onPriceUpdate callback for chart integration
+      if (onPriceUpdateRef.current) {
+        onPriceUpdateRef.current({
+          symbol: quote.symbol,
+          price: quote.lastPrice,
+          high: quote.highPrice || quote.lastPrice,
+          low: quote.lowPrice || quote.lastPrice,
+          volume: quote.volume || 0,
+          bid: quote.bidPrice || quote.lastPrice,
+          ask: quote.askPrice || quote.lastPrice,
+          change: quote.netChange || 0,
+          changePercent: quote.netPercentChange || 0,
+          timestamp: new Date(),
+          direction: priceDirection,
+        });
+      }
     });
 
     setQuotes(newQuotes);
@@ -107,6 +146,14 @@ export const useSchwabStreaming = ({
             if (!symbol) continue;
 
             const lastPrice = item['1'] || item.lastPrice || prev.get(symbol)?.lastPrice || 0;
+            const highPrice = item['12'] || item.highPrice || lastPrice;
+            const lowPrice = item['13'] || item.lowPrice || lastPrice;
+            const volume = item['8'] || item.volume || 0;
+            const bidPrice = item['2'] || item.bidPrice || lastPrice;
+            const askPrice = item['3'] || item.askPrice || lastPrice;
+            const netChange = item['9'] || item.netChange || 0;
+            const netPercentChange = item['10'] || item.netPercentChange || 0;
+            
             const previousPrice = previousQuotesRef.current.get(symbol);
             
             let priceDirection: 'up' | 'down' | 'unchanged' = 'unchanged';
@@ -118,19 +165,38 @@ export const useSchwabStreaming = ({
             newQuotes.set(symbol, {
               symbol,
               lastPrice,
-              bidPrice: item['2'] || item.bidPrice,
-              askPrice: item['3'] || item.askPrice,
+              highPrice,
+              lowPrice,
+              bidPrice,
+              askPrice,
               bidSize: item['4'] || item.bidSize,
               askSize: item['5'] || item.askSize,
-              volume: item['8'] || item.volume,
-              netChange: item['9'] || item.netChange,
-              netPercentChange: item['10'] || item.netPercentChange,
+              volume,
+              netChange,
+              netPercentChange,
               lastUpdated: new Date(),
               previousPrice,
               priceDirection,
             });
 
             previousQuotesRef.current.set(symbol, lastPrice);
+
+            // Trigger onPriceUpdate callback for chart integration (real-time WebSocket)
+            if (onPriceUpdateRef.current) {
+              onPriceUpdateRef.current({
+                symbol,
+                price: lastPrice,
+                high: highPrice,
+                low: lowPrice,
+                volume,
+                bid: bidPrice,
+                ask: askPrice,
+                change: netChange,
+                changePercent: netPercentChange,
+                timestamp: new Date(),
+                direction: priceDirection,
+              });
+            }
           }
           
           return newQuotes;
