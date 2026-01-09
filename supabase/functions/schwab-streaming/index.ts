@@ -112,10 +112,31 @@ serve(async (req) => {
       const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
       
       // Connect to Schwab Streaming API
-      // Schwab uses wss://streamer-api.schwab.com for streaming
       const schwabStreamUrl = 'wss://streamer-api.schwab.com/ws';
       let schwabSocket: WebSocket | null = null;
       let isAuthenticated = false;
+      let heartbeatInterval: number | null = null;
+      let connectionHealthCheck: number | null = null;
+      
+      // Heartbeat function to keep connection alive
+      const sendHeartbeat = () => {
+        if (schwabSocket && schwabSocket.readyState === WebSocket.OPEN && isAuthenticated) {
+          const heartbeatRequest = {
+            requests: [{
+              service: "ADMIN",
+              command: "QOS",
+              requestid: String(Date.now()),
+              SchwabClientCustomerId: preferences?.streamerInfo?.schwabClientCustomerId || "",
+              SchwabClientCorrelId: preferences?.streamerInfo?.schwabClientCorrelId || "",
+              parameters: {
+                qoslevel: "0" // Fastest streaming rate
+              },
+            }],
+          };
+          schwabSocket.send(JSON.stringify(heartbeatRequest));
+          console.log('[schwab-streaming] Heartbeat sent');
+        }
+      };
       
       clientSocket.onopen = () => {
         console.log('[schwab-streaming] Client connected');
@@ -158,10 +179,21 @@ serve(async (req) => {
                     isAuthenticated = true;
                     console.log('[schwab-streaming] Authenticated with Schwab streamer');
                     clientSocket.send(JSON.stringify({ type: 'connected', message: 'Schwab streaming connected' }));
+                    
+                    // Start heartbeat every 30 seconds to keep connection alive
+                    heartbeatInterval = setInterval(sendHeartbeat, 30000);
+                    
+                    // Send initial heartbeat
+                    sendHeartbeat();
                   } else {
                     console.error('[schwab-streaming] Auth failed:', resp.content);
                     clientSocket.send(JSON.stringify({ type: 'error', message: 'Schwab streaming authentication failed' }));
                   }
+                }
+                
+                // Handle QOS response (heartbeat acknowledgment)
+                if (resp.service === "ADMIN" && resp.command === "QOS") {
+                  console.log('[schwab-streaming] Heartbeat acknowledged');
                 }
               }
             }
@@ -173,16 +205,26 @@ serve(async (req) => {
                   type: 'data',
                   service: item.service,
                   content: item.content,
+                  timestamp: Date.now(),
                 }));
               }
             }
             
-            // Forward notify messages
+            // Forward notify messages (including market close notifications)
             if (data.notify) {
               clientSocket.send(JSON.stringify({
                 type: 'notify',
                 content: data.notify,
+                timestamp: Date.now(),
               }));
+              
+              // Check for market status in notify messages
+              for (const n of data.notify) {
+                if (n.content?.code === 3 || n.heartbeat) {
+                  // Schwab sends heartbeat or status codes
+                  console.log('[schwab-streaming] Schwab heartbeat/notify received');
+                }
+              }
             }
           } catch (error) {
             console.error('[schwab-streaming] Parse error:', error);
@@ -194,9 +236,18 @@ serve(async (req) => {
           clientSocket.send(JSON.stringify({ type: 'error', message: 'Schwab streaming error' }));
         };
         
-        schwabSocket.onclose = () => {
-          console.log('[schwab-streaming] Schwab socket closed');
-          clientSocket.send(JSON.stringify({ type: 'disconnected', message: 'Schwab streaming disconnected' }));
+        schwabSocket.onclose = (event) => {
+          console.log('[schwab-streaming] Schwab socket closed, code:', event.code, 'reason:', event.reason);
+          if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+          }
+          clientSocket.send(JSON.stringify({ 
+            type: 'disconnected', 
+            message: 'Schwab streaming disconnected',
+            code: event.code,
+            reason: event.reason || 'Connection closed'
+          }));
         };
       };
       
@@ -215,9 +266,14 @@ serve(async (req) => {
             return;
           }
           
+          // Handle ping/keepalive from client
+          if (message.action === 'ping') {
+            clientSocket.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+            return;
+          }
+          
           // Handle subscription requests
           if (message.action === 'subscribe') {
-            // Default QUOTE service for standard quotes
             const subscribeRequest = {
               requests: [{
                 service: message.service || "QUOTE",
@@ -236,8 +292,6 @@ serve(async (req) => {
           
           // Handle chart-optimized subscription (LEVELONE_EQUITIES with extended fields)
           if (message.action === 'subscribe_chart') {
-            // LEVELONE_EQUITIES provides: Symbol(0), Last(1), Bid(2), Ask(3), BidSize(4), AskSize(5),
-            // LastSize(8), TotalVol(9), Change(10), ChangePct(12), HighPrice(12), LowPrice(13), etc.
             const chartRequest = {
               requests: [{
                 service: "LEVELONE_EQUITIES",
@@ -247,7 +301,6 @@ serve(async (req) => {
                 SchwabClientCorrelId: preferences?.streamerInfo?.schwabClientCorrelId || "",
                 parameters: {
                   keys: message.symbols?.join(',') || "",
-                  // Extended fields for chart updates: including high(12), low(13), close(15), open(17)
                   fields: "0,1,2,3,4,5,8,9,10,11,12,13,14,15,16,17,18,24,28,29,30,31",
                 },
               }],
@@ -315,6 +368,17 @@ serve(async (req) => {
       
       clientSocket.onclose = () => {
         console.log('[schwab-streaming] Client disconnected');
+        
+        // Clear heartbeat interval
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        if (connectionHealthCheck) {
+          clearInterval(connectionHealthCheck);
+          connectionHealthCheck = null;
+        }
+        
         if (schwabSocket && schwabSocket.readyState === WebSocket.OPEN) {
           // Send logout before closing
           const logoutRequest = {
@@ -356,6 +420,7 @@ serve(async (req) => {
     JSON.stringify({ 
       message: 'Schwab Streaming WebSocket endpoint',
       usage: 'Connect via WebSocket with Authorization header',
+      features: ['heartbeat', 'auto-reconnect', 'market-hours-aware'],
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );

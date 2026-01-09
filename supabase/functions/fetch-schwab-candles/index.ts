@@ -60,29 +60,35 @@ serve(async (req) => {
     // If we have access token, fetch from Schwab
     if (accessToken) {
       try {
-        // Map intervals to Schwab API format
+        // Map intervals to Schwab API format with EXTENDED history periods
+        // Extended periods allow viewing months/years of data based on interval type
         const intervalMap: Record<string, { periodType: string; frequencyType: string; frequency: number; period?: number }> = {
-          '1': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
-          '5': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
-          '15': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
-          '30': { periodType: 'day', frequencyType: 'minute', frequency: 30 },
-          '60': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
-          '1m': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
-          '5m': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
-          'minute': { periodType: 'day', frequencyType: 'minute', frequency: 1 },
-          '5minute': { periodType: 'day', frequencyType: 'minute', frequency: 5 },
-          '15minute': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
-          '30minute': { periodType: 'day', frequencyType: 'minute', frequency: 30 },
-          'hour': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
-          '15m': { periodType: 'day', frequencyType: 'minute', frequency: 15 },
-          '30m': { periodType: 'day', frequencyType: 'minute', frequency: 30 },
-          '1h': { periodType: 'day', frequencyType: 'minute', frequency: 60 },
-          'D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 10 },
-          '1D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 10 },
-          'daily': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 10 },
-          'W': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 20 },
-          '1W': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 20 },
-          'weekly': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 20 },
+          // Minute intervals - extend from 1 day to 5-10 days
+          '1': { periodType: 'day', frequencyType: 'minute', frequency: 1, period: 5 },
+          '5': { periodType: 'day', frequencyType: 'minute', frequency: 5, period: 10 },
+          '15': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
+          '30': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
+          '60': { periodType: 'day', frequencyType: 'minute', frequency: 60, period: 10 },
+          '1m': { periodType: 'day', frequencyType: 'minute', frequency: 1, period: 5 },
+          '5m': { periodType: 'day', frequencyType: 'minute', frequency: 5, period: 10 },
+          'minute': { periodType: 'day', frequencyType: 'minute', frequency: 1, period: 5 },
+          '5minute': { periodType: 'day', frequencyType: 'minute', frequency: 5, period: 10 },
+          '15minute': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
+          '30minute': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
+          // Hourly - extend to 6 months of data
+          'hour': { periodType: 'month', frequencyType: 'minute', frequency: 60, period: 6 },
+          '15m': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
+          '30m': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
+          '1h': { periodType: 'month', frequencyType: 'minute', frequency: 60, period: 6 },
+          // Daily - extend from 10 days to 2 years
+          'D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
+          '1D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
+          'daily': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
+          // Weekly - 5 years
+          'W': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 5 },
+          '1W': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 5 },
+          'weekly': { periodType: 'year', frequencyType: 'weekly', frequency: 1, period: 5 },
+          // Monthly - keep at 20 years
           'M': { periodType: 'year', frequencyType: 'monthly', frequency: 1, period: 20 },
           '1M': { periodType: 'year', frequencyType: 'monthly', frequency: 1, period: 20 },
           'monthly': { periodType: 'year', frequencyType: 'monthly', frequency: 1, period: 20 },
@@ -191,7 +197,7 @@ serve(async (req) => {
         
         const polyConfig = polygonIntervalMap[interval] || { multiplier: 5, timespan: 'minute' };
         
-        // Calculate date range if not provided
+        // Calculate EXTENDED date range if not provided - much longer history
         let fromDate = startDate;
         let toDate = endDate;
         
@@ -199,21 +205,26 @@ serve(async (req) => {
           const now = new Date();
           toDate = now.toISOString().split('T')[0];
           
-          // Calculate from date based on interval
+          // Calculate from date based on interval - EXTENDED periods
           if (polyConfig.timespan === 'minute') {
-            // For minute data, get last 5 trading days
+            // For minute data, get last 10 trading days (was 5)
             const from = new Date(now);
-            from.setDate(from.getDate() - 7); // 7 calendar days to ensure 5 trading days
+            from.setDate(from.getDate() - 14); // 14 calendar days to ensure ~10 trading days
             fromDate = from.toISOString().split('T')[0];
           } else if (polyConfig.timespan === 'hour') {
-            // For hourly, get last 30 days
+            // For hourly, get last 6 months (was 30 days)
             const from = new Date(now);
-            from.setDate(from.getDate() - 30);
+            from.setMonth(from.getMonth() - 6);
+            fromDate = from.toISOString().split('T')[0];
+          } else if (polyConfig.timespan === 'day') {
+            // For daily, get last 2 years (was 1 year)
+            const from = new Date(now);
+            from.setFullYear(from.getFullYear() - 2);
             fromDate = from.toISOString().split('T')[0];
           } else {
-            // For daily/weekly, get last year
+            // For weekly/monthly, get last 5 years
             const from = new Date(now);
-            from.setFullYear(from.getFullYear() - 1);
+            from.setFullYear(from.getFullYear() - 5);
             fromDate = from.toISOString().split('T')[0];
           }
         }

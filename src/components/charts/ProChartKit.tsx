@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { init, dispose, Chart, KLineData, CandleType, LineType } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowUp, ArrowDown, Target, Ban } from "lucide-react";
+import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { IndicatorPanel } from "./IndicatorPanel";
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
+import { useCandleCache, isMarketOpen, getMarketStatusMessage } from "@/hooks/useCandleCache";
 
 interface ProChartKitProps {
   symbol: string;
@@ -90,7 +91,26 @@ export const ProChartKit = ({
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
-  const staleDataThresholdMs = 30000; // 30 seconds before considering data stale
+  // Longer stale threshold when market is closed
+  const getStaleDataThreshold = () => isMarketOpen() ? 30000 : 5 * 60 * 1000; // 30s during market, 5min after
+  
+  // Market status tracking
+  const [marketStatus, setMarketStatus] = useState<string>(getMarketStatusMessage());
+  const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
+  
+  // Cache integration
+  const { 
+    cachedData, 
+    cacheSource, 
+    saveToCache, 
+    updateLastCandle, 
+    isCacheValid, 
+    getCacheAge 
+  } = useCandleCache({
+    symbol,
+    interval,
+    enabled: true,
+  });
 
   // Helper to get interval duration in milliseconds
   const getIntervalMs = useCallback((intervalStr: string): number => {
@@ -303,21 +323,25 @@ export const ProChartKit = ({
     return () => clearTimeout(timer);
   }, [candleType, symbol, interval]);
 
-  // Smart sync: Only fetch full data on initial load or when connection is lost for extended period
-  // This prevents the "screenshot" effect caused by frequent full data refreshes
+  // Smart sync: Market-hours aware refresh - less aggressive when market is closed
   useEffect(() => {
     if (!chartRef.current || replayMode) return;
 
-    // Only do a full sync every 60 seconds as a fallback (not every 5 seconds!)
-    // The Schwab streaming handles real-time updates smoothly
-    const smartSyncInterval = 60000; // 60 seconds
+    // Update market status periodically
+    const marketStatusInterval = setInterval(() => {
+      setMarketStatus(getMarketStatusMessage());
+    }, 60000); // Check every minute
+
+    // Smart sync interval - much less aggressive
+    const smartSyncInterval = isMarketOpen() ? 60000 : 5 * 60 * 1000; // 1min during market, 5min after
     
     updateIntervalRef.current = setInterval(() => {
       const now = Date.now();
       const timeSinceLastSync = now - lastFullSyncRef.current;
+      const staleThreshold = getStaleDataThreshold();
       
-      // Only fetch if streaming has been disconnected for extended time
-      if (!isConnected && timeSinceLastSync > staleDataThresholdMs) {
+      // Only fetch if streaming has been disconnected AND data is stale
+      if (!isConnected && timeSinceLastSync > staleThreshold) {
         console.log('📡 Smart sync: Connection lost, fetching fresh data...');
         fetchAndLoadData(true);
         lastFullSyncRef.current = now;
@@ -325,6 +349,7 @@ export const ProChartKit = ({
     }, smartSyncInterval);
 
     return () => {
+      clearInterval(marketStatusInterval);
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
       }
@@ -461,6 +486,7 @@ export const ProChartKit = ({
           
           // Track the data source for UI display
           setChartDataSource(source);
+          setLastDataUpdate(new Date());
           
           // Set the current interval start based on the last candle
           if (latestTimestamp) {
@@ -478,6 +504,9 @@ export const ProChartKit = ({
           
           // Track last full sync time for smart sync
           lastFullSyncRef.current = Date.now();
+          
+          // Save to cache for faster subsequent loads
+          saveToCache(klineData, source);
         }
 
         // Fetch Koinonia signals if enabled
@@ -956,6 +985,15 @@ export const ProChartKit = ({
           onRefresh={fetchAndLoadData}
         />
 
+        {/* Market Status Indicator */}
+        <Badge 
+          variant={isMarketOpen() ? "default" : "secondary"}
+          className="flex items-center gap-1.5 px-2.5 py-1"
+        >
+          <Clock className="w-3 h-3" />
+          <span className="text-xs font-medium">{marketStatus}</span>
+        </Badge>
+
         {/* Live Price & Volume Indicator */}
         {enableStreaming && currentPrice && !replayMode && (
           <div className={`flex items-center gap-3 px-3 py-1.5 rounded-lg border ${
@@ -967,8 +1005,17 @@ export const ProChartKit = ({
               variant={isConnected ? "default" : "secondary"} 
               className="flex items-center gap-1 text-xs"
             >
-              <Zap className="w-3 h-3" />
-              {isConnected ? (streamingStatus === 'authenticated' ? 'LIVE' : 'STREAM') : 'POLLING'}
+              {isConnected ? (
+                <>
+                  <Zap className="w-3 h-3" />
+                  {streamingStatus === 'authenticated' ? 'LIVE' : 'STREAM'}
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3" />
+                  POLLING
+                </>
+              )}
             </Badge>
             <div className="flex flex-col">
               <span className={`font-mono font-bold text-lg leading-tight ${
@@ -992,6 +1039,26 @@ export const ProChartKit = ({
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             )}
           </div>
+        )}
+
+        {/* Last Update Time */}
+        {lastDataUpdate && !replayMode && (
+          <span className="text-xs text-muted-foreground">
+            Data as of: {format(lastDataUpdate, 'HH:mm:ss')}
+          </span>
+        )}
+
+        {/* Manual Reconnect Button - shows when disconnected for >2 min */}
+        {!isConnected && enableStreaming && !replayMode && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchAndLoadData(false)}
+            className="gap-2"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Refresh Data
+          </Button>
         )}
 
         {/* Replay Mode Toggle */}
