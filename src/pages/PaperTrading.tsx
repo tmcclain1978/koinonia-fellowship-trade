@@ -13,7 +13,6 @@ import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
-import { IndicatorSelector } from "@/components/IndicatorSelector";
 import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAnalytics";
 import { PositionsRiskModule } from "@/components/paper-trading/PositionsRiskModule";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
@@ -701,9 +700,6 @@ const PaperTrading = () => {
             </CardContent>
           </Card>
           <div className="space-y-6">
-            {/* Indicator Selector */}
-            <IndicatorSelector onIndicatorsChange={setChartIndicators} />
-            
             {/* Order Panel */}
             <Card>
               <CardHeader>
