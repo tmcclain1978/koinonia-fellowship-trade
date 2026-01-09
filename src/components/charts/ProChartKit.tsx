@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
-import { useMarketDataStream } from "@/hooks/useMarketDataStream";
+import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
 
 interface ProChartKitProps {
   symbol: string;
@@ -85,8 +85,12 @@ export const ProChartKit = ({
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'unchanged'>('unchanged');
   const [streamingVolume, setStreamingVolume] = useState<number>(0);
 
-  // Chart data source tracking (schwab | polygon | alphavantage | mock)
+  // Chart data source tracking
   const [chartDataSource, setChartDataSource] = useState<string>('loading');
+  
+  // Last data sync time for smart sync
+  const lastFullSyncRef = useRef<number>(0);
+  const staleDataThresholdMs = 30000; // 30 seconds before considering data stale
 
   // Helper to get interval duration in milliseconds
   const getIntervalMs = useCallback((intervalStr: string): number => {
@@ -114,80 +118,83 @@ export const ProChartKit = ({
     return intervalMap[intervalStr] || 5 * 60 * 1000;
   }, []);
 
-  // Use streaming market data for real-time updates
-  const { prices, isConnected, dataSource } = useMarketDataStream({
-    symbols: [symbol],
-    enabled: enableStreaming && !replayMode,
-    useRealData: true,
-    onPriceUpdate: (price) => {
-      if (price.symbol === symbol) {
-        setCurrentPrice(price.price);
-        setPriceDirection(price.direction);
-        onPriceUpdate?.(price.price);
+  // Handle Schwab streaming price updates for chart
+  const handleSchwabPriceUpdate = useCallback((price: SchwabPriceUpdate) => {
+    if (price.symbol !== symbol) return;
+    
+    setCurrentPrice(price.price);
+    setPriceDirection(price.direction);
+    onPriceUpdate?.(price.price);
+    
+    // Update the chart with real-time streaming data
+    if (chartRef.current && !replayMode) {
+      const dataList = chartRef.current.getDataList();
+      const lastCandle = dataList[dataList.length - 1];
+      
+      if (lastCandle) {
+        const now = Date.now();
+        const intervalMs = getIntervalMs(interval);
+        const currentIntervalStart = Math.floor(now / intervalMs) * intervalMs;
         
-        // Update the chart with real-time streaming data
-        if (chartRef.current && !replayMode) {
-          const dataList = chartRef.current.getDataList();
-          const lastCandle = dataList[dataList.length - 1];
+        // Calculate volume delta from streaming data
+        const streamVolume = price.volume || 0;
+        let volumeDelta = 0;
+        
+        if (lastVolumeUpdateRef.current > 0 && streamVolume > lastVolumeUpdateRef.current) {
+          volumeDelta = streamVolume - lastVolumeUpdateRef.current;
+        }
+        lastVolumeUpdateRef.current = streamVolume;
+        
+        // Check if we need to create a new candle
+        if (currentIntervalStartRef.current && currentIntervalStart > currentIntervalStartRef.current) {
+          // New interval started - reset volume tracking and create new candle
+          baseVolumeRef.current = 0;
+          accumulatedVolumeRef.current = volumeDelta;
+          lastVolumeUpdateRef.current = streamVolume;
           
-          if (lastCandle) {
-            const now = Date.now();
-            const intervalMs = getIntervalMs(interval);
-            const currentIntervalStart = Math.floor(now / intervalMs) * intervalMs;
-            
-            // Calculate volume delta from streaming data
-            const streamVolume = price.volume || 0;
-            let volumeDelta = 0;
-            
-            if (lastVolumeUpdateRef.current > 0 && streamVolume > lastVolumeUpdateRef.current) {
-              // Calculate the delta since last update
-              volumeDelta = streamVolume - lastVolumeUpdateRef.current;
-            }
-            lastVolumeUpdateRef.current = streamVolume;
-            
-            // Check if we need to create a new candle
-            if (currentIntervalStartRef.current && currentIntervalStart > currentIntervalStartRef.current) {
-              // New interval started - reset volume tracking and create new candle
-              baseVolumeRef.current = 0;
-              accumulatedVolumeRef.current = volumeDelta;
-              lastVolumeUpdateRef.current = streamVolume;
-              
-              const newCandle: KLineData = {
-                timestamp: currentIntervalStart,
-                open: price.price,
-                high: price.price,
-                low: price.price,
-                close: price.price,
-                volume: accumulatedVolumeRef.current,
-              };
-              chartRef.current.updateData(newCandle);
-              currentIntervalStartRef.current = currentIntervalStart;
-              setStreamingVolume(accumulatedVolumeRef.current);
-              console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
-            } else {
-              // Same interval - accumulate volume delta
-              accumulatedVolumeRef.current += volumeDelta;
-              const totalVolume = baseVolumeRef.current + accumulatedVolumeRef.current;
-              
-              const updatedCandle: KLineData = {
-                ...lastCandle,
-                close: price.price,
-                high: Math.max(lastCandle.high, price.price),
-                low: Math.min(lastCandle.low, price.price),
-                volume: totalVolume,
-              };
-              chartRef.current.updateData(updatedCandle);
-              setStreamingVolume(totalVolume);
-              
-              // Set the interval start if not already set
-              if (!currentIntervalStartRef.current) {
-                currentIntervalStartRef.current = Math.floor(lastCandle.timestamp / intervalMs) * intervalMs;
-              }
-            }
+          const newCandle: KLineData = {
+            timestamp: currentIntervalStart,
+            open: price.price,
+            high: price.price,
+            low: price.price,
+            close: price.price,
+            volume: accumulatedVolumeRef.current,
+          };
+          chartRef.current.updateData(newCandle);
+          currentIntervalStartRef.current = currentIntervalStart;
+          setStreamingVolume(accumulatedVolumeRef.current);
+          console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
+        } else {
+          // Same interval - update smoothly with streaming data
+          accumulatedVolumeRef.current += volumeDelta;
+          const totalVolume = baseVolumeRef.current + accumulatedVolumeRef.current;
+          
+          const updatedCandle: KLineData = {
+            ...lastCandle,
+            close: price.price,
+            high: Math.max(lastCandle.high, price.price),
+            low: Math.min(lastCandle.low, price.price),
+            volume: totalVolume,
+          };
+          // Use updateData for smooth animation (not applyNewData which reloads everything)
+          chartRef.current.updateData(updatedCandle);
+          setStreamingVolume(totalVolume);
+          
+          if (!currentIntervalStartRef.current) {
+            currentIntervalStartRef.current = Math.floor(lastCandle.timestamp / intervalMs) * intervalMs;
           }
         }
       }
-    },
+    }
+  }, [symbol, interval, replayMode, getIntervalMs, onPriceUpdate]);
+
+  // Use Schwab streaming for real-time chart updates
+  const { isConnected, status: streamingStatus } = useSchwabStreaming({
+    symbols: [symbol],
+    enabled: enableStreaming && !replayMode,
+    useWebSocket: true,
+    refreshInterval: 500, // Fast polling fallback (500ms)
+    onPriceUpdate: handleSchwabPriceUpdate,
   });
 
   // Initialize chart
@@ -296,25 +303,33 @@ export const ProChartKit = ({
     return () => clearTimeout(timer);
   }, [candleType, symbol, interval]);
 
-  // Set up real-time updates (only when not in replay mode)
+  // Smart sync: Only fetch full data on initial load or when connection is lost for extended period
+  // This prevents the "screenshot" effect caused by frequent full data refreshes
   useEffect(() => {
     if (!chartRef.current || replayMode) return;
 
-    // Update every 5 seconds during market hours (9:30 AM - 4:00 PM ET)
-    // or every 10 seconds during premarket (4:00 AM - 9:30 AM ET)
-    const updateInterval = showPremarket ? 10000 : 5000;
+    // Only do a full sync every 60 seconds as a fallback (not every 5 seconds!)
+    // The Schwab streaming handles real-time updates smoothly
+    const smartSyncInterval = 60000; // 60 seconds
     
     updateIntervalRef.current = setInterval(() => {
-      // Pass isUpdate=true to avoid showing loader and use smooth updates
-      fetchAndLoadData(true);
-    }, updateInterval);
+      const now = Date.now();
+      const timeSinceLastSync = now - lastFullSyncRef.current;
+      
+      // Only fetch if streaming has been disconnected for extended time
+      if (!isConnected && timeSinceLastSync > staleDataThresholdMs) {
+        console.log('📡 Smart sync: Connection lost, fetching fresh data...');
+        fetchAndLoadData(true);
+        lastFullSyncRef.current = now;
+      }
+    }, smartSyncInterval);
 
     return () => {
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
       }
     };
-  }, [symbol, interval, showPremarket, replayMode]);
+  }, [symbol, interval, showPremarket, replayMode, isConnected]);
 
   // Refetch when premarket toggle changes
   useEffect(() => {
@@ -460,6 +475,9 @@ export const ProChartKit = ({
             accumulatedVolumeRef.current = 0;
             setStreamingVolume(baseVolumeRef.current);
           }
+          
+          // Track last full sync time for smart sync
+          lastFullSyncRef.current = Date.now();
         }
 
         // Fetch Koinonia signals if enabled
@@ -946,11 +964,11 @@ export const ProChartKit = ({
             'bg-muted border-border'
           }`}>
             <Badge 
-              variant={dataSource === 'polygon' ? "default" : "secondary"} 
+              variant={isConnected ? "default" : "secondary"} 
               className="flex items-center gap-1 text-xs"
             >
               <Zap className="w-3 h-3" />
-              {dataSource === 'polygon' ? 'STREAM' : 'SIM'}
+              {isConnected ? (streamingStatus === 'authenticated' ? 'LIVE' : 'STREAM') : 'POLLING'}
             </Badge>
             <div className="flex flex-col">
               <span className={`font-mono font-bold text-lg leading-tight ${
