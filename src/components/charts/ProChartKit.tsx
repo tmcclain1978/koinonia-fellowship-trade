@@ -275,9 +275,33 @@ export const ProChartKit = ({
               }
             }
           },
-          customApi: {
-            formatDate: (timestamp: number) => {
+  customApi: {
+            formatDate: (timestamp: number, format: string) => {
               const date = new Date(timestamp);
+              
+              // For x-axis labels, format based on current interval
+              if (format === 'YYYY-MM-DD HH:mm' || format === 'HH:mm') {
+                // Intraday intervals: show time only
+                if (['1m', '5m', '15m', '1', '5', '15', 'minute', '5minute', '15minute'].includes(interval)) {
+                  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+                // Hourly intervals: show time with date hint
+                if (['30m', '1h', '30', '60', '30minute', 'hour'].includes(interval)) {
+                  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = date.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+                  return `${time}\n${dateStr}`;
+                }
+                // Daily: show date only
+                if (['1D', 'D', 'daily'].includes(interval)) {
+                  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                }
+                // Weekly/Monthly: show month and year
+                if (['1W', '1M', 'weekly', 'monthly'].includes(interval)) {
+                  return date.toLocaleDateString([], { month: 'short', year: '2-digit' });
+                }
+              }
+              
+              // For crosshair/tooltip, show full detail
               return date.toLocaleDateString() + " " + date.toLocaleTimeString();
             }
           }
