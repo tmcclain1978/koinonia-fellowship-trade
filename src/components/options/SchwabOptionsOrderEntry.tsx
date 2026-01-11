@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { schwabApi, formatOCCSymbol, SchwabOptionsOrder, OptionsOrderLeg } from "@/lib/schwabApi";
 import { Loader2, Plus, Trash2, Eye, Send, AlertCircle, Calculator } from "lucide-react";
 import { calculateGreeks, blackScholes } from "@/lib/optionsPricing";
+import { PDTWarning } from "@/components/PDTWarning";
 
 interface OptionLegInput {
   id: string;
@@ -575,6 +576,13 @@ export const SchwabOptionsOrderEntry = ({
             Execute
           </Button>
         </div>
+
+        {/* PDT Warning */}
+        <PDTWarning 
+          accountHash={selectedAccount} 
+          isSellOrder={legs.some(l => l.action.includes('CLOSE'))}
+          symbol={symbol}
+        />
 
         {/* Warning */}
         <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-500">

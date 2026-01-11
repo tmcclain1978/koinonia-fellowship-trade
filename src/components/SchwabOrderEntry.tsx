@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { schwabApi, SchwabOrder, SchwabQuote } from "@/lib/schwabApi";
 import { Loader2, TrendingUp, TrendingDown, AlertCircle, CheckCircle, Eye, Send } from "lucide-react";
+import { PDTWarning } from "./PDTWarning";
 
 interface SchwabOrderEntryProps {
   symbol?: string;
@@ -415,6 +416,13 @@ export const SchwabOrderEntry = ({
             {action} {symbol}
           </Button>
         </div>
+
+        {/* PDT Warning */}
+        <PDTWarning 
+          accountHash={selectedAccount} 
+          isSellOrder={action === 'SELL'}
+          symbol={symbol}
+        />
 
         {/* Warning */}
         <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-500">
