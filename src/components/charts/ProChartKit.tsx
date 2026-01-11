@@ -831,19 +831,39 @@ export const ProChartKit = ({
     setSelectedIndicators(indicators);
   }, []);
 
-  // Map interval format
+  // Map interval format - handles all Trading page formats
   const mapInterval = (interval: string): string => {
     const map: Record<string, string> = {
-      "1m": "minute",
-      "5m": "5minute",
-      "15m": "15minute",
-      "30m": "30minute",
-      "1h": "hour",
-      "1D": "daily",
-      "1W": "weekly",
-      "1M": "monthly"
+      // Trading page formats (numeric strings)
+      "1": "1",
+      "5": "5",
+      "15": "15",
+      "30": "30",
+      "60": "60",
+      "D": "D",
+      "W": "1W",
+      "M": "1M",
+      // Standard formats with suffix
+      "1m": "1",
+      "5m": "5",
+      "15m": "15",
+      "30m": "30",
+      "1h": "60",
+      "4h": "240",
+      "1D": "D",
+      "1W": "1W",
+      "1M": "1M",
+      // Legacy formats
+      "minute": "1",
+      "5minute": "5",
+      "15minute": "15",
+      "30minute": "30",
+      "hour": "60",
+      "daily": "D",
+      "weekly": "1W",
+      "monthly": "1M",
     };
-    return map[interval] || "daily";
+    return map[interval] || interval;
   };
 
   // Get indicator configuration - comprehensive mapping for 60+ indicators

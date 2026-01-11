@@ -191,8 +191,12 @@ serve(async (req) => {
           'daily': { multiplier: 1, timespan: 'day' },
           'D': { multiplier: 1, timespan: 'day' },
           '1D': { multiplier: 1, timespan: 'day' },
+          'W': { multiplier: 1, timespan: 'week' },
           '1W': { multiplier: 1, timespan: 'week' },
+          'weekly': { multiplier: 1, timespan: 'week' },
+          'M': { multiplier: 1, timespan: 'month' },
           '1M': { multiplier: 1, timespan: 'month' },
+          'monthly': { multiplier: 1, timespan: 'month' },
         };
         
         const polyConfig = polygonIntervalMap[interval] || { multiplier: 5, timespan: 'minute' };
@@ -316,11 +320,30 @@ serve(async (req) => {
       try {
         console.log('Trying Alpha Vantage for historical data...');
         
-        const functionType = interval.includes('D') || interval === 'daily' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
+        // Determine function type based on interval
+        let functionType = 'TIME_SERIES_INTRADAY';
+        if (['D', '1D', 'daily'].includes(interval)) {
+          functionType = 'TIME_SERIES_DAILY';
+        } else if (['W', '1W', 'weekly'].includes(interval)) {
+          functionType = 'TIME_SERIES_WEEKLY';
+        } else if (['M', '1M', 'monthly'].includes(interval)) {
+          functionType = 'TIME_SERIES_MONTHLY';
+        }
+        
         let avUrl = `https://www.alphavantage.co/query?function=${functionType}&symbol=${symbol}&apikey=${alphaVantageKey}&outputsize=full`;
         
         if (functionType === 'TIME_SERIES_INTRADAY') {
           const avIntervalMap: Record<string, string> = {
+            '1': '1min',
+            '5': '5min',
+            '15': '15min',
+            '30': '30min',
+            '60': '60min',
+            '1m': '1min',
+            '5m': '5min',
+            '15m': '15min',
+            '30m': '30min',
+            '1h': '60min',
             'minute': '1min',
             '5minute': '5min',
             '15minute': '15min',
@@ -457,6 +480,12 @@ serve(async (req) => {
       'D': 24 * 60 * 60 * 1000,
       '1D': 24 * 60 * 60 * 1000,
       'daily': 24 * 60 * 60 * 1000,
+      'W': 7 * 24 * 60 * 60 * 1000,
+      '1W': 7 * 24 * 60 * 60 * 1000,
+      'weekly': 7 * 24 * 60 * 60 * 1000,
+      'M': 30 * 24 * 60 * 60 * 1000,
+      '1M': 30 * 24 * 60 * 60 * 1000,
+      'monthly': 30 * 24 * 60 * 60 * 1000,
     };
     
     const candleInterval = intervalMs[interval] || 60 * 1000;
