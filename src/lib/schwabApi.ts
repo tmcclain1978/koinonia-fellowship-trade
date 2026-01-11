@@ -56,20 +56,98 @@ export interface AccountPosition {
 }
 
 export interface SchwabOrder {
-  orderType: 'LIMIT' | 'MARKET' | 'STOP' | 'STOP_LIMIT';
+  orderType: 'LIMIT' | 'MARKET' | 'STOP' | 'STOP_LIMIT' | 'TRAILING_STOP';
   session: 'NORMAL' | 'AM' | 'PM' | 'SEAMLESS';
   duration: 'DAY' | 'GOOD_TILL_CANCEL' | 'FILL_OR_KILL';
   orderStrategyType: 'SINGLE' | 'OCO' | 'TRIGGER';
   price?: string;
   stopPrice?: string;
+  stopPriceLinkBasis?: 'MANUAL' | 'BASE' | 'TRIGGER' | 'LAST' | 'BID' | 'ASK';
+  stopPriceLinkType?: 'VALUE' | 'PERCENT';
+  stopPriceOffset?: number;
   orderLegCollection: Array<{
-    instruction: 'BUY' | 'SELL' | 'BUY_TO_COVER' | 'SELL_SHORT';
+    instruction: 'BUY' | 'SELL' | 'BUY_TO_COVER' | 'SELL_SHORT' | 'BUY_TO_OPEN' | 'SELL_TO_OPEN' | 'BUY_TO_CLOSE' | 'SELL_TO_CLOSE';
     quantity: number;
     instrument: {
       symbol: string;
       assetType: 'EQUITY' | 'OPTION' | 'INDEX' | 'MUTUAL_FUND' | 'CASH_EQUIVALENT' | 'FIXED_INCOME' | 'CURRENCY';
     };
   }>;
+  childOrderStrategies?: SchwabOrder[];
+}
+
+// Options-specific order types
+export interface OptionsOrderLeg {
+  instruction: 'BUY_TO_OPEN' | 'SELL_TO_OPEN' | 'BUY_TO_CLOSE' | 'SELL_TO_CLOSE';
+  quantity: number;
+  instrument: {
+    symbol: string; // OCC format: AAPL  250117C00250000
+    assetType: 'OPTION';
+  };
+}
+
+export interface SchwabOptionsOrder extends Omit<SchwabOrder, 'orderLegCollection'> {
+  orderLegCollection: OptionsOrderLeg[];
+  complexOrderStrategyType?: 'VERTICAL' | 'STRADDLE' | 'STRANGLE' | 'IRON_CONDOR' | 'BUTTERFLY' | 'CONDOR' | 'DIAGONAL' | 'COLLAR' | 'COVERED' | 'CUSTOM';
+}
+
+/**
+ * Format OCC option symbol
+ * OCC Format: AAPL  250117C00250000
+ * - 6 chars: underlying (left padded with spaces)
+ * - 6 chars: expiration YYMMDD
+ * - 1 char: C (call) or P (put)
+ * - 8 chars: strike * 1000 (left padded with zeros)
+ */
+export function formatOCCSymbol(
+  underlying: string,
+  expiration: string, // YYYY-MM-DD format
+  strike: number,
+  type: 'CALL' | 'PUT'
+): string {
+  // Pad underlying to 6 chars
+  const paddedUnderlying = underlying.toUpperCase().padEnd(6, ' ');
+  
+  // Convert expiration to YYMMDD
+  const expDate = new Date(expiration);
+  const yy = expDate.getFullYear().toString().slice(-2);
+  const mm = (expDate.getMonth() + 1).toString().padStart(2, '0');
+  const dd = expDate.getDate().toString().padStart(2, '0');
+  const expFormatted = `${yy}${mm}${dd}`;
+  
+  // Option type
+  const optType = type === 'CALL' ? 'C' : 'P';
+  
+  // Strike price * 1000, padded to 8 digits
+  const strikeFormatted = Math.round(strike * 1000).toString().padStart(8, '0');
+  
+  return `${paddedUnderlying}${expFormatted}${optType}${strikeFormatted}`;
+}
+
+/**
+ * Parse OCC option symbol back to components
+ */
+export function parseOCCSymbol(occSymbol: string): {
+  underlying: string;
+  expiration: string;
+  strike: number;
+  type: 'CALL' | 'PUT';
+} | null {
+  if (occSymbol.length !== 21) return null;
+  
+  const underlying = occSymbol.slice(0, 6).trim();
+  const expYY = occSymbol.slice(6, 8);
+  const expMM = occSymbol.slice(8, 10);
+  const expDD = occSymbol.slice(10, 12);
+  const optType = occSymbol.slice(12, 13);
+  const strikeStr = occSymbol.slice(13, 21);
+  
+  const year = parseInt(expYY) + 2000;
+  const expiration = `${year}-${expMM}-${expDD}`;
+  const strike = parseInt(strikeStr) / 1000;
+  const type = optType === 'C' ? 'CALL' : 'PUT';
+  
+  return { underlying, expiration, strike, type };
 }
 
 class SchwabApiClient {
