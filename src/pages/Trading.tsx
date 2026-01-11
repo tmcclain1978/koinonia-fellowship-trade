@@ -22,6 +22,9 @@ import { SchwabLiveQuotes } from "@/components/SchwabLiveQuotes";
 import { PriceAlertSystem } from "@/components/PriceAlertSystem";
 import { StockScreener } from "@/components/StockScreener";
 import { OptionPnLChart } from "@/components/options/OptionPnLChart";
+import { SchwabOptionsChain } from "@/components/options/SchwabOptionsChain";
+import { SchwabOptionsOrderEntry } from "@/components/options/SchwabOptionsOrderEntry";
+import { ConditionalExitBuilder } from "@/components/options/ConditionalExitBuilder";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 import { RealtimePnLTracker } from "@/components/RealtimePnLTracker";
 
@@ -52,6 +55,7 @@ const Trading = () => {
   const [chartExitPrice, setChartExitPrice] = useState<number | undefined>();
   const [chartStopLoss, setChartStopLoss] = useState<number | undefined>();
   const [activeTab, setActiveTab] = useState("orders");
+  const [selectedOptionForOrder, setSelectedOptionForOrder] = useState<any>(null);
 
   // Multi-leg options
   const [leg1Strike, setLeg1Strike] = useState("");
@@ -434,10 +438,14 @@ const Trading = () => {
 
           {/* Tab Navigation */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5 mb-4">
+            <TabsList className="grid w-full grid-cols-6 mb-4">
               <TabsTrigger value="orders" className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
                 <span className="hidden sm:inline">Order Entry</span>
+              </TabsTrigger>
+              <TabsTrigger value="options" className="flex items-center gap-2">
+                <BarChart2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Options</span>
               </TabsTrigger>
               <TabsTrigger value="positions" className="flex items-center gap-2">
                 <Wallet className="w-4 h-4" />
@@ -652,6 +660,46 @@ const Trading = () => {
                     });
                   }}
                 />
+              </div>
+            </TabsContent>
+
+            {/* Options Tab */}
+            <TabsContent value="options" className="space-y-6">
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* Options Chain */}
+                <SchwabOptionsChain
+                  symbol={symbol}
+                  onSymbolChange={setSymbol}
+                  onOptionSelect={(option) => {
+                    setSelectedOptionForOrder(option);
+                    toast({
+                      title: "Option Selected",
+                      description: `${option.action} ${option.contract.type} $${option.contract.strike}`,
+                    });
+                  }}
+                />
+
+                {/* Options Order Entry & Exit Strategy */}
+                <div className="space-y-6">
+                  <SchwabOptionsOrderEntry
+                    symbol={symbol}
+                    selectedOption={selectedOptionForOrder}
+                    onOrderPlaced={(orderId) => {
+                      toast({
+                        title: "Options Order Placed",
+                        description: `Order ${orderId} has been submitted`,
+                      });
+                      setSelectedOptionForOrder(null);
+                    }}
+                  />
+
+                  <ConditionalExitBuilder
+                    onStrategyChange={(strategy) => {
+                      console.log('Exit strategy updated:', strategy);
+                    }}
+                    positionValue={1000}
+                  />
+                </div>
               </div>
             </TabsContent>
 
