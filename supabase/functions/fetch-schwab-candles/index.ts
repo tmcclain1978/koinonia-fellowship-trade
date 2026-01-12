@@ -489,7 +489,35 @@ serve(async (req) => {
     };
     
     const candleInterval = intervalMs[interval] || 60 * 1000;
-    const numCandles = 100;
+    
+    // Calculate appropriate number of candles based on interval for proper chart display
+    // Aim for at least 10 days of intraday data, or appropriate historical view
+    const isIntraday = candleInterval < 24 * 60 * 60 * 1000;
+    const isHourly = candleInterval === 60 * 60 * 1000;
+    
+    let numCandles: number;
+    if (isIntraday && !isHourly) {
+      // For minute intervals (1m, 5m, 15m, 30m): Generate 10 trading days worth
+      // Trading day = 6.5 hours = 390 minutes regular + 4 hours premarket = ~10 hours if premarket enabled
+      const candlesPerTradingDay = premarket ? 
+        Math.floor(10 * 60 * 60 * 1000 / candleInterval) :  // ~10 hours with premarket
+        Math.floor(6.5 * 60 * 60 * 1000 / candleInterval);  // 6.5 hours regular
+      numCandles = Math.min(candlesPerTradingDay * 10, 5000); // 10 trading days, max 5000
+    } else if (isHourly) {
+      // For hourly: Generate 6 months of data
+      numCandles = Math.min(24 * 30 * 6, 4320); // ~6 months of hourly data
+    } else if (candleInterval === 24 * 60 * 60 * 1000) {
+      // For daily: Generate 2 years of data
+      numCandles = 504; // ~2 years of trading days
+    } else if (candleInterval === 7 * 24 * 60 * 60 * 1000) {
+      // For weekly: Generate 5 years
+      numCandles = 260; // ~5 years
+    } else {
+      // For monthly: Generate 10 years
+      numCandles = 120; // ~10 years
+    }
+    
+    console.log(`Generating ${numCandles} mock candles for ${interval} interval (candleInterval: ${candleInterval}ms, premarket: ${premarket})`);
     
     // Generate realistic mock candle data
     const now = Date.now();
@@ -498,9 +526,39 @@ serve(async (req) => {
     const mockCandles = [];
     let currentPrice = basePrice;
     
+    // For intraday candles, we need to filter to trading hours only (unless premarket)
     // Generate historical candles working backwards
     for (let i = numCandles; i >= 0; i--) {
       const candleTime = currentCandleStart - (i * candleInterval);
+      const candleDate = new Date(candleTime);
+      
+      // For intraday data, filter to trading hours (Eastern Time)
+      if (isIntraday) {
+        const day = candleDate.getDay();
+        // Skip weekends
+        if (day === 0 || day === 6) continue;
+        
+        // Get hour in Eastern Time
+        const etTime = new Date(candleDate.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const hour = etTime.getHours();
+        const minute = etTime.getMinutes();
+        const timeInMinutes = hour * 60 + minute;
+        
+        // Market hours check
+        const premarketStart = 4 * 60;     // 4:00 AM ET
+        const marketOpen = 9 * 60 + 30;    // 9:30 AM ET
+        const marketClose = 16 * 60;       // 4:00 PM ET
+        const afterHoursEnd = 20 * 60;     // 8:00 PM ET
+        
+        if (premarket) {
+          // Extended hours: 4 AM to 8 PM ET
+          if (timeInMinutes < premarketStart || timeInMinutes >= afterHoursEnd) continue;
+        } else {
+          // Regular hours only: 9:30 AM to 4:00 PM ET
+          if (timeInMinutes < marketOpen || timeInMinutes >= marketClose) continue;
+        }
+      }
+      
       const time = Math.floor(candleTime / 1000);
       
       // Random walk with slight upward bias matching actual stock behavior
