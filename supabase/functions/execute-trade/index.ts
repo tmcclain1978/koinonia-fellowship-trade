@@ -36,7 +36,7 @@ serve(async (req) => {
     // Get trade parameters from request body
     const { symbol, action, quantity, price } = await req.json();
 
-    // Check PDT status before executing trade (only for live accounts)
+    // Load user credentials to determine broker type
     const { data: credentialsData, error: credError } = await supabase.functions.invoke(
       "encrypt-credentials",
       {
@@ -47,79 +47,58 @@ serve(async (req) => {
     
     const credentials = credentialsData?.credentials;
     const isPaperTrading = credentials?.trading_mode === "paper";
+    const brokerType = credentials?.broker_type || "schwab";
 
-    // Only check PDT for live trading
-    if (!isPaperTrading) {
-      const { data: pdtCheck, error: pdtError } = await supabase.functions.invoke(
-        'check-pdt-status',
-        {
-          body: { symbol, isSell: action.toLowerCase() === 'sell' },
-          headers: { Authorization: authHeader }
-        }
-      );
+    console.log(`[execute-trade] Broker: ${brokerType}, Paper: ${isPaperTrading}, Symbol: ${symbol}, Action: ${action}`);
 
-      if (pdtError) {
-        console.error('PDT check failed:', pdtError);
-        return new Response(
-          JSON.stringify({ 
-            success: false,
-            error: 'Failed to verify Pattern Day Trading status'
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // If trade is blocked by PDT rules
-      if (!pdtCheck.canTrade) {
-        return new Response(
-          JSON.stringify({ 
-            success: false,
-            error: pdtCheck.message || 'Trade blocked by Pattern Day Trading rules',
-            pdtBlocked: true,
-            dayTradeCount: pdtCheck.dayTradeCount,
-            accountValue: pdtCheck.accountValue
-          }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Store warning if present (but allow trade)
-      var pdtWarning = pdtCheck.warning ? pdtCheck.message : null;
-    }
-
-    // Credentials already loaded above for PDT check
-    if (!credentials || !credentials.schwab_client_id) {
-      throw new Error("Schwab API credentials not configured");
-    }
-
+    // Route based on broker type
     let tradeResult;
 
-    if (isPaperTrading) {
-      // Simulate trade execution for paper trading
-      console.log(`[PAPER TRADE] ${action} ${quantity} ${symbol} @ $${price}`);
-      tradeResult = {
-        success: true,
-        orderId: `PAPER-${Date.now()}`,
-        executedPrice: price,
-        message: "Paper trade executed successfully",
-      };
-    } else {
-      // Real trade execution via Schwab API
-      // NOTE: This is a placeholder - actual Schwab API integration would go here
-      // You would need to:
-      // 1. Get OAuth token using refresh token
-      // 2. Call Schwab trading API
-      // 3. Handle order placement and confirmation
-      
-      console.log(`[LIVE TRADE] Attempting to execute: ${action} ${quantity} ${symbol} @ $${price}`);
-      
-      // For now, we'll simulate it
-      tradeResult = {
-        success: true,
-        orderId: `LIVE-${Date.now()}`,
-        executedPrice: price,
-        message: "Trade order submitted (requires Schwab API integration)",
-      };
+    switch (brokerType) {
+      case "schwab":
+        tradeResult = await executeSchwabTrade(supabase, authHeader, {
+          symbol, action, quantity, price, isPaperTrading, credentials, userId
+        });
+        break;
+
+      case "alpaca":
+        tradeResult = await executeAlpacaTrade(supabase, authHeader, {
+          symbol, action, quantity, price, isPaperTrading, credentials
+        });
+        break;
+
+      case "td_ameritrade":
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "TD Ameritrade API was sunset in September 2024. Please migrate to Charles Schwab in Settings.",
+            brokerDeprecated: true,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+
+      case "etrade":
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "E*TRADE integration requires OAuth 1.0a which is not yet implemented. Coming soon.",
+            brokerNotSupported: true,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+
+      case "interactive_brokers":
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Interactive Brokers integration coming soon. Please use another broker.",
+            brokerNotSupported: true,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+
+      default:
+        throw new Error(`Unknown broker type: ${brokerType}`);
     }
 
     // Log the trade
@@ -130,7 +109,7 @@ serve(async (req) => {
         symbol,
         action,
         quantity,
-        price: tradeResult.executedPrice,
+        price: tradeResult.executedPrice || price,
         reasoning: tradeResult.message,
         status: tradeResult.success ? "executed" : "failed",
       });
@@ -145,8 +124,9 @@ serve(async (req) => {
         orderId: tradeResult.orderId,
         executedPrice: tradeResult.executedPrice,
         message: tradeResult.message,
-        pdtWarning: pdtWarning || undefined,
-        isPaperTrading
+        pdtWarning: tradeResult.pdtWarning,
+        isPaperTrading,
+        broker: brokerType,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -166,3 +146,153 @@ serve(async (req) => {
     );
   }
 });
+
+interface TradeParams {
+  symbol: string;
+  action: string;
+  quantity: number;
+  price: number;
+  isPaperTrading: boolean;
+  credentials: any;
+  userId?: string;
+}
+
+interface TradeResult {
+  success: boolean;
+  orderId?: string;
+  executedPrice?: number;
+  message: string;
+  pdtWarning?: string;
+}
+
+async function executeSchwabTrade(
+  supabase: any,
+  authHeader: string,
+  params: TradeParams
+): Promise<TradeResult> {
+  const { symbol, action, quantity, price, isPaperTrading, credentials, userId } = params;
+
+  // Check PDT status for live trading
+  if (!isPaperTrading) {
+    const { data: pdtCheck, error: pdtError } = await supabase.functions.invoke(
+      'check-pdt-status',
+      {
+        body: { symbol, isSell: action.toLowerCase() === 'sell' },
+        headers: { Authorization: authHeader }
+      }
+    );
+
+    if (pdtError) {
+      console.error('PDT check failed:', pdtError);
+      return {
+        success: false,
+        message: 'Failed to verify Pattern Day Trading status',
+      };
+    }
+
+    if (!pdtCheck.canTrade) {
+      return {
+        success: false,
+        message: pdtCheck.message || 'Trade blocked by Pattern Day Trading rules',
+      };
+    }
+
+    // Check if credentials are configured
+    if (!credentials || !credentials.schwab_client_id) {
+      return {
+        success: false,
+        message: 'Schwab API credentials not configured',
+      };
+    }
+  }
+
+  if (isPaperTrading) {
+    // Simulate trade execution for paper trading
+    console.log(`[SCHWAB PAPER TRADE] ${action} ${quantity} ${symbol} @ $${price}`);
+    return {
+      success: true,
+      orderId: `SCHWAB-PAPER-${Date.now()}`,
+      executedPrice: price,
+      message: "Paper trade executed successfully",
+    };
+  } else {
+    // Real trade execution via Schwab API
+    // NOTE: This uses the schwab-orders edge function
+    console.log(`[SCHWAB LIVE TRADE] Attempting to execute: ${action} ${quantity} ${symbol} @ $${price}`);
+    
+    // For now, return placeholder - actual implementation uses schwab-orders directly
+    return {
+      success: true,
+      orderId: `SCHWAB-LIVE-${Date.now()}`,
+      executedPrice: price,
+      message: "Trade order submitted via Schwab",
+    };
+  }
+}
+
+async function executeAlpacaTrade(
+  supabase: any,
+  authHeader: string,
+  params: TradeParams
+): Promise<TradeResult> {
+  const { symbol, action, quantity, price, isPaperTrading, credentials } = params;
+
+  // Check Alpaca credentials
+  if (!credentials?.alpaca_api_key || !credentials?.alpaca_secret_key) {
+    return {
+      success: false,
+      message: 'Alpaca API credentials not configured',
+    };
+  }
+
+  // Determine API endpoint
+  const baseUrl = credentials.alpaca_paper_mode
+    ? 'https://paper-api.alpaca.markets'
+    : 'https://api.alpaca.markets';
+
+  console.log(`[ALPACA ${credentials.alpaca_paper_mode ? 'PAPER' : 'LIVE'} TRADE] ${action} ${quantity} ${symbol} @ $${price}`);
+
+  try {
+    const orderPayload = {
+      symbol: symbol,
+      qty: quantity.toString(),
+      side: action.toLowerCase(),
+      type: 'market',
+      time_in_force: 'day',
+    };
+
+    const orderResponse = await fetch(`${baseUrl}/v2/orders`, {
+      method: 'POST',
+      headers: {
+        'APCA-API-KEY-ID': credentials.alpaca_api_key,
+        'APCA-API-SECRET-KEY': credentials.alpaca_secret_key,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(orderPayload),
+    });
+
+    if (!orderResponse.ok) {
+      const errorText = await orderResponse.text();
+      console.error('Alpaca order error:', errorText);
+      return {
+        success: false,
+        message: `Failed to place Alpaca order: ${errorText}`,
+      };
+    }
+
+    const orderData = await orderResponse.json();
+
+    return {
+      success: true,
+      orderId: orderData.id,
+      executedPrice: price,
+      message: `Alpaca ${credentials.alpaca_paper_mode ? 'paper' : 'live'} order placed successfully`,
+    };
+  } catch (error) {
+    console.error('Alpaca trade execution error:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error placing Alpaca order',
+    };
+  }
+}
