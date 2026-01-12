@@ -14,7 +14,6 @@ async function getEncryptionKey(): Promise<CryptoKey> {
   
   if (!ENCRYPTION_KEY_B64) {
     // Generate a deterministic key from the Supabase service role key
-    // This ensures the same key is used across function invocations
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const encoder = new TextEncoder();
     const data = encoder.encode(serviceKey);
@@ -23,12 +22,10 @@ async function getEncryptionKey(): Promise<CryptoKey> {
   } else {
     try {
       keyData = Uint8Array.from(atob(ENCRYPTION_KEY_B64), c => c.charCodeAt(0));
-      // Validate key length
       if (keyData.length !== 32) {
         throw new Error("Invalid key length");
       }
     } catch (error) {
-      // If base64 decode fails or wrong length, fall back to hash-based key
       console.warn("Invalid encryption key format, using fallback");
       const encoder = new TextEncoder();
       const data = encoder.encode(ENCRYPTION_KEY_B64);
@@ -57,7 +54,6 @@ async function encryptText(plaintext: string): Promise<string> {
     encoded
   );
   
-  // Combine IV and ciphertext, then base64 encode
   const combined = new Uint8Array(iv.length + ciphertext.byteLength);
   combined.set(iv);
   combined.set(new Uint8Array(ciphertext), iv.length);
@@ -69,7 +65,6 @@ async function decryptText(encrypted: string): Promise<string> {
   const key = await getEncryptionKey();
   const combined = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
   
-  // Extract IV and ciphertext
   const iv = combined.slice(0, 12);
   const ciphertext = combined.slice(12);
   
@@ -110,7 +105,7 @@ serve(async (req) => {
     if (operation === "save") {
       const nowIso = new Date().toISOString();
 
-      // Encrypt and save credentials
+      // Encrypt and save credentials for ALL brokers
       const encryptedData: any = {
         user_id: user.id,
         broker_type: credentials.broker_type,
@@ -118,6 +113,7 @@ serve(async (req) => {
         updated_at: nowIso,
       };
 
+      // Schwab credentials
       if (credentials.schwab_client_id) {
         encryptedData.schwab_client_id = await encryptText(credentials.schwab_client_id);
       }
@@ -126,6 +122,42 @@ serve(async (req) => {
       }
       if (credentials.schwab_refresh_token) {
         encryptedData.schwab_refresh_token = await encryptText(credentials.schwab_refresh_token);
+      }
+
+      // TD Ameritrade credentials (deprecated but keep for migration)
+      if (credentials.td_client_id) {
+        encryptedData.td_client_id = await encryptText(credentials.td_client_id);
+      }
+      if (credentials.td_client_secret) {
+        encryptedData.td_client_secret = await encryptText(credentials.td_client_secret);
+      }
+
+      // E*TRADE credentials
+      if (credentials.etrade_consumer_key) {
+        encryptedData.etrade_consumer_key = await encryptText(credentials.etrade_consumer_key);
+      }
+      if (credentials.etrade_consumer_secret) {
+        encryptedData.etrade_consumer_secret = await encryptText(credentials.etrade_consumer_secret);
+      }
+
+      // Alpaca credentials
+      if (credentials.alpaca_api_key) {
+        encryptedData.alpaca_api_key = await encryptText(credentials.alpaca_api_key);
+      }
+      if (credentials.alpaca_secret_key) {
+        encryptedData.alpaca_secret_key = await encryptText(credentials.alpaca_secret_key);
+      }
+      // Boolean - doesn't need encryption
+      if (credentials.alpaca_paper_mode !== undefined) {
+        encryptedData.alpaca_paper_mode = credentials.alpaca_paper_mode;
+      }
+
+      // Interactive Brokers credentials
+      if (credentials.ib_account_id) {
+        encryptedData.ib_account_id = await encryptText(credentials.ib_account_id);
+      }
+      if (credentials.ib_access_token) {
+        encryptedData.ib_access_token = await encryptText(credentials.ib_access_token);
       }
 
       const { error } = await supabase
@@ -164,25 +196,43 @@ serve(async (req) => {
         );
       }
 
-      const decryptedData: any = {
-        trading_mode: data.trading_mode,
-        broker_type: data.broker_type,
-      };
-
       const safeDecrypt = async (value: string | null) => {
         if (!value) return null;
         try {
           return await decryptText(value);
         } catch (e) {
-          // Value might already be plain text (e.g., older data or other functions wrote it)
           console.warn("[encrypt-credentials] Could not decrypt value, returning as-is");
           return value;
         }
       };
 
+      const decryptedData: any = {
+        trading_mode: data.trading_mode,
+        broker_type: data.broker_type,
+        // Boolean fields - no decryption needed
+        alpaca_paper_mode: data.alpaca_paper_mode,
+      };
+
+      // Schwab
       decryptedData.schwab_client_id = await safeDecrypt(data.schwab_client_id);
       decryptedData.schwab_client_secret = await safeDecrypt(data.schwab_client_secret);
       decryptedData.schwab_refresh_token = await safeDecrypt(data.schwab_refresh_token);
+
+      // TD Ameritrade
+      decryptedData.td_client_id = await safeDecrypt(data.td_client_id);
+      decryptedData.td_client_secret = await safeDecrypt(data.td_client_secret);
+
+      // E*TRADE
+      decryptedData.etrade_consumer_key = await safeDecrypt(data.etrade_consumer_key);
+      decryptedData.etrade_consumer_secret = await safeDecrypt(data.etrade_consumer_secret);
+
+      // Alpaca
+      decryptedData.alpaca_api_key = await safeDecrypt(data.alpaca_api_key);
+      decryptedData.alpaca_secret_key = await safeDecrypt(data.alpaca_secret_key);
+
+      // Interactive Brokers
+      decryptedData.ib_account_id = await safeDecrypt(data.ib_account_id);
+      decryptedData.ib_access_token = await safeDecrypt(data.ib_access_token);
 
       return new Response(
         JSON.stringify({ credentials: decryptedData }),
@@ -215,11 +265,10 @@ serve(async (req) => {
               secretDecryptOk: false,
               refreshTokenPresent: false,
               refreshTokenDecryptOk: false,
-              lastRefreshFailure: null,
               callbackUrl,
-              rawClientIdPreview: null,
-              rawSecretPreview: null,
-              rawRefreshTokenPreview: null,
+              brokerType: null,
+              alpacaConfigured: false,
+              etradeConfigured: false,
             }
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -231,11 +280,9 @@ serve(async (req) => {
         if (!value) return { present: false, decryptOk: false, preview: null };
         try {
           const decrypted = await decryptText(value);
-          // Show first 4 chars only for privacy
           const preview = decrypted.length > 4 ? decrypted.substring(0, 4) + "..." : decrypted;
           return { present: true, decryptOk: true, preview };
         } catch (e) {
-          // Decryption failed - show raw preview to help diagnose
           const preview = value.length > 8 ? value.substring(0, 8) + "..." : value;
           return { present: true, decryptOk: false, preview: `(raw) ${preview}` };
         }
@@ -244,10 +291,15 @@ serve(async (req) => {
       const clientIdResult = await testDecrypt(data.schwab_client_id);
       const secretResult = await testDecrypt(data.schwab_client_secret);
       const refreshTokenResult = await testDecrypt(data.schwab_refresh_token);
+      const alpacaKeyResult = await testDecrypt(data.alpaca_api_key);
+      const alpacaSecretResult = await testDecrypt(data.alpaca_secret_key);
+      const etradeKeyResult = await testDecrypt(data.etrade_consumer_key);
+      const etradeSecretResult = await testDecrypt(data.etrade_consumer_secret);
 
       return new Response(
         JSON.stringify({
           debug: {
+            // Schwab
             clientIdPresent: clientIdResult.present,
             clientIdDecryptOk: clientIdResult.decryptOk,
             clientIdPreview: clientIdResult.preview,
@@ -257,6 +309,18 @@ serve(async (req) => {
             refreshTokenPresent: refreshTokenResult.present,
             refreshTokenDecryptOk: refreshTokenResult.decryptOk,
             refreshTokenPreview: refreshTokenResult.preview,
+            // Alpaca
+            alpacaConfigured: alpacaKeyResult.present && alpacaSecretResult.present,
+            alpacaKeyDecryptOk: alpacaKeyResult.decryptOk,
+            alpacaSecretDecryptOk: alpacaSecretResult.decryptOk,
+            alpacaPaperMode: data.alpaca_paper_mode,
+            // E*TRADE
+            etradeConfigured: etradeKeyResult.present && etradeSecretResult.present,
+            etradeKeyDecryptOk: etradeKeyResult.decryptOk,
+            etradeSecretDecryptOk: etradeSecretResult.decryptOk,
+            // General
+            brokerType: data.broker_type,
+            tradingMode: data.trading_mode,
             updatedAt: data.updated_at,
             callbackUrl,
           }
