@@ -130,6 +130,16 @@ const Navigation = () => {
                 Analytics
               </Link>
               <Link 
+                to="/advanced-analytics"
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/advanced-analytics" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Adv. Analytics
+              </Link>
+              <Link 
                 to="/education"
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/education" 

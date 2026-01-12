@@ -11,6 +11,7 @@ import Trading from "./pages/Trading";
 import PaperTrading from "./pages/PaperTrading";
 import TradingJournal from "./pages/TradingJournal";
 import Analytics from "./pages/Analytics";
+import AdvancedAnalytics from "./pages/AdvancedAnalytics";
 import Education from "./pages/Education";
 import Podcast from "./pages/Podcast";
 import Settings from "./pages/Settings";
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/bot-testing" element={<BotTesting />} />
           <Route path="/pocketoption" element={<PocketOption />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/advanced-analytics" element={<AdvancedAnalytics />} />
           <Route path="/education" element={<Education />} />
           <Route path="/podcast" element={<Podcast />} />
           <Route path="/settings" element={<Settings />} />

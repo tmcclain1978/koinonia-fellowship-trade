@@ -107,3 +107,12 @@ verify_jwt = false
 
 [functions.fetch-market-data]
 verify_jwt = false
+
+[functions.fetch-fred-data]
+verify_jwt = false
+
+[functions.fetch-cme-data]
+verify_jwt = false
+
+[functions.fetch-economic-calendar]
+verify_jwt = false
