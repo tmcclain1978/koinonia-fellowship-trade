@@ -259,62 +259,77 @@ class SchwabApiClient {
       err?.code === 'NOT_FOUND' ||
       /requested function was not found/i.test(String(err?.message ?? ''));
 
-    const trySchwabQuotes = async () => {
-      const { data, error } = await supabase.functions.invoke('schwab-quotes', {
-        body: { symbols: normalizedSymbols },
-      });
-
-      if (error) return { quotes: null as SchwabQuote[] | null, error };
-      if (data?.error) return { quotes: null as SchwabQuote[] | null, error: new Error(data.error) };
-      return { quotes: (data?.quotes as SchwabQuote[]) || [], error: null as any };
-    };
-
-    // 1) Prefer Schwab quotes when authenticated (verify_jwt=true)
+    // 1) Prefer Schwab quotes when authenticated
     try {
       const { data: { session } } = await supabase.auth.getSession();
+
       if (session) {
-        let res = await trySchwabQuotes();
+        const delays = [0, 600, 1500]; // brief deploy window retries
 
-        // During function deploys it can briefly 404; retry once.
-        if (res.error && isNotFoundError(res.error)) {
-          await wait(500);
-          res = await trySchwabQuotes();
+        for (const delayMs of delays) {
+          if (delayMs) await wait(delayMs);
+
+          try {
+            const { data, error } = await supabase.functions.invoke('schwab-quotes', {
+              body: { symbols: normalizedSymbols },
+            });
+
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+
+            return (data?.quotes as SchwabQuote[]) || [];
+          } catch (err: any) {
+            if (isNotFoundError(err)) {
+              // likely deploying/routing; retry
+              continue;
+            }
+
+            // Non-404 errors fall through to Polygon-backed fallback below.
+            console.warn('[schwabApi.getQuotes] Schwab quotes failed, falling back:', err);
+            break;
+          }
         }
-
-        if (!res.error && res.quotes) return res.quotes;
-
-        // Fall through to Polygon-backed fallback below.
-        console.warn('[schwabApi.getQuotes] Schwab quotes failed, falling back:', res.error);
       }
     } catch (err) {
       console.warn('[schwabApi.getQuotes] Session/Schwab fetch failed, falling back:', err);
     }
 
-    // 2) Fallback to Polygon-backed quotes (no Schwab function dependency)
+    // 2) Fallback to Polygon-backed quotes
     try {
-      const { data, error } = await supabase.functions.invoke('market-data-stream', {
-        body: { action: 'get_quotes', symbols: normalizedSymbols },
-      });
+      const delays = [0, 600, 1500];
 
-      if (error) throw error;
+      for (const delayMs of delays) {
+        if (delayMs) await wait(delayMs);
 
-      const quotes = (data?.quotes || []) as Array<any>;
-      return quotes
-        .filter((q) => q && !q.error)
-        .map((q) => ({
-          symbol: q.symbol,
-          lastPrice: q.price,
-          bidPrice: q.bid,
-          askPrice: q.ask,
-          volume: q.volume,
-          openPrice: q.open,
-          highPrice: q.high,
-          lowPrice: q.low,
-          closePrice: q.close,
-          netChange: q.change,
-          netPercentChange: q.changePercent,
-          source: q.source || data?.source || 'polygon',
-        })) as SchwabQuote[];
+        const { data, error } = await supabase.functions.invoke('market-data-stream', {
+          body: { action: 'get_quotes', symbols: normalizedSymbols },
+        });
+
+        if (error) {
+          if (isNotFoundError(error)) continue;
+          throw error;
+        }
+
+        const quotes = (data?.quotes || []) as Array<any>;
+        return quotes
+          .filter((q) => q && !q.error)
+          .map((q) => ({
+            symbol: q.symbol,
+            lastPrice: q.price,
+            bidPrice: q.bid,
+            askPrice: q.ask,
+            volume: q.volume,
+            openPrice: q.open,
+            highPrice: q.high,
+            lowPrice: q.low,
+            closePrice: q.close,
+            netChange: q.change,
+            netPercentChange: q.changePercent,
+            source: q.source || data?.source || 'polygon',
+          })) as SchwabQuote[];
+      }
+
+      return [];
     } catch (err) {
       console.error('[schwabApi.getQuotes] Fallback quotes failed:', err);
       return [];
