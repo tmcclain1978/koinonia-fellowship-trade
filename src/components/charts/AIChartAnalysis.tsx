@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Loader2, Brain, TrendingUp, TrendingDown, Minus, Target, AlertTriangle, BarChart3, Eye, EyeOff } from "lucide-react";
+import { Loader2, Brain, TrendingUp, TrendingDown, Minus, Target, AlertTriangle, BarChart3, Eye, EyeOff, Save } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useAIPredictionLogger } from "@/hooks/useAIPredictionLogger";
+import { toast } from "sonner";
 
 interface SupportResistanceLevel {
   price: number;
@@ -64,6 +66,8 @@ interface AIChartAnalysisProps {
     premarket: boolean;
   };
   onToggleOverlay: (overlay: keyof AIChartAnalysisProps['showOverlays']) => void;
+  userId?: string;
+  onPredictionLogged?: (id: string) => void;
 }
 
 export const AIChartAnalysis = ({
@@ -72,8 +76,37 @@ export const AIChartAnalysis = ({
   onAnalyze,
   showOverlays,
   onToggleOverlay,
+  userId,
+  onPredictionLogged,
 }: AIChartAnalysisProps) => {
   const [expanded, setExpanded] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedPredictionId, setSavedPredictionId] = useState<string | null>(null);
+  const { logPrediction } = useAIPredictionLogger();
+
+  // Reset saved state when analysis changes
+  useEffect(() => {
+    setSavedPredictionId(null);
+  }, [analysis?.timestamp]);
+
+  const handleSavePrediction = async () => {
+    if (!analysis || !userId) {
+      toast.error("Please sign in to track predictions");
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      const id = await logPrediction(userId, analysis);
+      if (id) {
+        setSavedPredictionId(id);
+        onPredictionLogged?.(id);
+        toast.success("Prediction saved for tracking!");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const DirectionIcon = analysis?.dailyPrediction.direction === 'bullish' 
     ? TrendingUp 
@@ -107,29 +140,56 @@ export const AIChartAnalysis = ({
                   {analysis.dailyPrediction.direction.toUpperCase()}
                 </Badge>
               )}
-            </div>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAnalyze();
-              }}
-              disabled={isLoading}
-              className="gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <Brain className="w-4 h-4" />
-                  {analysis ? 'Refresh' : 'Analyze Chart'}
-                </>
+              {savedPredictionId && (
+                <Badge variant="secondary" className="text-xs">
+                  <Save className="w-3 h-3 mr-1" />
+                  Tracked
+                </Badge>
               )}
-            </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              {analysis && userId && !savedPredictionId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSavePrediction();
+                  }}
+                  disabled={isSaving}
+                  className="gap-1"
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Save className="w-3 h-3" />
+                  )}
+                  Track
+                </Button>
+              )}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAnalyze();
+                }}
+                disabled={isLoading}
+                className="gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="w-4 h-4" />
+                    {analysis ? 'Refresh' : 'Analyze Chart'}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CollapsibleTrigger>
 

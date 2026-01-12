@@ -27,6 +27,7 @@ import { SchwabOptionsOrderEntry } from "@/components/options/SchwabOptionsOrder
 import { ConditionalExitBuilder } from "@/components/options/ConditionalExitBuilder";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 import { RealtimePnLTracker } from "@/components/RealtimePnLTracker";
+import { AIPredictionTracker } from "@/components/charts/AIPredictionTracker";
 
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -733,10 +734,17 @@ const Trading = () => {
 
             {/* Analysis Tab */}
             <TabsContent value="analysis" className="space-y-6">
-              <KoinoniaIndicator 
-                symbol={symbol}
-                onSignalGenerated={handleKoinoniaSignal}
-              />
+              <div className="grid lg:grid-cols-2 gap-6">
+                <KoinoniaIndicator 
+                  symbol={symbol}
+                  onSignalGenerated={handleKoinoniaSignal}
+                />
+                
+                <AIPredictionTracker 
+                  userId={user?.id}
+                  symbol={symbol}
+                />
+              </div>
               
               <OptionPnLChart symbol={symbol} currentPrice={256} />
             </TabsContent>
