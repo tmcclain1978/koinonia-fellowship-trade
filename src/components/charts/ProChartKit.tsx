@@ -157,12 +157,24 @@ export const ProChartKit = ({
   const lastProcessedPriceRef = useRef<number | null>(null);
   const pendingUpdateRef = useRef<KLineData | null>(null);
   const rafIdRef = useRef<number | null>(null);
+  const lastUpdateTimeRef = useRef<number>(0);
+  const UPDATE_THROTTLE_MS = 100; // Throttle to 10fps max for smooth visuals
 
-  // Debounced chart update using requestAnimationFrame for smooth rendering
+  // Throttled chart update using requestAnimationFrame for smooth rendering
   const scheduleChartUpdate = useCallback((candle: KLineData, isNewCandle: boolean) => {
+    const now = Date.now();
+    
+    // Skip update if too soon (unless it's a new candle which we always want)
+    if (!isNewCandle && now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) {
+      return;
+    }
+    lastUpdateTimeRef.current = now;
+    
     pendingUpdateRef.current = candle;
     
-    if (rafIdRef.current) return; // Already scheduled
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
     
     rafIdRef.current = requestAnimationFrame(() => {
       rafIdRef.current = null;
@@ -285,10 +297,15 @@ export const ProChartKit = ({
               bar: {
                 upColor: "#26a69a",
                 downColor: "#ef5350",
-                upBorderColor: "#26a69a",
-                downBorderColor: "#ef5350",
+                // Transparent borders for smooth TradingView-style appearance
+                upBorderColor: "transparent",
+                downBorderColor: "transparent",
                 upWickColor: "#26a69a",
-                downWickColor: "#ef5350"
+                downWickColor: "#ef5350",
+                // NoChange colors for flat candles
+                noChangeColor: "#888888",
+                noChangeBorderColor: "transparent",
+                noChangeWickColor: "#888888"
               },
               tooltip: {
                 text: {
@@ -373,6 +390,10 @@ export const ProChartKit = ({
 
         console.log("✅ Chart initialized successfully");
         chartRef.current = chart;
+        
+        // Set optimal bar spacing for crisp candles
+        chart.setBarSpace(8);
+        
         fetchAndLoadData();
       } catch (error) {
         console.error("❌ Failed to initialize chart:", error);
@@ -1318,8 +1339,15 @@ export const ProChartKit = ({
           </div>
         )}
         <div 
-          ref={containerRef} 
-          style={{ width: "100%", height: `${height}px` }}
+          ref={containerRef}
+          className="chart-container"
+          style={{ 
+            width: "100%", 
+            height: `${height}px`,
+            transform: 'translateZ(0)',
+            willChange: 'transform',
+            backfaceVisibility: 'hidden'
+          }}
         />
 
         {/* Replay Mode Indicator */}
