@@ -286,50 +286,58 @@ export function FREDDashboard() {
                 <p className="text-sm text-muted-foreground">{series.description}</p>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="hsl(var(--muted-foreground))"
-                      tick={{ fontSize: 10 }}
-                      tickFormatter={(v) => v.slice(2, 7)}
-                    />
-                    <YAxis 
-                      stroke="hsl(var(--muted-foreground))"
-                      tick={{ fontSize: 10 }}
-                      width={60}
-                      tickFormatter={(v) => {
-                        if (series.unit === 'Billions USD') return `$${(v/1000).toFixed(0)}T`;
-                        if (series.unit === '%') return `${v.toFixed(1)}%`;
-                        return v.toFixed(1);
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                      }}
-                      formatter={(value: number) => [
-                        series.unit === '%' 
-                          ? `${value.toFixed(2)}%` 
-                          : series.unit === 'Billions USD'
-                            ? `$${value.toFixed(0)}B`
-                            : value.toFixed(2),
-                        series.name
-                      ]}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke={seriesId === 'T10Y2Y' ? "hsl(var(--destructive))" : "hsl(var(--primary))"}
-                      fill={seriesId === 'T10Y2Y' ? "hsl(var(--destructive))" : "hsl(var(--primary))"}
-                      fillOpacity={0.2}
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis 
+                        dataKey="date" 
+                        stroke="hsl(var(--muted-foreground))"
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v) => v?.slice?.(2, 7) ?? ''}
+                      />
+                      <YAxis 
+                        stroke="hsl(var(--muted-foreground))"
+                        tick={{ fontSize: 10 }}
+                        width={60}
+                        tickFormatter={(v) => {
+                          if (v == null) return '';
+                          if (series.unit === 'Billions USD') return `$${(v/1000).toFixed(0)}T`;
+                          if (series.unit === '%') return `${v.toFixed(1)}%`;
+                          return v.toFixed(1);
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                        }}
+                        formatter={(value: number) => [
+                          value == null ? '--' :
+                          series.unit === '%' 
+                            ? `${value.toFixed(2)}%` 
+                            : series.unit === 'Billions USD'
+                              ? `$${value.toFixed(0)}B`
+                              : value.toFixed(2),
+                          series.name
+                        ]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke={seriesId === 'T10Y2Y' ? "hsl(var(--destructive))" : "hsl(var(--primary))"}
+                        fill={seriesId === 'T10Y2Y' ? "hsl(var(--destructive))" : "hsl(var(--primary))"}
+                        fillOpacity={0.2}
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                    {isLoading ? 'Loading...' : 'No data available'}
+                  </div>
+                )}
               </CardContent>
             </Card>
           );
