@@ -133,19 +133,37 @@ serve(async (req) => {
     const endpoint = `${SCHWAB_API_BASE}/quotes?${params.toString()}`;
     console.log(`[schwab-quotes] Calling: ${endpoint}`);
 
-    // Fetch with timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetch(endpoint, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json',
-      },
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeoutId);
+    // Fetch with timeout and network error handling
+    let response: Response;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      response = await fetch(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      // Handle network errors, timeouts, and aborts gracefully
+      console.log(`[schwab-quotes] Fetch failed (${fetchError.name}): ${fetchError.message}`);
+      if (cachedResult) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            quotes: cachedResult.data,
+            source: 'schwab-cached',
+            note: 'Network error - using cached data',
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      return returnMockQuotes(symbols);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
