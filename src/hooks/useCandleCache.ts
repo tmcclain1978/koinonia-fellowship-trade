@@ -38,7 +38,7 @@ const getCacheKey = (symbol: string, interval: string): string => {
   return `candle_cache_${symbol.toUpperCase()}_${interval}`;
 };
 
-// Check if market is open (simplified US market hours check)
+// Check if market is open (proper US market hours check in Eastern Time)
 export const isMarketOpen = (): boolean => {
   const now = new Date();
   const day = now.getDay();
@@ -46,18 +46,66 @@ export const isMarketOpen = (): boolean => {
   // Weekend check (0 = Sunday, 6 = Saturday)
   if (day === 0 || day === 6) return false;
   
-  // Convert to EST (UTC-5, ignoring DST for simplicity)
-  const utcHours = now.getUTCHours();
-  const utcMinutes = now.getUTCMinutes();
-  const estHours = (utcHours - 5 + 24) % 24;
-  const estMinutes = utcMinutes;
+  // Get current time in Eastern timezone using proper timezone handling
+  const easternTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hours = easternTime.getHours();
+  const minutes = easternTime.getMinutes();
   
-  // Market hours: 9:30 AM - 4:00 PM EST
-  const timeInMinutes = estHours * 60 + estMinutes;
-  const marketOpen = 9 * 60 + 30;  // 9:30 AM
-  const marketClose = 16 * 60;      // 4:00 PM
+  // Market hours: 9:30 AM - 4:00 PM ET
+  const timeInMinutes = hours * 60 + minutes;
+  const marketOpen = 9 * 60 + 30;  // 9:30 AM ET
+  const marketClose = 16 * 60;      // 4:00 PM ET
   
   return timeInMinutes >= marketOpen && timeInMinutes < marketClose;
+};
+
+// Check if we're in premarket hours (4:00 AM - 9:30 AM ET)
+export const isPremarket = (): boolean => {
+  const now = new Date();
+  const day = now.getDay();
+  
+  // Weekend check
+  if (day === 0 || day === 6) return false;
+  
+  const easternTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hours = easternTime.getHours();
+  const minutes = easternTime.getMinutes();
+  
+  const timeInMinutes = hours * 60 + minutes;
+  const premarketOpen = 4 * 60;     // 4:00 AM ET
+  const marketOpen = 9 * 60 + 30;   // 9:30 AM ET
+  
+  return timeInMinutes >= premarketOpen && timeInMinutes < marketOpen;
+};
+
+// Check if we're in after hours (4:00 PM - 8:00 PM ET)
+export const isAfterHours = (): boolean => {
+  const now = new Date();
+  const day = now.getDay();
+  
+  // Weekend check
+  if (day === 0 || day === 6) return false;
+  
+  const easternTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hours = easternTime.getHours();
+  const minutes = easternTime.getMinutes();
+  
+  const timeInMinutes = hours * 60 + minutes;
+  const marketClose = 16 * 60;      // 4:00 PM ET
+  const afterHoursClose = 20 * 60;  // 8:00 PM ET
+  
+  return timeInMinutes >= marketClose && timeInMinutes < afterHoursClose;
+};
+
+// Get current Eastern Time formatted
+export const getCurrentEasternTime = (): string => {
+  const now = new Date();
+  return now.toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }) + ' ET';
 };
 
 // Get next market open time
@@ -65,16 +113,17 @@ export const getNextMarketOpen = (): Date => {
   const now = new Date();
   const day = now.getDay();
   
+  // Get Eastern time
+  const easternTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const hours = easternTime.getHours();
+  
   // Calculate days until next trading day
   let daysToAdd = 0;
   if (day === 6) daysToAdd = 2; // Saturday -> Monday
   else if (day === 0) daysToAdd = 1; // Sunday -> Monday
   else {
     // Weekday - check if market is closed for today
-    const utcHours = now.getUTCHours();
-    const estHours = (utcHours - 5 + 24) % 24;
-    
-    if (estHours >= 16) {
+    if (hours >= 16) {
       // After market close
       daysToAdd = day === 5 ? 3 : 1; // Friday -> Monday, otherwise next day
     }
@@ -82,9 +131,13 @@ export const getNextMarketOpen = (): Date => {
   
   const nextOpen = new Date(now);
   nextOpen.setDate(nextOpen.getDate() + daysToAdd);
-  nextOpen.setUTCHours(14, 30, 0, 0); // 9:30 AM EST in UTC
   
-  return nextOpen;
+  // Set to 9:30 AM ET - we need to calculate this properly
+  // Create a date string in Eastern timezone and parse it
+  const dateStr = nextOpen.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+  const targetDate = new Date(`${dateStr} 09:30:00`);
+  
+  return targetDate;
 };
 
 // Get market status message
@@ -93,21 +146,22 @@ export const getMarketStatusMessage = (): string => {
     return 'Market Open';
   }
   
+  if (isPremarket()) {
+    return 'Pre-Market';
+  }
+  
+  if (isAfterHours()) {
+    return 'After Hours';
+  }
+  
   const now = new Date();
   const day = now.getDay();
   
   if (day === 0 || day === 6) {
-    return 'Weekend - Market Closed';
+    return 'Weekend - Closed';
   }
   
-  const utcHours = now.getUTCHours();
-  const estHours = (utcHours - 5 + 24) % 24;
-  
-  if (estHours < 9 || (estHours === 9 && now.getUTCMinutes() < 30)) {
-    return 'Pre-Market';
-  }
-  
-  return 'After Hours';
+  return 'Market Closed';
 };
 
 export const useCandleCache = ({
