@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { init, dispose, Chart, KLineData, CandleType, LineType } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock } from "lucide-react";
+import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { IndicatorPanel } from "./IndicatorPanel";
@@ -11,6 +11,7 @@ import { ChartSettings } from "./ChartSettings";
 import { CandleTypeSelector, CandleTypeOption } from "./CandleTypeSelector";
 import { ChartReplayControls } from "./ChartReplayControls";
 import { HistoricalDatePicker } from "./HistoricalDatePicker";
+import { AIChartAnalysis } from "./AIChartAnalysis";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,8 @@ import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
 import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
+import { applyAIOverlays, clearAIOverlays, type ChartAnalysis, type OverlayVisibility } from "@/utils/chartAnalysisOverlays";
+import { toast } from "sonner";
 
 interface ProChartKitProps {
   symbol: string;
@@ -88,6 +91,17 @@ export const ProChartKit = ({
 
   // Chart data source tracking
   const [chartDataSource, setChartDataSource] = useState<string>('loading');
+
+  // AI Chart Analysis state
+  const [aiAnalysis, setAiAnalysis] = useState<ChartAnalysis | null>(null);
+  const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
+  const [aiOverlayVisibility, setAiOverlayVisibility] = useState<OverlayVisibility>({
+    support: true,
+    resistance: true,
+    bounceZones: true,
+    predictions: true,
+    premarket: true,
+  });
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -731,6 +745,57 @@ export const ProChartKit = ({
     }
   };
 
+  // AI Chart Analysis function
+  const runAIChartAnalysis = useCallback(async () => {
+    if (!chartRef.current) return;
+    
+    setAiAnalysisLoading(true);
+    try {
+      const dataList = chartRef.current.getDataList();
+      if (dataList.length < 20) {
+        toast.error("Need more data for AI analysis");
+        return;
+      }
+
+      const candles = dataList.map(c => ({
+        timestamp: c.timestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume || 0
+      }));
+
+      const { data, error } = await supabase.functions.invoke("ai-chart-analysis", {
+        body: { symbol, candles }
+      });
+
+      if (error) throw error;
+      
+      setAiAnalysis(data);
+      toast.success("AI analysis complete!");
+      
+      // Apply overlays to chart
+      applyAIOverlays(chartRef.current, data, aiOverlayVisibility);
+    } catch (error) {
+      console.error("AI analysis error:", error);
+      toast.error("Failed to run AI analysis");
+    } finally {
+      setAiAnalysisLoading(false);
+    }
+  }, [symbol, aiOverlayVisibility]);
+
+  // Update overlays when visibility changes
+  useEffect(() => {
+    if (aiAnalysis && chartRef.current) {
+      applyAIOverlays(chartRef.current, aiAnalysis, aiOverlayVisibility);
+    }
+  }, [aiOverlayVisibility, aiAnalysis]);
+
+  const handleToggleAIOverlay = useCallback((overlay: keyof OverlayVisibility) => {
+    setAiOverlayVisibility(prev => ({ ...prev, [overlay]: !prev[overlay] }));
+  }, []);
+
   // Add signal overlays to chart with colors
   const addSignalOverlays = useCallback((signal: any) => {
     if (!chartRef.current) return;
@@ -1236,6 +1301,14 @@ export const ProChartKit = ({
           Load historical data using the "Historical Data" panel above to enable chart replay
         </div>
       )}
+      {/* AI Chart Analysis Panel */}
+      <AIChartAnalysis
+        analysis={aiAnalysis}
+        isLoading={aiAnalysisLoading}
+        onAnalyze={runAIChartAnalysis}
+        showOverlays={aiOverlayVisibility}
+        onToggleOverlay={handleToggleAIOverlay}
+      />
 
       <Card className="relative p-0 overflow-hidden">
         {(loading || loadingHistorical) && (

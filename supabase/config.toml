@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.fetch-economic-calendar]
 verify_jwt = false
+
+[functions.ai-chart-analysis]
+verify_jwt = false
