@@ -1,5 +1,14 @@
 project_id = "cxsfpxsbejzpukrdrulu"
 
+[functions.alpaca-accounts]
+verify_jwt = true
+
+[functions.alpaca-quotes]
+verify_jwt = true
+
+[functions.alpaca-orders]
+verify_jwt = true
+
 [functions.koinonia-indicator]
 verify_jwt = false
 
