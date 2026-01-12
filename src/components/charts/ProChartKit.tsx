@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
-import { useCandleCache, isMarketOpen, getMarketStatusMessage } from "@/hooks/useCandleCache";
+import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
 
 interface ProChartKitProps {
   symbol: string;
@@ -96,6 +96,7 @@ export const ProChartKit = ({
   
   // Market status tracking
   const [marketStatus, setMarketStatus] = useState<string>(getMarketStatusMessage());
+  const [currentEasternTimeDisplay, setCurrentEasternTimeDisplay] = useState<string>(getCurrentEasternTime());
   const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
   
   // Cache integration
@@ -306,30 +307,52 @@ export const ProChartKit = ({
             formatDate: (timestamp: number, format: string) => {
               const date = new Date(timestamp);
               
+              // Use Eastern Time for market hours display when showing premarket/intraday
+              const easternTimeOptions: Intl.DateTimeFormatOptions = {
+                timeZone: 'America/New_York',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+              };
+              const easternDateOptions: Intl.DateTimeFormatOptions = {
+                timeZone: 'America/New_York',
+                month: 'numeric',
+                day: 'numeric',
+              };
+              
               // For x-axis labels, format based on current interval
               if (format === 'YYYY-MM-DD HH:mm' || format === 'HH:mm') {
-                // Intraday intervals: show time only
+                // Intraday intervals: show time in Eastern Time
                 if (['1m', '5m', '15m', '1', '5', '15', 'minute', '5minute', '15minute'].includes(interval)) {
-                  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  return date.toLocaleTimeString('en-US', easternTimeOptions);
                 }
-                // Hourly intervals: show time with date hint
+                // Hourly intervals: show time with date hint in Eastern Time
                 if (['30m', '1h', '30', '60', '30minute', 'hour'].includes(interval)) {
-                  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  const dateStr = date.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+                  const time = date.toLocaleTimeString('en-US', easternTimeOptions);
+                  const dateStr = date.toLocaleDateString('en-US', easternDateOptions);
                   return `${time}\n${dateStr}`;
                 }
                 // Daily: show date only
                 if (['1D', 'D', 'daily'].includes(interval)) {
-                  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                  return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
                 }
                 // Weekly/Monthly: show month and year
                 if (['1W', '1M', 'weekly', 'monthly'].includes(interval)) {
-                  return date.toLocaleDateString([], { month: 'short', year: '2-digit' });
+                  return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', year: '2-digit' });
                 }
               }
               
-              // For crosshair/tooltip, show full detail
-              return date.toLocaleDateString() + " " + date.toLocaleTimeString();
+              // For crosshair/tooltip, show full detail in Eastern Time
+              const fullDateOptions: Intl.DateTimeFormatOptions = {
+                timeZone: 'America/New_York',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+              };
+              return date.toLocaleString('en-US', fullDateOptions) + ' ET';
             }
           }
         });
@@ -382,10 +405,11 @@ export const ProChartKit = ({
   useEffect(() => {
     if (!chartRef.current || replayMode) return;
 
-    // Update market status periodically
+    // Update market status and Eastern Time periodically
     const marketStatusInterval = setInterval(() => {
       setMarketStatus(getMarketStatusMessage());
-    }, 60000); // Check every minute
+      setCurrentEasternTimeDisplay(getCurrentEasternTime());
+    }, 30000); // Check every 30 seconds for smoother time updates
 
     // Smart sync interval - much less aggressive
     const smartSyncInterval = isMarketOpen() ? 60000 : 5 * 60 * 1000; // 1min during market, 5min after
@@ -1039,14 +1063,16 @@ export const ProChartKit = ({
           onChange={setCandleType}
         />
         
-        <div className="flex items-center space-x-2">
+        <div className={`flex items-center space-x-2 px-2 py-1 rounded-md transition-colors ${
+          showPremarket ? 'bg-amber-500/20 border border-amber-500/40' : ''
+        }`}>
           <Switch
             id="premarket-toggle"
             checked={showPremarket}
             onCheckedChange={setShowPremarket}
           />
-          <Label htmlFor="premarket-toggle" className="text-sm">
-            Show Premarket
+          <Label htmlFor="premarket-toggle" className={`text-sm ${showPremarket ? 'text-amber-400 font-medium' : ''}`}>
+            {showPremarket ? 'Extended Hours (ET)' : 'Regular Hours'}
           </Label>
         </div>
         
@@ -1060,13 +1086,18 @@ export const ProChartKit = ({
           onRefresh={fetchAndLoadData}
         />
 
-        {/* Market Status Indicator */}
+        {/* Market Status Indicator with Eastern Time */}
         <Badge 
-          variant={isMarketOpen() ? "default" : "secondary"}
-          className="flex items-center gap-1.5 px-2.5 py-1"
+          variant={isMarketOpen() ? "default" : isPremarket() || isAfterHours() ? "outline" : "secondary"}
+          className={`flex items-center gap-1.5 px-2.5 py-1 ${
+            isPremarket() ? 'border-amber-500/50 text-amber-400' :
+            isAfterHours() ? 'border-blue-500/50 text-blue-400' :
+            ''
+          }`}
         >
           <Clock className="w-3 h-3" />
           <span className="text-xs font-medium">{marketStatus}</span>
+          <span className="text-xs opacity-70">• {currentEasternTimeDisplay}</span>
         </Badge>
 
         {/* Live Price & Volume Indicator */}
