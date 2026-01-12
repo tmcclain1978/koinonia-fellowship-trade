@@ -379,6 +379,7 @@ const Trading = () => {
                     { label: "1m", value: "1" },
                     { label: "5m", value: "5" },
                     { label: "15m", value: "15" },
+                    { label: "30m", value: "30" },
                     { label: "1H", value: "60" },
                     { label: "D", value: "D" },
                     { label: "W", value: "W" },
