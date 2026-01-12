@@ -14,6 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_prediction_logs: {
+        Row: {
+          actual_close: number | null
+          actual_high: number | null
+          actual_low: number | null
+          actual_open: number | null
+          confidence: number
+          created_at: string
+          direction_correct: boolean | null
+          evaluated_at: string | null
+          high_accuracy_pct: number | null
+          id: string
+          key_level: number
+          low_accuracy_pct: number | null
+          overall_score: number | null
+          predicted_at: string
+          predicted_direction: string
+          predicted_high: number
+          predicted_low: number
+          reasoning: string | null
+          symbol: string
+          trading_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_close?: number | null
+          actual_high?: number | null
+          actual_low?: number | null
+          actual_open?: number | null
+          confidence: number
+          created_at?: string
+          direction_correct?: boolean | null
+          evaluated_at?: string | null
+          high_accuracy_pct?: number | null
+          id?: string
+          key_level: number
+          low_accuracy_pct?: number | null
+          overall_score?: number | null
+          predicted_at?: string
+          predicted_direction: string
+          predicted_high: number
+          predicted_low: number
+          reasoning?: string | null
+          symbol: string
+          trading_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_close?: number | null
+          actual_high?: number | null
+          actual_low?: number | null
+          actual_open?: number | null
+          confidence?: number
+          created_at?: string
+          direction_correct?: boolean | null
+          evaluated_at?: string | null
+          high_accuracy_pct?: number | null
+          id?: string
+          key_level?: number
+          low_accuracy_pct?: number | null
+          overall_score?: number | null
+          predicted_at?: string
+          predicted_direction?: string
+          predicted_high?: number
+          predicted_low?: number
+          reasoning?: string | null
+          symbol?: string
+          trading_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       auto_trades_log: {
         Row: {
           action: string

@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.ai-chart-analysis]
 verify_jwt = false
+
+[functions.evaluate-ai-predictions]
+verify_jwt = true

@@ -1308,6 +1308,7 @@ export const ProChartKit = ({
         onAnalyze={runAIChartAnalysis}
         showOverlays={aiOverlayVisibility}
         onToggleOverlay={handleToggleAIOverlay}
+        userId={userId}
       />
 
       <Card className="relative p-0 overflow-hidden">
