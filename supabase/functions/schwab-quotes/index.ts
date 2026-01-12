@@ -231,8 +231,7 @@ serve(async (req) => {
       description: data.reference?.description,
       exchange: data.reference?.exchangeName,
       isShortable: data.reference?.isShortable,
-      // Full raw data for advanced use
-      raw: data,
+      // NOTE: raw response omitted to keep payload small and prevent connection drops
     }));
 
     // Cache the result (reuse the cacheKey we computed above)
