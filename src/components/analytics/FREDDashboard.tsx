@@ -105,9 +105,17 @@ export function FREDDashboard() {
         });
         
         if (error) throw error;
+        
+        // Check if data is empty or has empty arrays - fallback to mock
+        const hasData = data && Object.values(data).some((arr: any) => arr && arr.length > 0);
+        if (!hasData) {
+          throw new Error('No data returned from FRED API');
+        }
+        
         return data;
       } catch (e) {
         // Return mock data for demo
+        console.log('Using mock FRED data:', e);
         const mockData: Record<string, any[]> = {};
         for (const id of selectedSeries) {
           mockData[id] = generateMockFREDData(id);
