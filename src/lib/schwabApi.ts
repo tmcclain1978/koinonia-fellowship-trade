@@ -249,18 +249,76 @@ class SchwabApiClient {
    * @param symbols - Array of symbols or comma-separated string
    */
   async getQuotes(symbols: string | string[]): Promise<SchwabQuote[]> {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
+    const normalizedSymbols = (Array.isArray(symbols) ? symbols : symbols.split(','))
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
 
-    const { data, error } = await supabase.functions.invoke('schwab-quotes', {
-      body: { symbols },
-    });
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    if (error) throw new Error(error.message);
-    // Note: schwab-quotes returns mock data when OAuth not available, no need to check requires_oauth
-    if (data.error) throw new Error(data.error);
-    
-    return data.quotes || [];
+    const isNotFoundError = (err: any) =>
+      err?.code === 'NOT_FOUND' ||
+      /requested function was not found/i.test(String(err?.message ?? ''));
+
+    const trySchwabQuotes = async () => {
+      const { data, error } = await supabase.functions.invoke('schwab-quotes', {
+        body: { symbols: normalizedSymbols },
+      });
+
+      if (error) return { quotes: null as SchwabQuote[] | null, error };
+      if (data?.error) return { quotes: null as SchwabQuote[] | null, error: new Error(data.error) };
+      return { quotes: (data?.quotes as SchwabQuote[]) || [], error: null as any };
+    };
+
+    // 1) Prefer Schwab quotes when authenticated (verify_jwt=true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        let res = await trySchwabQuotes();
+
+        // During function deploys it can briefly 404; retry once.
+        if (res.error && isNotFoundError(res.error)) {
+          await wait(500);
+          res = await trySchwabQuotes();
+        }
+
+        if (!res.error && res.quotes) return res.quotes;
+
+        // Fall through to Polygon-backed fallback below.
+        console.warn('[schwabApi.getQuotes] Schwab quotes failed, falling back:', res.error);
+      }
+    } catch (err) {
+      console.warn('[schwabApi.getQuotes] Session/Schwab fetch failed, falling back:', err);
+    }
+
+    // 2) Fallback to Polygon-backed quotes (no Schwab function dependency)
+    try {
+      const { data, error } = await supabase.functions.invoke('market-data-stream', {
+        body: { action: 'get_quotes', symbols: normalizedSymbols },
+      });
+
+      if (error) throw error;
+
+      const quotes = (data?.quotes || []) as Array<any>;
+      return quotes
+        .filter((q) => q && !q.error)
+        .map((q) => ({
+          symbol: q.symbol,
+          lastPrice: q.price,
+          bidPrice: q.bid,
+          askPrice: q.ask,
+          volume: q.volume,
+          openPrice: q.open,
+          highPrice: q.high,
+          lowPrice: q.low,
+          closePrice: q.close,
+          netChange: q.change,
+          netPercentChange: q.changePercent,
+          source: q.source || data?.source || 'polygon',
+        })) as SchwabQuote[];
+    } catch (err) {
+      console.error('[schwabApi.getQuotes] Fallback quotes failed:', err);
+      return [];
+    }
   }
 
   /**
