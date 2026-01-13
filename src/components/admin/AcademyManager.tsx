@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, GripVertical, ChevronRight, ChevronDown, BookOpen, Layers, FileText, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, ChevronRight, ChevronDown, BookOpen, Layers, FileText, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -51,6 +52,7 @@ interface Lesson {
 
 const AcademyManager = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [courses, setCourses] = useState<Course[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -702,6 +704,14 @@ const AcademyManager = () => {
                         >
                           <Plus className="h-4 w-4 mr-1" />
                           Module
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => navigate(`/academy/course/${course.id}?preview=true`)}
+                          title="Preview course as student"
+                        >
+                          <Eye className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navigation from "@/components/Navigation";
 import { QuizComponent, QuizQuestion } from "@/components/academy/QuizComponent";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -15,7 +16,8 @@ import {
   PlayCircle,
   BookOpen,
   Clock,
-  Brain
+  Brain,
+  Eye
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,6 +57,9 @@ interface SidebarLesson {
 const LessonPlayer = () => {
   const navigate = useNavigate();
   const { lessonId } = useParams();
+  const [searchParams] = useSearchParams();
+  const isPreviewMode = searchParams.get("preview") === "true";
+  
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [module, setModule] = useState<Module | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
@@ -66,8 +71,13 @@ const LessonPlayer = () => {
   const [quizScore, setQuizScore] = useState<number | null>(null);
 
   useEffect(() => {
-    checkAuth();
-  }, [lessonId]);
+    if (isPreviewMode) {
+      // In preview mode, skip auth and just fetch lesson data
+      fetchLessonData(null, true);
+    } else {
+      checkAuth();
+    }
+  }, [lessonId, isPreviewMode]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -76,10 +86,10 @@ const LessonPlayer = () => {
       return;
     }
     setUser(session.user);
-    await fetchLessonData(session.user.id);
+    await fetchLessonData(session.user.id, false);
   };
 
-  const fetchLessonData = async (userId: string) => {
+  const fetchLessonData = async (userId: string | null, isPreview: boolean = false) => {
     if (!lessonId) return;
 
     // Fetch lesson
@@ -136,21 +146,35 @@ const LessonPlayer = () => {
 
           // Fetch all lessons for sidebar
           const moduleIds = allModulesData.map(m => m.id);
-          const { data: lessonsData } = await supabase
+          let lessonsQuery = supabase
             .from("course_lessons")
             .select("id, title, duration, module_id, order_index")
             .in("module_id", moduleIds)
-            .eq("status", "published")
             .order("order_index", { ascending: true });
+          
+          if (!isPreview) {
+            lessonsQuery = lessonsQuery.eq("status", "published");
+          }
+          
+          const { data: lessonsData } = await lessonsQuery;
 
-          // Fetch user progress
-          const { data: progressData } = await supabase
-            .from("user_course_progress")
-            .select("lesson_id, completed, quiz_score")
-            .eq("user_id", userId)
-            .eq("course_id", courseData.id);
+          // Fetch user progress (only if not preview mode and we have a user)
+          let progressMap = new Map<string, { completed: boolean; quiz_score: number | null }>();
+          
+          if (!isPreview && userId) {
+            const { data: progressData } = await supabase
+              .from("user_course_progress")
+              .select("lesson_id, completed, quiz_score")
+              .eq("user_id", userId)
+              .eq("course_id", courseData.id);
 
-          const progressMap = new Map(progressData?.map(p => [p.lesson_id, { completed: p.completed, quiz_score: p.quiz_score }]) || []);
+            progressMap = new Map(progressData?.map(p => [p.lesson_id, { completed: p.completed, quiz_score: p.quiz_score }]) || []);
+
+            // Check if current lesson is completed and get quiz score
+            const currentProgress = progressMap.get(lessonId);
+            setIsCompleted(currentProgress?.completed || false);
+            setQuizScore(currentProgress?.quiz_score || null);
+          }
 
           if (lessonsData) {
             setAllLessons(lessonsData.map(l => ({
@@ -158,11 +182,6 @@ const LessonPlayer = () => {
               completed: progressMap.get(l.id)?.completed || false
             })));
           }
-
-          // Check if current lesson is completed and get quiz score
-          const currentProgress = progressMap.get(lessonId);
-          setIsCompleted(currentProgress?.completed || false);
-          setQuizScore(currentProgress?.quiz_score || null);
         }
       }
     }
@@ -171,7 +190,7 @@ const LessonPlayer = () => {
   };
 
   const markAsComplete = async () => {
-    if (!user || !lesson || !course) return;
+    if (!user || !lesson || !course || isPreviewMode) return;
 
     const { error } = await supabase
       .from("user_course_progress")
@@ -232,6 +251,17 @@ const LessonPlayer = () => {
   };
 
   const handleQuizComplete = async (score: number, totalQuestions: number) => {
+    if (isPreviewMode) {
+      // In preview mode, just show the score without saving
+      const scorePercentage = Math.round((score / totalQuestions) * 100);
+      if (scorePercentage >= 70) {
+        toast.success(`Preview: Quiz passed with ${scorePercentage}%!`);
+      } else {
+        toast.info(`Preview: Quiz completed with ${scorePercentage}%.`);
+      }
+      return;
+    }
+    
     if (!user || !lesson || !course) return;
 
     const scorePercentage = Math.round((score / totalQuestions) * 100);
@@ -337,7 +367,7 @@ const LessonPlayer = () => {
             <Button 
               variant="ghost" 
               size="sm"
-              onClick={() => navigate(`/academy/course/${course.id}`)}
+              onClick={() => navigate(`/academy/course/${course.id}${isPreviewMode ? "?preview=true" : ""}`)}
             >
               <ArrowLeft className="h-4 w-4 mr-1" />
               {course.title}
@@ -345,6 +375,16 @@ const LessonPlayer = () => {
             <span>/</span>
             <span>{module.title}</span>
           </div>
+
+          {/* Preview Mode Banner */}
+          {isPreviewMode && (
+            <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+              <Eye className="h-4 w-4 text-yellow-500" />
+              <AlertDescription className="text-yellow-200">
+                <strong>Preview Mode:</strong> Progress is not being tracked. You're viewing this lesson as students will see it.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Video Player */}
           <div className="aspect-video bg-black rounded-lg overflow-hidden mb-6">
@@ -383,25 +423,27 @@ const LessonPlayer = () => {
           </div>
 
           {/* Mark Complete Button */}
-          <div className="mb-8">
-            <Button
-              onClick={markAsComplete}
-              disabled={isCompleted}
-              className={isCompleted ? "bg-green-600 hover:bg-green-600" : ""}
-            >
-              {isCompleted ? (
-                <>
-                  <CheckCircle2 className="h-5 w-5 mr-2" />
-                  Completed
-                </>
-              ) : (
-                <>
-                  <Circle className="h-5 w-5 mr-2" />
-                  Mark as Complete
-                </>
-              )}
-            </Button>
-          </div>
+          {!isPreviewMode && (
+            <div className="mb-8">
+              <Button
+                onClick={markAsComplete}
+                disabled={isCompleted}
+                className={isCompleted ? "bg-green-600 hover:bg-green-600" : ""}
+              >
+                {isCompleted ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 mr-2" />
+                    Completed
+                  </>
+                ) : (
+                  <>
+                    <Circle className="h-5 w-5 mr-2" />
+                    Mark as Complete
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Written Content */}
           {lesson.content_markdown && (
@@ -438,7 +480,7 @@ const LessonPlayer = () => {
             {prev ? (
               <Button 
                 variant="outline"
-                onClick={() => navigate(`/academy/lesson/${prev.id}`)}
+                onClick={() => navigate(`/academy/lesson/${prev.id}${isPreviewMode ? "?preview=true" : ""}`)}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Previous: {prev.title}
@@ -449,14 +491,14 @@ const LessonPlayer = () => {
             
             {next ? (
               <Button 
-                onClick={() => navigate(`/academy/lesson/${next.id}`)}
+                onClick={() => navigate(`/academy/lesson/${next.id}${isPreviewMode ? "?preview=true" : ""}`)}
               >
                 Next: {next.title}
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             ) : (
               <Button 
-                onClick={() => navigate(`/academy/course/${course.id}`)}
+                onClick={() => navigate(`/academy/course/${course.id}${isPreviewMode ? "?preview=true" : ""}`)}
               >
                 Back to Course
                 <ArrowRight className="h-4 w-4 ml-2" />
@@ -484,7 +526,7 @@ const LessonPlayer = () => {
                       .map(l => (
                         <button
                           key={l.id}
-                          onClick={() => navigate(`/academy/lesson/${l.id}`)}
+                          onClick={() => navigate(`/academy/lesson/${l.id}${isPreviewMode ? "?preview=true" : ""}`)}
                           className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${
                             l.id === lesson.id 
                               ? "bg-primary/20 text-primary" 

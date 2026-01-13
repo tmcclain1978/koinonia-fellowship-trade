@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navigation from "@/components/Navigation";
 import { LessonList } from "@/components/academy/LessonList";
@@ -7,13 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   ArrowLeft, 
   Clock, 
   BookOpen, 
   PlayCircle, 
   CheckCircle2,
-  GraduationCap 
+  GraduationCap,
+  Eye
 } from "lucide-react";
 
 interface Course {
@@ -49,6 +51,9 @@ interface UserProgress {
 const CourseDetail = () => {
   const navigate = useNavigate();
   const { courseId } = useParams();
+  const [searchParams] = useSearchParams();
+  const isPreviewMode = searchParams.get("preview") === "true";
+  
   const [course, setCourse] = useState<Course | null>(null);
   const [modules, setModules] = useState<Module[]>([]);
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
@@ -56,8 +61,13 @@ const CourseDetail = () => {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    checkAuth();
-  }, [courseId]);
+    if (isPreviewMode) {
+      // In preview mode, skip auth and just fetch course data
+      fetchCourseData(true);
+    } else {
+      checkAuth();
+    }
+  }, [courseId, isPreviewMode]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -66,20 +76,24 @@ const CourseDetail = () => {
       return;
     }
     setUser(session.user);
-    await fetchCourseData();
+    await fetchCourseData(false);
     await fetchUserProgress(session.user.id);
   };
 
-  const fetchCourseData = async () => {
+  const fetchCourseData = async (isPreview: boolean = false) => {
     if (!courseId) return;
 
-    // Fetch course
-    const { data: courseData, error: courseError } = await supabase
+    // Fetch course - in preview mode, allow draft courses too
+    let query = supabase
       .from("courses")
       .select("*")
-      .eq("id", courseId)
-      .eq("status", "published")
-      .single();
+      .eq("id", courseId);
+    
+    if (!isPreview) {
+      query = query.eq("status", "published");
+    }
+    
+    const { data: courseData, error: courseError } = await query.single();
 
     if (courseError || !courseData) {
       navigate("/academy");
@@ -88,24 +102,34 @@ const CourseDetail = () => {
 
     setCourse(courseData);
 
-    // Fetch modules with lessons
-    const { data: modulesData } = await supabase
+    // Fetch modules with lessons - in preview mode, include drafts
+    let modulesQuery = supabase
       .from("course_modules")
       .select("*")
       .eq("course_id", courseId)
-      .eq("status", "published")
       .order("order_index", { ascending: true });
+    
+    if (!isPreview) {
+      modulesQuery = modulesQuery.eq("status", "published");
+    }
+    
+    const { data: modulesData } = await modulesQuery;
 
     if (modulesData) {
       const modulesWithLessons: Module[] = [];
 
       for (const mod of modulesData) {
-        const { data: lessonsData } = await supabase
+        let lessonsQuery = supabase
           .from("course_lessons")
           .select("id, title, description, duration, order_index")
           .eq("module_id", mod.id)
-          .eq("status", "published")
           .order("order_index", { ascending: true });
+        
+        if (!isPreview) {
+          lessonsQuery = lessonsQuery.eq("status", "published");
+        }
+        
+        const { data: lessonsData } = await lessonsQuery;
 
         modulesWithLessons.push({
           ...mod,
@@ -196,11 +220,21 @@ const CourseDetail = () => {
         <Button 
           variant="ghost" 
           className="mb-6"
-          onClick={() => navigate("/academy")}
+          onClick={() => navigate(isPreviewMode ? "/admin" : "/academy")}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Academy
+          {isPreviewMode ? "Back to Admin" : "Back to Academy"}
         </Button>
+
+        {/* Preview Mode Banner */}
+        {isPreviewMode && (
+          <Alert className="mb-6 border-yellow-500/50 bg-yellow-500/10">
+            <Eye className="h-4 w-4 text-yellow-500" />
+            <AlertDescription className="text-yellow-200">
+              <strong>Preview Mode:</strong> You're viewing this course as students will see it. Progress is not being tracked. Draft content is visible.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Course Header */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -245,7 +279,7 @@ const CourseDetail = () => {
                 <LessonList 
                   modules={modules}
                   userProgress={userProgress}
-                  onLessonClick={(lessonId) => navigate(`/academy/lesson/${lessonId}`)}
+                  onLessonClick={(lessonId) => navigate(`/academy/lesson/${lessonId}${isPreviewMode ? "?preview=true" : ""}`)}
                 />
               )}
             </div>
@@ -274,7 +308,7 @@ const CourseDetail = () => {
                   </p>
                 </div>
 
-                {getTotalLessons() > 0 && (
+                {getTotalLessons() > 0 && !isPreviewMode && (
                   <Button 
                     className="w-full" 
                     size="lg"
@@ -299,6 +333,21 @@ const CourseDetail = () => {
                         Continue Learning
                       </>
                     )}
+                  </Button>
+                )}
+                
+                {getTotalLessons() > 0 && isPreviewMode && (
+                  <Button 
+                    className="w-full" 
+                    size="lg"
+                    variant="outline"
+                    onClick={() => {
+                      const lessonId = modules[0]?.lessons[0]?.id;
+                      if (lessonId) navigate(`/academy/lesson/${lessonId}?preview=true`);
+                    }}
+                  >
+                    <Eye className="h-5 w-5 mr-2" />
+                    Preview First Lesson
                   </Button>
                 )}
 
