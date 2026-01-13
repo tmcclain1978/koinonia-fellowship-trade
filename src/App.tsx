@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -34,10 +35,11 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <AnimatedBackground />
+    <ThemeProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <AnimatedBackground />
       <BrowserRouter>
         <AppErrorBoundary>
           <Routes>
@@ -68,7 +70,8 @@ const App = () => (
           </Routes>
         </AppErrorBoundary>
       </BrowserRouter>
-    </TooltipProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
