@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown, UserPlus, Heart, Mail } from "lucide-react";
+import { ArrowLeft, Shield, Users, CreditCard, Video, Podcast, Plus, Edit, Trash2, Crown, UserPlus, Heart, Mail, GraduationCap } from "lucide-react";
+import AcademyManager from "@/components/admin/AcademyManager";
 import { Badge } from "@/components/ui/badge";
 
 interface UserData {
@@ -759,6 +760,10 @@ const Admin = () => {
               <Heart className="mr-2 h-4 w-4" />
               Family
             </TabsTrigger>
+            <TabsTrigger value="academy">
+              <GraduationCap className="mr-2 h-4 w-4" />
+              Academy
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users">
@@ -1304,6 +1309,10 @@ const Admin = () => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="academy">
+            <AcademyManager />
           </TabsContent>
         </Tabs>
       </div>
