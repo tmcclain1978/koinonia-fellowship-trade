@@ -1,18 +1,35 @@
 import { useTheme, themes, ThemeName } from '@/contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check } from 'lucide-react';
+import { Check, Cloud, CloudOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ThemeColorPicker = () => {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, isSyncing } = useTheme();
 
   const themeOptions = Object.values(themes);
 
   return (
     <Card className="glass-card border-white/10">
       <CardHeader>
-        <CardTitle className="text-foreground">Theme Color</CardTitle>
-        <CardDescription>Choose your preferred color scheme</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-foreground">Theme Color</CardTitle>
+            <CardDescription>Choose your preferred color scheme</CardDescription>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {isSyncing ? (
+              <>
+                <Cloud className="w-4 h-4 animate-pulse text-primary" />
+                <span>Syncing...</span>
+              </>
+            ) : (
+              <>
+                <Cloud className="w-4 h-4 text-success" />
+                <span>Synced</span>
+              </>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
@@ -53,6 +70,7 @@ const ThemeColorPicker = () => {
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
           Current: <span className="text-primary font-medium">{themes[theme].label}</span>
+          <span className="ml-2 text-xs">(syncs across all your devices)</span>
         </p>
       </CardContent>
     </Card>
