@@ -2,15 +2,27 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TrendingUp, Search, Layers, LayoutPanelTop } from "lucide-react";
+import { TrendingUp, Search, Layers, LayoutPanelTop, Settings2, Sun, Moon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { 
+  IndicatorSettings, 
+  IndicatorSettingsMap, 
+  getDefaultIndicatorSettings,
+  DEFAULT_INDICATOR_COLORS,
+  IndicatorDataSource
+} from "@/types/indicator";
 
 interface IndicatorPanelProps {
   selectedIndicators: string[];
   onIndicatorChange: (indicators: string[]) => void;
+  indicatorSettings?: IndicatorSettingsMap;
+  onSettingsChange?: (settings: IndicatorSettingsMap) => void;
 }
 
 type DisplayType = "overlay" | "pane";
@@ -155,6 +167,94 @@ const DisplayTypeBadge = ({ type }: { type: DisplayType }) => (
   </Badge>
 );
 
+// Color picker preset colors
+const COLOR_PRESETS = [
+  "#2196F3", "#FF9800", "#4CAF50", "#9C27B0", "#F44336",
+  "#00BCD4", "#FFEB3B", "#E91E63", "#795548", "#607D8B",
+  "#3F51B5", "#009688", "#FF5722", "#673AB7", "#8BC34A",
+];
+
+// Indicator settings editor component
+const IndicatorSettingsEditor = ({
+  indicatorId,
+  settings,
+  onUpdate,
+  indicatorLabel,
+}: {
+  indicatorId: string;
+  settings: IndicatorSettings;
+  onUpdate: (settings: IndicatorSettings) => void;
+  indicatorLabel: string;
+}) => {
+  return (
+    <div className="p-3 bg-muted/30 rounded-lg space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">{indicatorLabel}</span>
+        <Badge variant="outline" className="text-[10px]">
+          {settings.dataSource === "premarket" ? (
+            <><Moon className="w-2.5 h-2.5 mr-0.5" />Pre</>
+          ) : (
+            <><Sun className="w-2.5 h-2.5 mr-0.5" />Mkt</>
+          )}
+        </Badge>
+      </div>
+      
+      {/* Color picker */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Color</Label>
+        <div className="flex flex-wrap gap-1">
+          {COLOR_PRESETS.map((color) => (
+            <button
+              key={color}
+              className={`w-5 h-5 rounded-full border-2 transition-all ${
+                settings.color === color 
+                  ? "border-foreground scale-110" 
+                  : "border-transparent hover:scale-105"
+              }`}
+              style={{ backgroundColor: color }}
+              onClick={() => onUpdate({ ...settings, color })}
+            />
+          ))}
+          <input
+            type="color"
+            value={settings.color}
+            onChange={(e) => onUpdate({ ...settings, color: e.target.value })}
+            className="w-5 h-5 rounded cursor-pointer"
+            title="Custom color"
+          />
+        </div>
+      </div>
+      
+      {/* Line width */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Width</Label>
+          <span className="text-xs text-muted-foreground">{settings.width}px</span>
+        </div>
+        <Slider
+          value={[settings.width]}
+          onValueChange={(value) => onUpdate({ ...settings, width: value[0] })}
+          min={1}
+          max={5}
+          step={1}
+          className="w-full"
+        />
+      </div>
+      
+      {/* Data source toggle */}
+      <div className="flex items-center justify-between">
+        <Label className="text-xs text-muted-foreground">Include Premarket</Label>
+        <Switch
+          checked={settings.dataSource === "premarket"}
+          onCheckedChange={(checked) => 
+            onUpdate({ ...settings, dataSource: checked ? "premarket" : "market" })
+          }
+        />
+      </div>
+    </div>
+  );
+};
+
 const CATEGORIES = [
   "All",
   "Trend",
@@ -166,21 +266,61 @@ const CATEGORIES = [
   "Support/Resistance"
 ];
 
-export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: IndicatorPanelProps) => {
+export const IndicatorPanel = ({ 
+  selectedIndicators, 
+  onIndicatorChange,
+  indicatorSettings = {},
+  onSettingsChange,
+}: IndicatorPanelProps) => {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [editingIndicator, setEditingIndicator] = useState<string | null>(null);
 
   const handleToggle = (indicatorId: string) => {
-    const newSelection = selectedIndicators.includes(indicatorId)
-      ? selectedIndicators.filter(id => id !== indicatorId)
-      : [...selectedIndicators, indicatorId];
+    const isSelected = selectedIndicators.includes(indicatorId);
     
-    onIndicatorChange(newSelection);
+    if (isSelected) {
+      // Remove indicator
+      const newSelection = selectedIndicators.filter(id => id !== indicatorId);
+      onIndicatorChange(newSelection);
+      
+      // Remove settings
+      if (onSettingsChange && indicatorSettings[indicatorId]) {
+        const newSettings = { ...indicatorSettings };
+        delete newSettings[indicatorId];
+        onSettingsChange(newSettings);
+      }
+    } else {
+      // Add indicator
+      const newSelection = [...selectedIndicators, indicatorId];
+      onIndicatorChange(newSelection);
+      
+      // Add default settings
+      if (onSettingsChange) {
+        const newSettings = {
+          ...indicatorSettings,
+          [indicatorId]: getDefaultIndicatorSettings(indicatorId, newSelection.length - 1),
+        };
+        onSettingsChange(newSettings);
+      }
+    }
+  };
+
+  const handleSettingsUpdate = (indicatorId: string, settings: IndicatorSettings) => {
+    if (onSettingsChange) {
+      onSettingsChange({
+        ...indicatorSettings,
+        [indicatorId]: settings,
+      });
+    }
   };
 
   const handleClearAll = () => {
     onIndicatorChange([]);
+    if (onSettingsChange) {
+      onSettingsChange({});
+    }
   };
 
   const filteredIndicators = AVAILABLE_INDICATORS.filter(indicator => {
@@ -197,6 +337,73 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
     acc[indicator.category].push(indicator);
     return acc;
   }, {} as Record<string, IndicatorDefinition[]>);
+
+  const getIndicatorSettings = (id: string): IndicatorSettings => {
+    return indicatorSettings[id] || getDefaultIndicatorSettings(id, selectedIndicators.indexOf(id));
+  };
+
+  const renderIndicatorRow = (indicator: IndicatorDefinition) => {
+    const isSelected = selectedIndicators.includes(indicator.id);
+    const settings = getIndicatorSettings(indicator.id);
+    const isEditing = editingIndicator === indicator.id;
+    
+    return (
+      <div key={indicator.id} className="space-y-1">
+        <div
+          className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer"
+          title={indicator.description}
+        >
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id={indicator.id}
+              checked={isSelected}
+              onCheckedChange={() => handleToggle(indicator.id)}
+            />
+            {isSelected && (
+              <div 
+                className="w-3 h-3 rounded-full border" 
+                style={{ 
+                  backgroundColor: settings.color,
+                  borderColor: settings.color 
+                }}
+              />
+            )}
+            <label 
+              htmlFor={indicator.id}
+              className="text-sm cursor-pointer"
+            >
+              {indicator.label}
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            {isSelected && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingIndicator(isEditing ? null : indicator.id);
+                }}
+              >
+                <Settings2 className={`w-3.5 h-3.5 ${isEditing ? 'text-primary' : 'text-muted-foreground'}`} />
+              </Button>
+            )}
+            <DisplayTypeBadge type={indicator.displayType} />
+          </div>
+        </div>
+        
+        {isSelected && isEditing && (
+          <IndicatorSettingsEditor
+            indicatorId={indicator.id}
+            settings={settings}
+            onUpdate={(newSettings) => handleSettingsUpdate(indicator.id, newSettings)}
+            indicatorLabel={indicator.label}
+          />
+        )}
+      </div>
+    );
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -239,6 +446,10 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
               <LayoutPanelTop className="w-3 h-3 text-amber-500" />
               <span>Pane = separate panel</span>
             </div>
+            <div className="flex items-center gap-1">
+              <Settings2 className="w-3 h-3" />
+              <span>= customize</span>
+            </div>
           </div>
         </div>
         
@@ -265,46 +476,14 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
                     <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       {category}
                     </h5>
-                    <div className="grid grid-cols-1 gap-1">
-                      {indicators.map(indicator => (
-                        <label
-                          key={indicator.id}
-                          className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer"
-                          title={indicator.description}
-                        >
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id={indicator.id}
-                              checked={selectedIndicators.includes(indicator.id)}
-                              onCheckedChange={() => handleToggle(indicator.id)}
-                            />
-                            <span className="text-sm">{indicator.label}</span>
-                          </div>
-                          <DisplayTypeBadge type={indicator.displayType} />
-                        </label>
-                      ))}
+                    <div className="space-y-1">
+                      {indicators.map(indicator => renderIndicatorRow(indicator))}
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="grid grid-cols-1 gap-1">
-                  {filteredIndicators.map(indicator => (
-                    <label
-                      key={indicator.id}
-                      className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer"
-                      title={indicator.description}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={indicator.id}
-                          checked={selectedIndicators.includes(indicator.id)}
-                          onCheckedChange={() => handleToggle(indicator.id)}
-                        />
-                        <span className="text-sm">{indicator.label}</span>
-                      </div>
-                      <DisplayTypeBadge type={indicator.displayType} />
-                    </label>
-                  ))}
+                <div className="space-y-1">
+                  {filteredIndicators.map(indicator => renderIndicatorRow(indicator))}
                 </div>
               )}
               
@@ -323,12 +502,25 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
             <div className="flex flex-wrap gap-1">
               {selectedIndicators.slice(0, 6).map(id => {
                 const indicator = AVAILABLE_INDICATORS.find(i => i.id === id);
+                const settings = getIndicatorSettings(id);
                 return (
                   <span 
                     key={id}
-                    className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full"
+                    className="text-xs px-2 py-1 rounded-full flex items-center gap-1"
+                    style={{ 
+                      backgroundColor: `${settings.color}20`,
+                      color: settings.color,
+                      border: `1px solid ${settings.color}40`
+                    }}
                   >
+                    <span 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: settings.color }}
+                    />
                     {indicator?.label || id}
+                    {settings.dataSource === "premarket" && (
+                      <Moon className="w-2.5 h-2.5 ml-0.5" />
+                    )}
                   </span>
                 );
               })}
@@ -344,3 +536,5 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
     </Popover>
   );
 };
+
+export { AVAILABLE_INDICATORS };
