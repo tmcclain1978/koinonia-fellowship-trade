@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle, FlaskConical, Zap } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -59,6 +61,8 @@ const TradingBot = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [performanceLogs, setPerformanceLogs] = useState<PerformanceLog[]>([]);
   const [tradingMode, setTradingMode] = useState<"paper" | "live">("paper");
+  const [showLiveConfirmDialog, setShowLiveConfirmDialog] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
   const [stats, setStats] = useState<BotStats>({
     totalTrades: 0,
     successRate: 0,
@@ -124,6 +128,25 @@ const TradingBot = () => {
     } catch (error) {
       console.error("Error loading trading mode:", error);
     }
+  };
+
+  const handleTradingModeToggle = (checked: boolean) => {
+    if (checked) {
+      // Switching to live - show confirmation dialog
+      setShowLiveConfirmDialog(true);
+      setConfirmText("");
+    } else {
+      // Switching to paper - no confirmation needed
+      updateTradingMode("paper");
+    }
+  };
+
+  const confirmLiveTrading = async () => {
+    if (confirmText !== "CONFIRM") return;
+    
+    await updateTradingMode("live");
+    setShowLiveConfirmDialog(false);
+    setConfirmText("");
   };
 
   const updateTradingMode = async (mode: "paper" | "live") => {
@@ -400,7 +423,7 @@ const TradingBot = () => {
                 <Switch
                   id="trading-mode"
                   checked={tradingMode === "live"}
-                  onCheckedChange={(checked) => updateTradingMode(checked ? "live" : "paper")}
+                  onCheckedChange={handleTradingModeToggle}
                 />
                 <Label htmlFor="trading-mode" className={`font-medium ${tradingMode === "live" ? "text-destructive" : "text-muted-foreground"}`}>
                   Live
@@ -737,6 +760,58 @@ const TradingBot = () => {
         </Card>
       </div>
       </div>
+      {/* Live Trading Confirmation Dialog */}
+      <Dialog open={showLiveConfirmDialog} onOpenChange={setShowLiveConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Zap className="w-5 h-5" />
+              Enable Live Trading
+            </DialogTitle>
+            <DialogDescription className="text-left space-y-3 pt-2">
+              <p>
+                <strong className="text-destructive">⚠️ Warning:</strong> You are about to enable live trading mode.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>Real orders will be placed with your broker</li>
+                <li>Real money will be at risk</li>
+                <li>Trades cannot be undone once executed</li>
+              </ul>
+              <p className="pt-2">
+                To confirm, type <strong className="font-mono bg-muted px-1 rounded">CONFIRM</strong> below:
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-2">
+            <Input
+              placeholder="Type CONFIRM to enable live trading"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
+              className="font-mono"
+            />
+          </div>
+          
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLiveConfirmDialog(false);
+                setConfirmText("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmLiveTrading}
+              disabled={confirmText !== "CONFIRM"}
+            >
+              Enable Live Trading
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
