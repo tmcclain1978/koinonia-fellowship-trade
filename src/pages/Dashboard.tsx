@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
-import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot, BookOpen } from "lucide-react";
+import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot, BookOpen, GraduationCap } from "lucide-react";
 import AIAnalysis from "@/components/AIAnalysis";
 import TradeSuggestionsCard from "@/components/TradeSuggestionsCard";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -216,6 +216,19 @@ const Dashboard = () => {
             <h3 className="font-semibold text-foreground mb-2">Bot Learning</h3>
             <p className="text-sm text-muted-foreground">
               View AI bot performance and coaching insights
+            </p>
+          </button>
+
+          <button 
+            onClick={() => navigate("/academy")}
+            className="bg-gradient-card rounded-xl p-6 border border-border hover:border-success/50 transition-all text-left group"
+          >
+            <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <GraduationCap className="w-6 h-6 text-success" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-2">Options Trading Academy</h3>
+            <p className="text-sm text-muted-foreground">
+              Master options trading with structured courses
             </p>
           </button>
         </div>
