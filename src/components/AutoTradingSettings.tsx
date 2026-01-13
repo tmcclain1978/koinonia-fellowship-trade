@@ -9,22 +9,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { Bot, Save } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 
-interface AutoTradingSettings {
+interface AutoTradingSettingsData {
   enabled: boolean;
   max_position_size: number;
   max_daily_trades: number;
   risk_tolerance: "conservative" | "moderate" | "aggressive";
   allowed_symbols: string[];
+  max_daily_loss: number;
+  max_weekly_loss: number;
+  portfolio_stop_loss_percent: number;
+  max_session_trades: number;
 }
 
 const AutoTradingSettings = () => {
   const { subscription } = useSubscription();
-  const [settings, setSettings] = useState<AutoTradingSettings>({
+  const [settings, setSettings] = useState<AutoTradingSettingsData>({
     enabled: false,
     max_position_size: 100,
     max_daily_trades: 5,
     risk_tolerance: "moderate",
     allowed_symbols: [],
+    max_daily_loss: 500,
+    max_weekly_loss: 2000,
+    portfolio_stop_loss_percent: 5,
+    max_session_trades: 10,
   });
   const [symbolInput, setSymbolInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,11 +55,15 @@ const AutoTradingSettings = () => {
 
       if (data) {
         setSettings({
-          enabled: data.enabled,
+          enabled: data.enabled ?? false,
           max_position_size: data.max_position_size || 100,
           max_daily_trades: data.max_daily_trades || 5,
           risk_tolerance: (data.risk_tolerance as "conservative" | "moderate" | "aggressive") || "moderate",
           allowed_symbols: data.allowed_symbols || [],
+          max_daily_loss: (data as any).max_daily_loss || 500,
+          max_weekly_loss: (data as any).max_weekly_loss || 2000,
+          portfolio_stop_loss_percent: (data as any).portfolio_stop_loss_percent || 5,
+          max_session_trades: (data as any).max_session_trades || 10,
         });
       }
     } catch (error) {
@@ -74,7 +86,11 @@ const AutoTradingSettings = () => {
           max_daily_trades: settings.max_daily_trades,
           risk_tolerance: settings.risk_tolerance,
           allowed_symbols: settings.allowed_symbols,
-        }, {
+          max_daily_loss: settings.max_daily_loss,
+          max_weekly_loss: settings.max_weekly_loss,
+          portfolio_stop_loss_percent: settings.portfolio_stop_loss_percent,
+          max_session_trades: settings.max_session_trades,
+        } as any, {
           onConflict: 'user_id'
         });
 
@@ -201,6 +217,84 @@ const AutoTradingSettings = () => {
             <SelectItem value="aggressive">Aggressive</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Risk Limits Section */}
+      <div className="border-t border-border pt-6 mt-6">
+        <h4 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Bot className="w-5 h-5 text-destructive" />
+          Risk Limits (Circuit Breakers)
+        </h4>
+        
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Max Daily Loss */}
+          <div>
+            <Label htmlFor="max_daily_loss">Max Daily Loss ($)</Label>
+            <Input
+              id="max_daily_loss"
+              type="number"
+              value={settings.max_daily_loss}
+              onChange={(e) =>
+                setSettings({ ...settings, max_daily_loss: parseFloat(e.target.value) || 0 })
+              }
+              placeholder="500"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Bot pauses if daily loss exceeds this amount
+            </p>
+          </div>
+
+          {/* Max Weekly Loss */}
+          <div>
+            <Label htmlFor="max_weekly_loss">Max Weekly Loss ($)</Label>
+            <Input
+              id="max_weekly_loss"
+              type="number"
+              value={settings.max_weekly_loss}
+              onChange={(e) =>
+                setSettings({ ...settings, max_weekly_loss: parseFloat(e.target.value) || 0 })
+              }
+              placeholder="2000"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Bot pauses if weekly loss exceeds this amount
+            </p>
+          </div>
+
+          {/* Portfolio Stop Loss */}
+          <div>
+            <Label htmlFor="portfolio_stop">Portfolio Stop Loss (%)</Label>
+            <Input
+              id="portfolio_stop"
+              type="number"
+              value={settings.portfolio_stop_loss_percent}
+              onChange={(e) =>
+                setSettings({ ...settings, portfolio_stop_loss_percent: parseFloat(e.target.value) || 0 })
+              }
+              placeholder="5"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              All trading stops if portfolio drops by this %
+            </p>
+          </div>
+
+          {/* Max Session Trades */}
+          <div>
+            <Label htmlFor="max_session">Max Session Trades</Label>
+            <Input
+              id="max_session"
+              type="number"
+              value={settings.max_session_trades}
+              onChange={(e) =>
+                setSettings({ ...settings, max_session_trades: parseInt(e.target.value) || 0 })
+              }
+              placeholder="10"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Max trades per trading session
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Allowed Symbols */}

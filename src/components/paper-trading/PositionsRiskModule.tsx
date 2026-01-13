@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, TrendingUp, TrendingDown, DollarSign, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Position {
@@ -41,12 +40,39 @@ export const PositionsRiskModule = () => {
   const [riskMetrics, setRiskMetrics] = useState<RiskMetrics | null>(null);
   const [alerts, setAlerts] = useState<RiskAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastPrices, setLastPrices] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch real prices from our quote API
+  const fetchRealPrices = async (symbols: string[]): Promise<Map<string, number>> => {
+    const priceMap = new Map<string, number>();
+    
+    if (symbols.length === 0) return priceMap;
+    
+    try {
+      // Try to get quotes from Schwab API
+      const { data, error } = await supabase.functions.invoke('schwab-quotes', {
+        body: { symbols: symbols.join(',') }
+      });
+      
+      if (data && !error) {
+        Object.entries(data).forEach(([symbol, quoteData]: [string, any]) => {
+          if (quoteData?.quote?.lastPrice) {
+            priceMap.set(symbol, quoteData.quote.lastPrice);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching real prices:', error);
+    }
+    
+    return priceMap;
+  };
 
   const loadData = async () => {
     try {
@@ -69,11 +95,18 @@ export const PositionsRiskModule = () => {
         .eq('user_id', user.id)
         .order('executed_at', { ascending: false });
 
+      // Load day trades count
+      const { data: dayTradesCount } = await supabase.rpc('count_recent_day_trades', {
+        _user_id: user.id
+      });
+
       // Calculate open positions
       const positionMap = new Map<string, Position>();
+      const uniqueSymbols = new Set<string>();
       
       trades?.forEach(trade => {
         const key = `${trade.symbol}-${trade.notes}`;
+        uniqueSymbols.add(trade.symbol);
         const existing = positionMap.get(key);
         
         if (!existing) {
@@ -85,7 +118,7 @@ export const PositionsRiskModule = () => {
             symbol: trade.symbol,
             quantity: trade.action === 'buy' ? trade.quantity : -trade.quantity,
             entryPrice: trade.price,
-            currentPrice: trade.price * (1 + (Math.random() - 0.5) * 0.1), // Simulated current price
+            currentPrice: trade.price, // Will be updated with real price
             unrealizedPL: 0,
             side,
             strike,
@@ -100,13 +133,28 @@ export const PositionsRiskModule = () => {
         }
       });
 
-      // Filter to open positions and calculate unrealized P&L
+      // Fetch real prices for unique symbols
+      const symbolsArray = Array.from(uniqueSymbols);
+      const realPrices = await fetchRealPrices(symbolsArray);
+      
+      // Merge with last known prices
+      realPrices.forEach((price, symbol) => {
+        lastPrices.set(symbol, price);
+      });
+      setLastPrices(new Map(lastPrices));
+
+      // Filter to open positions and calculate unrealized P&L with real or last known prices
       const openPositions = Array.from(positionMap.values())
         .filter(p => p.quantity > 0)
-        .map(p => ({
-          ...p,
-          unrealizedPL: (p.currentPrice - p.entryPrice) * p.quantity * 100
-        }));
+        .map(p => {
+          // Use real price if available, otherwise use entry price
+          const currentPrice = lastPrices.get(p.symbol) || p.entryPrice;
+          return {
+            ...p,
+            currentPrice,
+            unrealizedPL: (currentPrice - p.entryPrice) * p.quantity * 100
+          };
+        });
 
       setPositions(openPositions);
 
@@ -116,20 +164,28 @@ export const PositionsRiskModule = () => {
           (sum, p) => sum + Math.abs(p.currentPrice * p.quantity * 100), 0
         );
         
+        // Calculate portfolio delta based on actual positions
+        const portfolioDelta = openPositions.reduce((sum, p) => {
+          const delta = p.side === 'CALL' ? 0.5 : -0.5; // Simplified delta
+          return sum + delta * p.quantity * 100;
+        }, 0);
+
+        // Calculate beta as weighted average (simplified - using 1.0 as base)
+        // In production, you'd fetch actual betas from a financial API
+        const portfolioBeta = 1.0;
+
         const metrics: RiskMetrics = {
           totalExposure,
           buyingPower: accountData.balance,
           buyingPowerUsed: totalExposure,
           marginRequirement: totalExposure * 0.2, // 20% margin requirement
           maxPositionSize: accountData.balance * 0.1, // 10% max position
-          positionConcentration: openPositions.length > 0 
+          positionConcentration: openPositions.length > 0 && totalExposure > 0
             ? Math.max(...openPositions.map(p => Math.abs(p.currentPrice * p.quantity * 100))) / totalExposure * 100
             : 0,
-          portfolioBeta: 1.0 + (Math.random() - 0.5) * 0.4, // Simulated beta
-          portfolioDelta: openPositions.reduce((sum, p) => 
-            sum + (p.side === 'CALL' ? 0.5 : -0.5) * p.quantity * 100, 0
-          ),
-          dayTradesRemaining: 3
+          portfolioBeta,
+          portfolioDelta,
+          dayTradesRemaining: 3 - (dayTradesCount || 0)
         };
 
         setRiskMetrics(metrics);

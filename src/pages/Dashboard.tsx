@@ -4,11 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
-import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot, BookOpen, GraduationCap } from "lucide-react";
+import { LogOut, TrendingUp, Activity, DollarSign, Settings, Shield, HelpCircle, Bot, BookOpen, GraduationCap, Loader2 } from "lucide-react";
 import AIAnalysis from "@/components/AIAnalysis";
 import TradeSuggestionsCard from "@/components/TradeSuggestionsCard";
 import { useSubscription } from "@/hooks/useSubscription";
 import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
+import { useDashboardStats } from "@/hooks/useTradingStats";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -17,6 +18,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { subscription } = useSubscription();
+  const dashboardStats = useDashboardStats();
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -242,7 +244,11 @@ const Dashboard = () => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Success Rate</p>
-                <p className="text-2xl font-bold text-foreground">85%</p>
+                {dashboardStats.isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                ) : (
+                  <p className="text-2xl font-bold text-foreground">{dashboardStats.successRate}%</p>
+                )}
               </div>
             </div>
           </div>
@@ -254,7 +260,11 @@ const Dashboard = () => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active Signals</p>
-                <p className="text-2xl font-bold text-foreground">12</p>
+                {dashboardStats.isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                ) : (
+                  <p className="text-2xl font-bold text-foreground">{dashboardStats.activeSignals}</p>
+                )}
               </div>
             </div>
           </div>
@@ -266,7 +276,13 @@ const Dashboard = () => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Monthly Return</p>
-                <p className="text-2xl font-bold text-foreground">+22.8%</p>
+                {dashboardStats.isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                ) : (
+                  <p className={`text-2xl font-bold ${dashboardStats.monthlyReturn >= 0 ? 'text-success' : 'text-destructive'}`}>
+                    {dashboardStats.monthlyReturn >= 0 ? '+' : ''}{dashboardStats.monthlyReturn}%
+                  </p>
+                )}
               </div>
             </div>
           </div>
