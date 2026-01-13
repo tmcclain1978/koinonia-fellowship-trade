@@ -10,9 +10,10 @@ const SCHWAB_API_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
 // In-memory cache to prevent rate limiting
 const quoteCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL_MS = 3000; // 3 second cache TTL
+const CACHE_TTL_MS = 5000; // 5 second cache TTL (increased from 3s)
 const lastApiCallTime = { value: 0 };
-const MIN_API_INTERVAL_MS = 2000; // Minimum 2 seconds between Schwab API calls
+const MIN_API_INTERVAL_MS = 3000; // Minimum 3 seconds between Schwab API calls (increased from 2s)
+const pendingRequest: { promise: Promise<Response> | null; symbols: string } = { promise: null, symbols: '' };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -40,14 +41,56 @@ serve(async (req) => {
       return returnMockQuotes(symbols);
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     if (!symbols || (Array.isArray(symbols) && symbols.length === 0)) {
       console.log('[schwab-quotes] No symbols, returning mock data');
       return returnMockQuotes(['AAPL']);
     }
+
+    const symbolList = Array.isArray(symbols) ? symbols.join(',') : symbols;
+    const cacheKey = `${symbolList}-${fields}`;
+    const now = Date.now();
+
+    // Check cache first - BEFORE any Supabase/token operations
+    const cachedResult = quoteCache.get(cacheKey);
+    if (cachedResult && (now - cachedResult.timestamp) < CACHE_TTL_MS) {
+      console.log(`[schwab-quotes] Returning cached data for: ${symbolList}`);
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          quotes: cachedResult.data,
+          source: 'schwab-cached',
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Rate limit check - return cached or mock BEFORE expensive operations
+    const timeSinceLastCall = now - lastApiCallTime.value;
+    if (timeSinceLastCall < MIN_API_INTERVAL_MS) {
+      console.log(`[schwab-quotes] Rate limiting - ${MIN_API_INTERVAL_MS - timeSinceLastCall}ms until next call allowed`);
+      if (cachedResult) {
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            quotes: cachedResult.data,
+            source: 'schwab-cached',
+            note: 'Rate limited - using cached data',
+          }),
+          { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      return returnMockQuotes(symbols);
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get Schwab access token with timeout
     let tokenData = null;
@@ -76,52 +119,10 @@ serve(async (req) => {
     }
 
     const accessToken = tokenData.access_token;
-    const symbolList = Array.isArray(symbols) ? symbols.join(',') : symbols;
     
     console.log(`[schwab-quotes] Fetching quotes for: ${symbolList}`);
 
-    // Check cache first
-    const cacheKey = `${symbolList}-${fields}`;
-    const cachedResult = quoteCache.get(cacheKey);
-    const now = Date.now();
-    
-    if (cachedResult && (now - cachedResult.timestamp) < CACHE_TTL_MS) {
-      console.log(`[schwab-quotes] Returning cached data for: ${symbolList}`);
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          quotes: cachedResult.data,
-          source: 'schwab-cached',
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Rate limit API calls - minimum 2 seconds between calls
-    const timeSinceLastCall = now - lastApiCallTime.value;
-    if (timeSinceLastCall < MIN_API_INTERVAL_MS) {
-      console.log(`[schwab-quotes] Rate limiting - ${MIN_API_INTERVAL_MS - timeSinceLastCall}ms until next call allowed`);
-      // Return cached data if available, otherwise mock
-      if (cachedResult) {
-        return new Response(
-          JSON.stringify({ 
-            success: true,
-            quotes: cachedResult.data,
-            source: 'schwab-cached',
-            note: 'Rate limited - using cached data',
-          }),
-          { 
-            status: 200, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-      return returnMockQuotes(symbols);
-    }
-    
+    // Update last API call time BEFORE making the request
     lastApiCallTime.value = now;
 
     // Build endpoint

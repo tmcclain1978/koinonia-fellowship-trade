@@ -43,7 +43,7 @@ type StreamingStatus = 'disconnected' | 'connecting' | 'connected' | 'authentica
 
 export const useSchwabStreaming = ({
   symbols,
-  refreshInterval = 5000, // Increased from 1000ms to 5000ms to reduce API calls
+  refreshInterval = 10000, // Increased to 10s to reduce API calls significantly
   enabled = true,
   useWebSocket = true,
   subscribeToAccountActivity = false,
@@ -122,18 +122,23 @@ export const useSchwabStreaming = ({
     setError(null);
   }, []);
 
-  // Polling fallback
+  // Polling fallback - with error suppression for rate limits
   const fetchQuotes = useCallback(async () => {
     if (!enabled || symbols.length === 0 || isWebSocketActiveRef.current) return;
 
     try {
       const fetchedQuotes = await schwabApi.getQuotes(symbols);
-      processQuotes(fetchedQuotes);
-      setStatus('polling');
+      if (fetchedQuotes.length > 0) {
+        processQuotes(fetchedQuotes);
+        setStatus('polling');
+        setError(null);
+      }
     } catch (err: any) {
-      console.error("Streaming error:", err);
-      setError(err.message || "Failed to fetch quotes");
-      setIsConnected(false);
+      // Silently handle rate limit / network errors - don't spam console
+      if (!err.message?.includes('rate') && !err.message?.includes('429')) {
+        console.warn("Streaming error:", err.message);
+      }
+      // Don't disconnect on transient errors
     }
   }, [symbols, enabled, processQuotes]);
 

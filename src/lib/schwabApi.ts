@@ -244,8 +244,16 @@ class SchwabApiClient {
     return data.data;
   }
 
+  // Request deduplication - prevents multiple components from hammering the API
+  private static pendingQuoteRequest: Promise<SchwabQuote[]> | null = null;
+  private static pendingSymbols: Set<string> = new Set();
+  private static lastQuotesFetch: number = 0;
+  private static cachedQuotes: Map<string, { quote: SchwabQuote; timestamp: number }> = new Map();
+  private static readonly CACHE_TTL_MS = 3000; // 3 second cache
+  private static readonly MIN_FETCH_INTERVAL_MS = 2000; // 2 second minimum between fetches
+
   /**
-   * Get real-time quotes for symbols
+   * Get real-time quotes for symbols (with request deduplication)
    * @param symbols - Array of symbols or comma-separated string
    */
   async getQuotes(symbols: string | string[]): Promise<SchwabQuote[]> {
@@ -253,6 +261,76 @@ class SchwabApiClient {
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
 
+    if (normalizedSymbols.length === 0) return [];
+
+    const now = Date.now();
+    
+    // Check if all requested symbols are in cache and still fresh
+    const allCached = normalizedSymbols.every(symbol => {
+      const cached = SchwabApiClient.cachedQuotes.get(symbol);
+      return cached && (now - cached.timestamp) < SchwabApiClient.CACHE_TTL_MS;
+    });
+    
+    if (allCached) {
+      return normalizedSymbols.map(symbol => SchwabApiClient.cachedQuotes.get(symbol)!.quote);
+    }
+
+    // Rate limit - if we fetched too recently, return cached data or wait
+    const timeSinceLastFetch = now - SchwabApiClient.lastQuotesFetch;
+    if (timeSinceLastFetch < SchwabApiClient.MIN_FETCH_INTERVAL_MS) {
+      // Return whatever we have cached, even if incomplete
+      const cachedResults = normalizedSymbols
+        .map(symbol => SchwabApiClient.cachedQuotes.get(symbol)?.quote)
+        .filter(Boolean) as SchwabQuote[];
+      
+      if (cachedResults.length > 0) {
+        return cachedResults;
+      }
+    }
+
+    // If there's already a pending request, wait for it
+    if (SchwabApiClient.pendingQuoteRequest) {
+      // Add our symbols to the pending set for next batch
+      normalizedSymbols.forEach(s => SchwabApiClient.pendingSymbols.add(s));
+      
+      try {
+        const result = await SchwabApiClient.pendingQuoteRequest;
+        // Return only the symbols we requested
+        return result.filter(q => normalizedSymbols.includes(q.symbol));
+      } catch (err) {
+        // If pending request failed, we'll try our own below
+      }
+    }
+
+    // Collect all pending symbols
+    normalizedSymbols.forEach(s => SchwabApiClient.pendingSymbols.add(s));
+    const allSymbols = Array.from(SchwabApiClient.pendingSymbols);
+    SchwabApiClient.pendingSymbols.clear();
+
+    // Create the actual fetch promise
+    SchwabApiClient.pendingQuoteRequest = this.fetchQuotesInternal(allSymbols);
+    SchwabApiClient.lastQuotesFetch = now;
+
+    try {
+      const result = await SchwabApiClient.pendingQuoteRequest;
+      
+      // Cache all results
+      const cacheTime = Date.now();
+      result.forEach(quote => {
+        SchwabApiClient.cachedQuotes.set(quote.symbol, { quote, timestamp: cacheTime });
+      });
+      
+      // Return only the symbols originally requested
+      return result.filter(q => normalizedSymbols.includes(q.symbol));
+    } finally {
+      SchwabApiClient.pendingQuoteRequest = null;
+    }
+  }
+
+  /**
+   * Internal fetch implementation
+   */
+  private async fetchQuotesInternal(normalizedSymbols: string[]): Promise<SchwabQuote[]> {
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     const isNotFoundError = (err: any) =>
@@ -264,29 +342,18 @@ class SchwabApiClient {
       const { data: { session } } = await supabase.auth.getSession();
 
       if (session) {
-        const delays = [0, 600, 1500]; // brief deploy window retries
+        try {
+          const { data, error } = await supabase.functions.invoke('schwab-quotes', {
+            body: { symbols: normalizedSymbols },
+          });
 
-        for (const delayMs of delays) {
-          if (delayMs) await wait(delayMs);
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
 
-          try {
-            const { data, error } = await supabase.functions.invoke('schwab-quotes', {
-              body: { symbols: normalizedSymbols },
-            });
-
-            if (error) throw error;
-            if (data?.error) throw new Error(data.error);
-
-            return (data?.quotes as SchwabQuote[]) || [];
-          } catch (err: any) {
-            if (isNotFoundError(err)) {
-              // likely deploying/routing; retry
-              continue;
-            }
-
-            // Non-404 errors fall through to Polygon-backed fallback below.
+          return (data?.quotes as SchwabQuote[]) || [];
+        } catch (err: any) {
+          if (!isNotFoundError(err)) {
             console.warn('[schwabApi.getQuotes] Schwab quotes failed, falling back:', err);
-            break;
           }
         }
       }
