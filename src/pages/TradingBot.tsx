@@ -15,6 +15,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
 import RealTimeAnalysisDashboard from "@/components/RealTimeAnalysisDashboard";
+import DataSourceAccuracyTracker from "@/components/DataSourceAccuracyTracker";
 
 interface Trade {
   id: string;
@@ -612,6 +613,9 @@ const TradingBot = () => {
 
         {/* Real-Time Analysis Dashboard */}
         <RealTimeAnalysisDashboard />
+
+        {/* Data Source Accuracy Tracker */}
+        <DataSourceAccuracyTracker />
 
         {/* Settings */}
         <AutoTradingSettings />
