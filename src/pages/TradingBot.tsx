@@ -14,6 +14,7 @@ import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, ArrowLeft, Target
 import { useSubscription } from "@/hooks/useSubscription";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
+import RealTimeAnalysisDashboard from "@/components/RealTimeAnalysisDashboard";
 
 interface Trade {
   id: string;
@@ -608,6 +609,9 @@ const TradingBot = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Real-Time Analysis Dashboard */}
+        <RealTimeAnalysisDashboard />
 
         {/* Settings */}
         <AutoTradingSettings />
