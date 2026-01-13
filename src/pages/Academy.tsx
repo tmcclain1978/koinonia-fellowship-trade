@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import Navigation from "@/components/Navigation";
 import { CourseCard } from "@/components/academy/CourseCard";
 import { ProgressSummary } from "@/components/academy/ProgressSummary";
+import CourseRecommendations from "@/components/academy/CourseRecommendations";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GraduationCap, BookOpen, Trophy, Filter } from "lucide-react";
@@ -139,6 +140,13 @@ const Academy = () => {
           )}
         </div>
       </div>
+
+      {/* Course Recommendations */}
+      {user && courses.length > 0 && (
+        <div className="container mx-auto px-4 pt-8">
+          <CourseRecommendations userId={user.id} courses={courses} />
+        </div>
+      )}
 
       {/* Course Filters */}
       <div className="container mx-auto px-4 py-8">
