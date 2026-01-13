@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, DollarSign, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle } from "lucide-react";
+import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle, FlaskConical, Zap } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
@@ -56,6 +58,7 @@ const TradingBot = () => {
   const [botEnabled, setBotEnabled] = useState(false);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [performanceLogs, setPerformanceLogs] = useState<PerformanceLog[]>([]);
+  const [tradingMode, setTradingMode] = useState<"paper" | "live">("paper");
   const [stats, setStats] = useState<BotStats>({
     totalTrades: 0,
     successRate: 0,
@@ -70,6 +73,7 @@ const TradingBot = () => {
   useEffect(() => {
     checkAuth();
     loadBotStatus();
+    loadTradingMode();
     loadTrades();
     loadPerformanceLogs();
     loadStats();
@@ -100,6 +104,58 @@ const TradingBot = () => {
       console.error("Error loading bot status:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTradingMode = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data } = await supabase
+        .from("user_api_credentials")
+        .select("trading_mode")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      if (data?.trading_mode) {
+        setTradingMode(data.trading_mode as "paper" | "live");
+      }
+    } catch (error) {
+      console.error("Error loading trading mode:", error);
+    }
+  };
+
+  const updateTradingMode = async (mode: "paper" | "live") => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { error } = await supabase
+        .from("user_api_credentials")
+        .upsert({
+          user_id: session.user.id,
+          trading_mode: mode,
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) throw error;
+
+      setTradingMode(mode);
+      toast({
+        title: `Trading Mode: ${mode === "paper" ? "Paper" : "Live"}`,
+        description: mode === "paper" 
+          ? "Bot will execute simulated trades only" 
+          : "⚠️ Bot will execute real trades with your broker",
+        variant: mode === "live" ? "destructive" : "default",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -312,6 +368,55 @@ const TradingBot = () => {
             )}
           </Button>
         </div>
+
+        {/* Trading Mode Toggle */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  tradingMode === "paper" ? "bg-primary/10" : "bg-destructive/10"
+                }`}>
+                  {tradingMode === "paper" ? (
+                    <FlaskConical className="w-6 h-6 text-primary" />
+                  ) : (
+                    <Zap className="w-6 h-6 text-destructive" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">Trading Mode</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {tradingMode === "paper" 
+                      ? "Simulated trades - no real money at risk" 
+                      : "⚠️ Real trades - actual money will be used"}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <Label htmlFor="trading-mode" className={`font-medium ${tradingMode === "paper" ? "text-primary" : "text-muted-foreground"}`}>
+                  Paper
+                </Label>
+                <Switch
+                  id="trading-mode"
+                  checked={tradingMode === "live"}
+                  onCheckedChange={(checked) => updateTradingMode(checked ? "live" : "paper")}
+                />
+                <Label htmlFor="trading-mode" className={`font-medium ${tradingMode === "live" ? "text-destructive" : "text-muted-foreground"}`}>
+                  Live
+                </Label>
+              </div>
+            </div>
+            
+            {tradingMode === "live" && (
+              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-sm text-destructive font-medium">
+                  ⚠️ Live trading is enabled. Real orders will be placed with your connected broker.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Enhanced Stats Cards */}
         <div className="grid md:grid-cols-4 lg:grid-cols-7 gap-4">
