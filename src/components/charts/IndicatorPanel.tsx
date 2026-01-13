@@ -2,122 +2,158 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TrendingUp, Search } from "lucide-react";
+import { TrendingUp, Search, Layers, LayoutPanelTop } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 
 interface IndicatorPanelProps {
   selectedIndicators: string[];
   onIndicatorChange: (indicators: string[]) => void;
 }
 
+type DisplayType = "overlay" | "pane";
+
 interface IndicatorDefinition {
   id: string;
   label: string;
   category: string;
   description?: string;
+  displayType: DisplayType;
 }
+
+// Overlay indicators are drawn on the main price chart
+// Pane indicators get their own separate panel below the chart
+const OVERLAY_INDICATORS = [
+  "SMA", "EMA", "WMA", "DEMA", "TEMA", "VWMA", // Moving averages
+  "BB", "KC", "DC", // Bands/Channels
+  "SAR", "PSAR", "Supertrend", "Ichimoku", // Trend overlays
+  "VWAP", "Pivot", "FibRetrace", "PivotHiLo", "ZigZag", // Price-based
+  "LinearReg" // Statistical overlays
+];
+
+const isOverlayIndicator = (id: string): boolean => {
+  return OVERLAY_INDICATORS.some(overlay => id.startsWith(overlay));
+};
 
 const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
   // Trend Indicators
-  { id: "SMA(5)", label: "SMA 5", category: "Trend", description: "5-period Simple Moving Average" },
-  { id: "SMA(10)", label: "SMA 10", category: "Trend", description: "10-period Simple Moving Average" },
-  { id: "SMA(20)", label: "SMA 20", category: "Trend", description: "20-period Simple Moving Average" },
-  { id: "SMA(50)", label: "SMA 50", category: "Trend", description: "50-period Simple Moving Average" },
-  { id: "SMA(100)", label: "SMA 100", category: "Trend", description: "100-period Simple Moving Average" },
-  { id: "SMA(200)", label: "SMA 200", category: "Trend", description: "200-period Simple Moving Average" },
-  { id: "EMA(5)", label: "EMA 5", category: "Trend", description: "5-period Exponential Moving Average" },
-  { id: "EMA(9)", label: "EMA 9", category: "Trend", description: "9-period Exponential Moving Average" },
-  { id: "EMA(12)", label: "EMA 12", category: "Trend", description: "12-period Exponential Moving Average" },
-  { id: "EMA(20)", label: "EMA 20", category: "Trend", description: "20-period Exponential Moving Average" },
-  { id: "EMA(26)", label: "EMA 26", category: "Trend", description: "26-period Exponential Moving Average" },
-  { id: "EMA(50)", label: "EMA 50", category: "Trend", description: "50-period Exponential Moving Average" },
-  { id: "EMA(100)", label: "EMA 100", category: "Trend", description: "100-period Exponential Moving Average" },
-  { id: "EMA(200)", label: "EMA 200", category: "Trend", description: "200-period Exponential Moving Average" },
-  { id: "WMA(20)", label: "WMA 20", category: "Trend", description: "20-period Weighted Moving Average" },
-  { id: "DEMA(20)", label: "DEMA 20", category: "Trend", description: "Double Exponential Moving Average" },
-  { id: "TEMA(20)", label: "TEMA 20", category: "Trend", description: "Triple Exponential Moving Average" },
-  { id: "SAR", label: "Parabolic SAR", category: "Trend", description: "Stop and Reverse indicator" },
-  { id: "Supertrend", label: "Supertrend", category: "Trend", description: "Trend following indicator" },
-  { id: "Ichimoku", label: "Ichimoku Cloud", category: "Trend", description: "Ichimoku Kinko Hyo indicator" },
-  { id: "PSAR", label: "Parabolic SAR", category: "Trend", description: "Parabolic Stop and Reverse" },
-  { id: "VWMA(20)", label: "VWMA 20", category: "Trend", description: "Volume Weighted Moving Average" },
+  { id: "SMA(5)", label: "SMA 5", category: "Trend", description: "5-period Simple Moving Average", displayType: "overlay" },
+  { id: "SMA(10)", label: "SMA 10", category: "Trend", description: "10-period Simple Moving Average", displayType: "overlay" },
+  { id: "SMA(20)", label: "SMA 20", category: "Trend", description: "20-period Simple Moving Average", displayType: "overlay" },
+  { id: "SMA(50)", label: "SMA 50", category: "Trend", description: "50-period Simple Moving Average", displayType: "overlay" },
+  { id: "SMA(100)", label: "SMA 100", category: "Trend", description: "100-period Simple Moving Average", displayType: "overlay" },
+  { id: "SMA(200)", label: "SMA 200", category: "Trend", description: "200-period Simple Moving Average", displayType: "overlay" },
+  { id: "EMA(5)", label: "EMA 5", category: "Trend", description: "5-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(9)", label: "EMA 9", category: "Trend", description: "9-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(12)", label: "EMA 12", category: "Trend", description: "12-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(20)", label: "EMA 20", category: "Trend", description: "20-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(26)", label: "EMA 26", category: "Trend", description: "26-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(50)", label: "EMA 50", category: "Trend", description: "50-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(100)", label: "EMA 100", category: "Trend", description: "100-period Exponential Moving Average", displayType: "overlay" },
+  { id: "EMA(200)", label: "EMA 200", category: "Trend", description: "200-period Exponential Moving Average", displayType: "overlay" },
+  { id: "WMA(20)", label: "WMA 20", category: "Trend", description: "20-period Weighted Moving Average", displayType: "overlay" },
+  { id: "DEMA(20)", label: "DEMA 20", category: "Trend", description: "Double Exponential Moving Average", displayType: "overlay" },
+  { id: "TEMA(20)", label: "TEMA 20", category: "Trend", description: "Triple Exponential Moving Average", displayType: "overlay" },
+  { id: "SAR", label: "Parabolic SAR", category: "Trend", description: "Stop and Reverse indicator", displayType: "overlay" },
+  { id: "Supertrend", label: "Supertrend", category: "Trend", description: "Trend following indicator", displayType: "overlay" },
+  { id: "Ichimoku", label: "Ichimoku Cloud", category: "Trend", description: "Ichimoku Kinko Hyo indicator", displayType: "overlay" },
+  { id: "PSAR", label: "Parabolic SAR", category: "Trend", description: "Parabolic Stop and Reverse", displayType: "overlay" },
+  { id: "VWMA(20)", label: "VWMA 20", category: "Trend", description: "Volume Weighted Moving Average", displayType: "overlay" },
   
   // Momentum Indicators
-  { id: "RSI(7)", label: "RSI 7", category: "Momentum", description: "7-period Relative Strength Index" },
-  { id: "RSI(14)", label: "RSI 14", category: "Momentum", description: "14-period Relative Strength Index" },
-  { id: "RSI(21)", label: "RSI 21", category: "Momentum", description: "21-period Relative Strength Index" },
-  { id: "MACD", label: "MACD", category: "Momentum", description: "Moving Average Convergence Divergence" },
-  { id: "MACD(5,35,5)", label: "MACD (5,35,5)", category: "Momentum", description: "Custom MACD settings" },
-  { id: "Stochastic", label: "Stochastic %K %D", category: "Momentum", description: "Stochastic Oscillator" },
-  { id: "StochRSI", label: "Stochastic RSI", category: "Momentum", description: "Stochastic RSI indicator" },
-  { id: "Williams%R", label: "Williams %R", category: "Momentum", description: "Williams Percent Range" },
-  { id: "CCI(14)", label: "CCI 14", category: "Momentum", description: "14-period Commodity Channel Index" },
-  { id: "CCI(20)", label: "CCI 20", category: "Momentum", description: "20-period Commodity Channel Index" },
-  { id: "MFI(14)", label: "MFI 14", category: "Momentum", description: "Money Flow Index" },
-  { id: "ROC(10)", label: "ROC 10", category: "Momentum", description: "Rate of Change" },
-  { id: "ROC(20)", label: "ROC 20", category: "Momentum", description: "Rate of Change" },
-  { id: "Momentum(10)", label: "Momentum 10", category: "Momentum", description: "10-period Momentum" },
-  { id: "Momentum(20)", label: "Momentum 20", category: "Momentum", description: "20-period Momentum" },
-  { id: "UO", label: "Ultimate Oscillator", category: "Momentum", description: "Ultimate Oscillator indicator" },
-  { id: "AO", label: "Awesome Oscillator", category: "Momentum", description: "Awesome Oscillator" },
-  { id: "TSI", label: "True Strength Index", category: "Momentum", description: "True Strength Index" },
-  { id: "CMO(14)", label: "CMO 14", category: "Momentum", description: "Chande Momentum Oscillator" },
-  { id: "TRIX", label: "TRIX", category: "Momentum", description: "Triple Exponential Average" },
+  { id: "RSI(7)", label: "RSI 7", category: "Momentum", description: "7-period Relative Strength Index", displayType: "pane" },
+  { id: "RSI(14)", label: "RSI 14", category: "Momentum", description: "14-period Relative Strength Index", displayType: "pane" },
+  { id: "RSI(21)", label: "RSI 21", category: "Momentum", description: "21-period Relative Strength Index", displayType: "pane" },
+  { id: "MACD", label: "MACD", category: "Momentum", description: "Moving Average Convergence Divergence", displayType: "pane" },
+  { id: "MACD(5,35,5)", label: "MACD (5,35,5)", category: "Momentum", description: "Custom MACD settings", displayType: "pane" },
+  { id: "Stochastic", label: "Stochastic %K %D", category: "Momentum", description: "Stochastic Oscillator", displayType: "pane" },
+  { id: "StochRSI", label: "Stochastic RSI", category: "Momentum", description: "Stochastic RSI indicator", displayType: "pane" },
+  { id: "Williams%R", label: "Williams %R", category: "Momentum", description: "Williams Percent Range", displayType: "pane" },
+  { id: "CCI(14)", label: "CCI 14", category: "Momentum", description: "14-period Commodity Channel Index", displayType: "pane" },
+  { id: "CCI(20)", label: "CCI 20", category: "Momentum", description: "20-period Commodity Channel Index", displayType: "pane" },
+  { id: "MFI(14)", label: "MFI 14", category: "Momentum", description: "Money Flow Index", displayType: "pane" },
+  { id: "ROC(10)", label: "ROC 10", category: "Momentum", description: "Rate of Change", displayType: "pane" },
+  { id: "ROC(20)", label: "ROC 20", category: "Momentum", description: "Rate of Change", displayType: "pane" },
+  { id: "Momentum(10)", label: "Momentum 10", category: "Momentum", description: "10-period Momentum", displayType: "pane" },
+  { id: "Momentum(20)", label: "Momentum 20", category: "Momentum", description: "20-period Momentum", displayType: "pane" },
+  { id: "UO", label: "Ultimate Oscillator", category: "Momentum", description: "Ultimate Oscillator indicator", displayType: "pane" },
+  { id: "AO", label: "Awesome Oscillator", category: "Momentum", description: "Awesome Oscillator", displayType: "pane" },
+  { id: "TSI", label: "True Strength Index", category: "Momentum", description: "True Strength Index", displayType: "pane" },
+  { id: "CMO(14)", label: "CMO 14", category: "Momentum", description: "Chande Momentum Oscillator", displayType: "pane" },
+  { id: "TRIX", label: "TRIX", category: "Momentum", description: "Triple Exponential Average", displayType: "pane" },
   
   // Volatility Indicators
-  { id: "BB(20,2)", label: "Bollinger Bands (20,2)", category: "Volatility", description: "Standard Bollinger Bands" },
-  { id: "BB(20,3)", label: "Bollinger Bands (20,3)", category: "Volatility", description: "Wide Bollinger Bands" },
-  { id: "BB(10,1.5)", label: "Bollinger Bands (10,1.5)", category: "Volatility", description: "Tight Bollinger Bands" },
-  { id: "KC(20,1.5)", label: "Keltner Channel", category: "Volatility", description: "Keltner Channel indicator" },
-  { id: "DC(20)", label: "Donchian Channel 20", category: "Volatility", description: "Donchian Channel" },
-  { id: "ATR(14)", label: "ATR 14", category: "Volatility", description: "Average True Range" },
-  { id: "ATR(7)", label: "ATR 7", category: "Volatility", description: "7-period Average True Range" },
-  { id: "ATR(21)", label: "ATR 21", category: "Volatility", description: "21-period Average True Range" },
-  { id: "NATR(14)", label: "Normalized ATR", category: "Volatility", description: "Normalized Average True Range" },
-  { id: "StdDev(20)", label: "Std Deviation 20", category: "Volatility", description: "Standard Deviation" },
-  { id: "BBW", label: "BB Width", category: "Volatility", description: "Bollinger Band Width" },
-  { id: "BB%B", label: "BB %B", category: "Volatility", description: "Bollinger Bands %B" },
-  { id: "Chaikin", label: "Chaikin Volatility", category: "Volatility", description: "Chaikin Volatility" },
+  { id: "BB(20,2)", label: "Bollinger Bands (20,2)", category: "Volatility", description: "Standard Bollinger Bands", displayType: "overlay" },
+  { id: "BB(20,3)", label: "Bollinger Bands (20,3)", category: "Volatility", description: "Wide Bollinger Bands", displayType: "overlay" },
+  { id: "BB(10,1.5)", label: "Bollinger Bands (10,1.5)", category: "Volatility", description: "Tight Bollinger Bands", displayType: "overlay" },
+  { id: "KC(20,1.5)", label: "Keltner Channel", category: "Volatility", description: "Keltner Channel indicator", displayType: "overlay" },
+  { id: "DC(20)", label: "Donchian Channel 20", category: "Volatility", description: "Donchian Channel", displayType: "overlay" },
+  { id: "ATR(14)", label: "ATR 14", category: "Volatility", description: "Average True Range", displayType: "pane" },
+  { id: "ATR(7)", label: "ATR 7", category: "Volatility", description: "7-period Average True Range", displayType: "pane" },
+  { id: "ATR(21)", label: "ATR 21", category: "Volatility", description: "21-period Average True Range", displayType: "pane" },
+  { id: "NATR(14)", label: "Normalized ATR", category: "Volatility", description: "Normalized Average True Range", displayType: "pane" },
+  { id: "StdDev(20)", label: "Std Deviation 20", category: "Volatility", description: "Standard Deviation", displayType: "pane" },
+  { id: "BBW", label: "BB Width", category: "Volatility", description: "Bollinger Band Width", displayType: "pane" },
+  { id: "BB%B", label: "BB %B", category: "Volatility", description: "Bollinger Bands %B", displayType: "pane" },
+  { id: "Chaikin", label: "Chaikin Volatility", category: "Volatility", description: "Chaikin Volatility", displayType: "pane" },
   
   // Volume Indicators
-  { id: "Volume", label: "Volume", category: "Volume", description: "Standard volume bars" },
-  { id: "VWAP", label: "VWAP", category: "Volume", description: "Volume Weighted Average Price" },
-  { id: "OBV", label: "On Balance Volume", category: "Volume", description: "On Balance Volume" },
-  { id: "AD", label: "Accumulation/Distribution", category: "Volume", description: "A/D Line" },
-  { id: "CMF(20)", label: "Chaikin Money Flow", category: "Volume", description: "Chaikin Money Flow" },
-  { id: "VROC(14)", label: "Volume ROC", category: "Volume", description: "Volume Rate of Change" },
-  { id: "PVT", label: "Price Volume Trend", category: "Volume", description: "Price Volume Trend" },
-  { id: "EOM", label: "Ease of Movement", category: "Volume", description: "Ease of Movement indicator" },
-  { id: "VPT", label: "Volume Price Trend", category: "Volume", description: "Volume Price Trend" },
-  { id: "NVI", label: "Negative Volume Index", category: "Volume", description: "Negative Volume Index" },
-  { id: "PVI", label: "Positive Volume Index", category: "Volume", description: "Positive Volume Index" },
-  { id: "VWMA(20)", label: "VWMA 20", category: "Volume", description: "Volume Weighted Moving Average" },
+  { id: "Volume", label: "Volume", category: "Volume", description: "Standard volume bars", displayType: "pane" },
+  { id: "VWAP", label: "VWAP", category: "Volume", description: "Volume Weighted Average Price", displayType: "overlay" },
+  { id: "OBV", label: "On Balance Volume", category: "Volume", description: "On Balance Volume", displayType: "pane" },
+  { id: "AD", label: "Accumulation/Distribution", category: "Volume", description: "A/D Line", displayType: "pane" },
+  { id: "CMF(20)", label: "Chaikin Money Flow", category: "Volume", description: "Chaikin Money Flow", displayType: "pane" },
+  { id: "VROC(14)", label: "Volume ROC", category: "Volume", description: "Volume Rate of Change", displayType: "pane" },
+  { id: "PVT", label: "Price Volume Trend", category: "Volume", description: "Price Volume Trend", displayType: "pane" },
+  { id: "EOM", label: "Ease of Movement", category: "Volume", description: "Ease of Movement indicator", displayType: "pane" },
+  { id: "VPT", label: "Volume Price Trend", category: "Volume", description: "Volume Price Trend", displayType: "pane" },
+  { id: "NVI", label: "Negative Volume Index", category: "Volume", description: "Negative Volume Index", displayType: "pane" },
+  { id: "PVI", label: "Positive Volume Index", category: "Volume", description: "Positive Volume Index", displayType: "pane" },
+  { id: "VWMA(20)", label: "VWMA 20", category: "Volume", description: "Volume Weighted Moving Average", displayType: "overlay" },
   
   // Statistical Indicators
-  { id: "LinearReg(14)", label: "Linear Regression 14", category: "Statistical", description: "Linear Regression" },
-  { id: "LinearRegSlope", label: "LR Slope", category: "Statistical", description: "Linear Regression Slope" },
-  { id: "Correlation", label: "Correlation", category: "Statistical", description: "Price Correlation" },
-  { id: "Beta", label: "Beta", category: "Statistical", description: "Beta coefficient" },
-  { id: "R2", label: "R-Squared", category: "Statistical", description: "Coefficient of Determination" },
+  { id: "LinearReg(14)", label: "Linear Regression 14", category: "Statistical", description: "Linear Regression", displayType: "overlay" },
+  { id: "LinearRegSlope", label: "LR Slope", category: "Statistical", description: "Linear Regression Slope", displayType: "pane" },
+  { id: "Correlation", label: "Correlation", category: "Statistical", description: "Price Correlation", displayType: "pane" },
+  { id: "Beta", label: "Beta", category: "Statistical", description: "Beta coefficient", displayType: "pane" },
+  { id: "R2", label: "R-Squared", category: "Statistical", description: "Coefficient of Determination", displayType: "pane" },
   
   // Oscillators
-  { id: "DPO", label: "Detrended Price Osc", category: "Oscillators", description: "Detrended Price Oscillator" },
-  { id: "KST", label: "Know Sure Thing", category: "Oscillators", description: "Know Sure Thing indicator" },
-  { id: "PPO", label: "Price Oscillator", category: "Oscillators", description: "Percentage Price Oscillator" },
-  { id: "PO", label: "Price Oscillator", category: "Oscillators", description: "Price Oscillator" },
-  { id: "AROON", label: "Aroon Indicator", category: "Oscillators", description: "Aroon Up/Down indicator" },
-  { id: "AroonOsc", label: "Aroon Oscillator", category: "Oscillators", description: "Aroon Oscillator" },
-  { id: "DMI", label: "Directional Movement", category: "Oscillators", description: "DMI +DI/-DI" },
-  { id: "ADX(14)", label: "ADX 14", category: "Oscillators", description: "Average Directional Index" },
+  { id: "DPO", label: "Detrended Price Osc", category: "Oscillators", description: "Detrended Price Oscillator", displayType: "pane" },
+  { id: "KST", label: "Know Sure Thing", category: "Oscillators", description: "Know Sure Thing indicator", displayType: "pane" },
+  { id: "PPO", label: "Price Oscillator", category: "Oscillators", description: "Percentage Price Oscillator", displayType: "pane" },
+  { id: "PO", label: "Price Oscillator", category: "Oscillators", description: "Price Oscillator", displayType: "pane" },
+  { id: "AROON", label: "Aroon Indicator", category: "Oscillators", description: "Aroon Up/Down indicator", displayType: "pane" },
+  { id: "AroonOsc", label: "Aroon Oscillator", category: "Oscillators", description: "Aroon Oscillator", displayType: "pane" },
+  { id: "DMI", label: "Directional Movement", category: "Oscillators", description: "DMI +DI/-DI", displayType: "pane" },
+  { id: "ADX(14)", label: "ADX 14", category: "Oscillators", description: "Average Directional Index", displayType: "pane" },
   
   // Custom/Popular
-  { id: "Pivot", label: "Pivot Points", category: "Support/Resistance", description: "Classic Pivot Points" },
-  { id: "FibRetrace", label: "Fib Retracement", category: "Support/Resistance", description: "Fibonacci Retracement levels" },
-  { id: "PivotHiLo", label: "Pivot High/Low", category: "Support/Resistance", description: "Swing High/Low pivots" },
-  { id: "ZigZag", label: "Zig Zag", category: "Support/Resistance", description: "Zig Zag indicator" },
+  { id: "Pivot", label: "Pivot Points", category: "Support/Resistance", description: "Classic Pivot Points", displayType: "overlay" },
+  { id: "FibRetrace", label: "Fib Retracement", category: "Support/Resistance", description: "Fibonacci Retracement levels", displayType: "overlay" },
+  { id: "PivotHiLo", label: "Pivot High/Low", category: "Support/Resistance", description: "Swing High/Low pivots", displayType: "overlay" },
+  { id: "ZigZag", label: "Zig Zag", category: "Support/Resistance", description: "Zig Zag indicator", displayType: "overlay" },
 ];
+
+// Helper component for display type badge
+const DisplayTypeBadge = ({ type }: { type: DisplayType }) => (
+  <Badge 
+    variant="outline" 
+    className={`text-[9px] px-1 py-0 h-4 font-normal ${
+      type === "overlay" 
+        ? "border-blue-500/50 text-blue-500 bg-blue-500/10" 
+        : "border-amber-500/50 text-amber-500 bg-amber-500/10"
+    }`}
+  >
+    {type === "overlay" ? (
+      <><Layers className="w-2.5 h-2.5 mr-0.5" />Chart</>
+    ) : (
+      <><LayoutPanelTop className="w-2.5 h-2.5 mr-0.5" />Pane</>
+    )}
+  </Badge>
+);
 
 const CATEGORIES = [
   "All",
@@ -170,7 +206,7 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
           Indicators ({selectedIndicators.length})
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[420px] p-0" align="start">
+      <PopoverContent className="w-[480px] p-0" align="start">
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold">Technical Indicators</h4>
@@ -185,7 +221,7 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
               </Button>
             )}
           </div>
-          <div className="relative">
+          <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search indicators..."
@@ -193,6 +229,16 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9"
             />
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Layers className="w-3 h-3 text-blue-500" />
+              <span>Chart = overlays on price</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <LayoutPanelTop className="w-3 h-3 text-amber-500" />
+              <span>Pane = separate panel</span>
+            </div>
           </div>
         </div>
         
@@ -219,38 +265,44 @@ export const IndicatorPanel = ({ selectedIndicators, onIndicatorChange }: Indica
                     <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       {category}
                     </h5>
-                    <div className="grid grid-cols-2 gap-1">
+                    <div className="grid grid-cols-1 gap-1">
                       {indicators.map(indicator => (
                         <label
                           key={indicator.id}
-                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
+                          className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer"
                           title={indicator.description}
                         >
-                          <Checkbox
-                            id={indicator.id}
-                            checked={selectedIndicators.includes(indicator.id)}
-                            onCheckedChange={() => handleToggle(indicator.id)}
-                          />
-                          <span className="text-sm truncate">{indicator.label}</span>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={indicator.id}
+                              checked={selectedIndicators.includes(indicator.id)}
+                              onCheckedChange={() => handleToggle(indicator.id)}
+                            />
+                            <span className="text-sm">{indicator.label}</span>
+                          </div>
+                          <DisplayTypeBadge type={indicator.displayType} />
                         </label>
                       ))}
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-1 gap-1">
                   {filteredIndicators.map(indicator => (
                     <label
                       key={indicator.id}
-                      className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
+                      className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer"
                       title={indicator.description}
                     >
-                      <Checkbox
-                        id={indicator.id}
-                        checked={selectedIndicators.includes(indicator.id)}
-                        onCheckedChange={() => handleToggle(indicator.id)}
-                      />
-                      <span className="text-sm truncate">{indicator.label}</span>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={indicator.id}
+                          checked={selectedIndicators.includes(indicator.id)}
+                          onCheckedChange={() => handleToggle(indicator.id)}
+                        />
+                        <span className="text-sm">{indicator.label}</span>
+                      </div>
+                      <DisplayTypeBadge type={indicator.displayType} />
                     </label>
                   ))}
                 </div>
