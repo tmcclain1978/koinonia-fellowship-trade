@@ -140,6 +140,16 @@ const Navigation = () => {
                 Adv. Analytics
               </Link>
               <Link 
+                to="/academy"
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname.startsWith("/academy") 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Academy
+              </Link>
+              <Link 
                 to="/education"
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/education" 
@@ -256,6 +266,17 @@ const Navigation = () => {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Analytics
+                </Link>
+                <Link 
+                  to="/academy"
+                  className={`text-sm font-medium ${
+                    location.pathname.startsWith("/academy") 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Academy
                 </Link>
                 <Link 
                   to="/education"
