@@ -62,9 +62,96 @@ serve(async (req) => {
           .gte("executed_at", today.toISOString());
 
         if (todayTrades && settings.max_daily_trades && todayTrades.length >= settings.max_daily_trades) {
-          console.log(`[Trading Bot] User ${settings.user_id} reached daily limit`);
+          console.log(`[Trading Bot] User ${settings.user_id} reached daily trade limit`);
           continue;
         }
+
+        // ========== PHASE 2: Enhanced Risk Management ==========
+        
+        // Check daily loss limit
+        const todayPnL = todayTrades?.reduce((sum: number, t: any) => {
+          // Calculate P&L from trade if available
+          return sum + (t.price * t.quantity * (t.action === 'sell' ? 1 : -1) * 0.1); // Simplified P&L
+        }, 0) || 0;
+
+        const maxDailyLoss = (settings as any).max_daily_loss || 500;
+        if (todayPnL < -maxDailyLoss) {
+          console.log(`[Trading Bot] User ${settings.user_id} hit daily loss limit: $${todayPnL.toFixed(2)} (limit: -$${maxDailyLoss})`);
+          results.push({
+            userId: settings.user_id,
+            status: "daily_loss_limit",
+            message: `Daily loss limit hit: $${todayPnL.toFixed(2)}`,
+          });
+          continue;
+        }
+
+        // Check weekly loss limit
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week (Sunday)
+        weekStart.setHours(0, 0, 0, 0);
+
+        const { data: weekTrades } = await supabase
+          .from("auto_trades_log")
+          .select("*")
+          .eq("user_id", settings.user_id)
+          .gte("executed_at", weekStart.toISOString());
+
+        const weekPnL = weekTrades?.reduce((sum: number, t: any) => {
+          return sum + (t.price * t.quantity * (t.action === 'sell' ? 1 : -1) * 0.1);
+        }, 0) || 0;
+
+        const maxWeeklyLoss = (settings as any).max_weekly_loss || 2000;
+        if (weekPnL < -maxWeeklyLoss) {
+          console.log(`[Trading Bot] User ${settings.user_id} hit weekly loss limit: $${weekPnL.toFixed(2)} (limit: -$${maxWeeklyLoss})`);
+          results.push({
+            userId: settings.user_id,
+            status: "weekly_loss_limit",
+            message: `Weekly loss limit hit: $${weekPnL.toFixed(2)}`,
+          });
+          continue;
+        }
+
+        // Check portfolio stop loss (overall account drawdown)
+        const { data: accountData } = await supabase
+          .from("paper_trading_accounts")
+          .select("balance, starting_balance")
+          .eq("user_id", settings.user_id)
+          .maybeSingle();
+
+        if (accountData) {
+          const portfolioDrawdownPercent = ((accountData.starting_balance - accountData.balance) / accountData.starting_balance) * 100;
+          const maxPortfolioDrawdown = (settings as any).portfolio_stop_loss_percent || 5;
+          
+          if (portfolioDrawdownPercent >= maxPortfolioDrawdown) {
+            console.log(`[Trading Bot] User ${settings.user_id} hit portfolio stop loss: ${portfolioDrawdownPercent.toFixed(1)}% (limit: ${maxPortfolioDrawdown}%)`);
+            results.push({
+              userId: settings.user_id,
+              status: "portfolio_stop_loss",
+              message: `Portfolio drawdown limit hit: ${portfolioDrawdownPercent.toFixed(1)}%`,
+            });
+            continue;
+          }
+        }
+
+        // Check session trade limit
+        const maxSessionTrades = (settings as any).max_session_trades || 10;
+        const { data: sessionTrades } = await supabase
+          .from("auto_trades_log")
+          .select("id")
+          .eq("user_id", settings.user_id)
+          .gte("executed_at", new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()); // Last 4 hours
+
+        if (sessionTrades && sessionTrades.length >= maxSessionTrades) {
+          console.log(`[Trading Bot] User ${settings.user_id} hit session trade limit: ${sessionTrades.length} trades`);
+          results.push({
+            userId: settings.user_id,
+            status: "session_limit",
+            message: `Session trade limit hit: ${sessionTrades.length} trades in last 4 hours`,
+          });
+          continue;
+        }
+
+        // ========== END PHASE 2 ==========
 
         // PHASE 1: Run the stock screener to find 90%+ opportunities
         console.log(`[Trading Bot] Running screener for user ${settings.user_id}...`);
