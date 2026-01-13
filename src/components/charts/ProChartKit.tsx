@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { init, dispose, Chart, KLineData, CandleType, LineType } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2 } from "lucide-react";
+import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2, Focus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -621,6 +621,48 @@ export const ProChartKit = ({
       }
     });
   }, [yAxisScale]);
+
+  // Fit to data - automatically adjust scale to frame visible candles perfectly
+  const fitToData = useCallback(() => {
+    if (!chartRef.current) return;
+    
+    const dataList = chartRef.current.getDataList();
+    if (!dataList || dataList.length === 0) return;
+    
+    // Get visible range of candles (approximately last 50-100 visible)
+    const visibleCount = Math.min(dataList.length, 80);
+    const visibleCandles = dataList.slice(-visibleCount);
+    
+    // Find min and max prices in visible range
+    let minPrice = Infinity;
+    let maxPrice = -Infinity;
+    
+    visibleCandles.forEach((candle) => {
+      if (candle.low < minPrice) minPrice = candle.low;
+      if (candle.high > maxPrice) maxPrice = candle.high;
+    });
+    
+    if (minPrice === Infinity || maxPrice === -Infinity) return;
+    
+    const priceRange = maxPrice - minPrice;
+    const midPrice = (maxPrice + minPrice) / 2;
+    
+    // Calculate optimal gap percentage based on price range relative to mid price
+    // Smaller range = need tighter scale (smaller gap), larger range = need wider scale
+    const rangePercent = (priceRange / midPrice) * 100;
+    
+    // Map range percentage to scale (inverse relationship)
+    // If price moved 1%, we want ~5% gap; if moved 10%, we want ~15% gap
+    let optimalScale = Math.max(2, Math.min(40, rangePercent * 1.5 + 3));
+    
+    // Round to nearest integer
+    optimalScale = Math.round(optimalScale);
+    
+    setYAxisScale(optimalScale);
+    
+    // Also scroll to show latest data
+    chartRef.current.scrollToRealTime();
+  }, []);
 
   // Note: interval reset is now handled in the main chart init useEffect to prevent race conditions
 
@@ -1324,6 +1366,19 @@ export const ProChartKit = ({
                   Wider
                 </Button>
               </div>
+              
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="w-full gap-2"
+                onClick={() => {
+                  fitToData();
+                  setShowScaleControls(false);
+                }}
+              >
+                <Focus className="w-4 h-4" />
+                Fit to Data
+              </Button>
               
               <Button 
                 variant="ghost" 
