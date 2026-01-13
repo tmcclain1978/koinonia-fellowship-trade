@@ -420,6 +420,9 @@ export type Database = {
       bot_performance_log: {
         Row: {
           actual_rr: number | null
+          analysis_sources: string[] | null
+          chart_analysis_used: boolean | null
+          confidence_breakdown: Json | null
           created_at: string
           discipline_score: number | null
           entry_price: number
@@ -429,12 +432,17 @@ export type Database = {
           id: string
           iv_rank_entry: number | null
           iv_rank_exit: number | null
+          koinonia_signal_used: boolean | null
+          live_price_at_entry: number | null
+          patterns_detected: string[] | null
           pop_predicted: number | null
           pop_realized: number | null
           profit_factor: number | null
           quantity: number
           regime_classification: string | null
           regime_correct: boolean | null
+          screener_match_score: number | null
+          sentiment_at_entry: string | null
           slippage: number | null
           strategy: string
           symbol: string
@@ -446,6 +454,9 @@ export type Database = {
         }
         Insert: {
           actual_rr?: number | null
+          analysis_sources?: string[] | null
+          chart_analysis_used?: boolean | null
+          confidence_breakdown?: Json | null
           created_at?: string
           discipline_score?: number | null
           entry_price: number
@@ -455,12 +466,17 @@ export type Database = {
           id?: string
           iv_rank_entry?: number | null
           iv_rank_exit?: number | null
+          koinonia_signal_used?: boolean | null
+          live_price_at_entry?: number | null
+          patterns_detected?: string[] | null
           pop_predicted?: number | null
           pop_realized?: number | null
           profit_factor?: number | null
           quantity: number
           regime_classification?: string | null
           regime_correct?: boolean | null
+          screener_match_score?: number | null
+          sentiment_at_entry?: string | null
           slippage?: number | null
           strategy: string
           symbol: string
@@ -472,6 +488,9 @@ export type Database = {
         }
         Update: {
           actual_rr?: number | null
+          analysis_sources?: string[] | null
+          chart_analysis_used?: boolean | null
+          confidence_breakdown?: Json | null
           created_at?: string
           discipline_score?: number | null
           entry_price?: number
@@ -481,12 +500,17 @@ export type Database = {
           id?: string
           iv_rank_entry?: number | null
           iv_rank_exit?: number | null
+          koinonia_signal_used?: boolean | null
+          live_price_at_entry?: number | null
+          patterns_detected?: string[] | null
           pop_predicted?: number | null
           pop_realized?: number | null
           profit_factor?: number | null
           quantity?: number
           regime_classification?: string | null
           regime_correct?: boolean | null
+          screener_match_score?: number | null
+          sentiment_at_entry?: string | null
           slippage?: number | null
           strategy?: string
           symbol?: string

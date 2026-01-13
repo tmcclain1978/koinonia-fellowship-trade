@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, DollarSign, ArrowLeft } from "lucide-react";
+import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, DollarSign, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
@@ -20,11 +22,31 @@ interface Trade {
   status: string;
 }
 
+interface PerformanceLog {
+  id: string;
+  symbol: string;
+  strategy: string;
+  entry_price: number;
+  discipline_score: number | null;
+  koinonia_signal_used: boolean | null;
+  chart_analysis_used: boolean | null;
+  live_price_at_entry: number | null;
+  screener_match_score: number | null;
+  patterns_detected: string[] | null;
+  sentiment_at_entry: string | null;
+  confidence_breakdown: any | null;
+  analysis_sources: string[] | null;
+  trade_opened_at: string;
+}
+
 interface BotStats {
   totalTrades: number;
   successRate: number;
   profitLoss: number;
   todayTrades: number;
+  avgConfidence: number;
+  koinoniaUsageRate: number;
+  chartAnalysisUsageRate: number;
 }
 
 const TradingBot = () => {
@@ -33,11 +55,15 @@ const TradingBot = () => {
   const { toast } = useToast();
   const [botEnabled, setBotEnabled] = useState(false);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [performanceLogs, setPerformanceLogs] = useState<PerformanceLog[]>([]);
   const [stats, setStats] = useState<BotStats>({
     totalTrades: 0,
     successRate: 0,
     profitLoss: 0,
     todayTrades: 0,
+    avgConfidence: 0,
+    koinoniaUsageRate: 0,
+    chartAnalysisUsageRate: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -45,6 +71,7 @@ const TradingBot = () => {
     checkAuth();
     loadBotStatus();
     loadTrades();
+    loadPerformanceLogs();
     loadStats();
   }, []);
 
@@ -96,6 +123,26 @@ const TradingBot = () => {
     }
   };
 
+  const loadPerformanceLogs = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data } = await supabase
+        .from("bot_performance_log")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("trade_opened_at", { ascending: false })
+        .limit(10);
+
+      if (data) {
+        setPerformanceLogs(data as PerformanceLog[]);
+      }
+    } catch (error) {
+      console.error("Error loading performance logs:", error);
+    }
+  };
+
   const loadStats = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -103,6 +150,11 @@ const TradingBot = () => {
 
       const { data: allTrades } = await supabase
         .from("auto_trades_log")
+        .select("*")
+        .eq("user_id", session.user.id);
+
+      const { data: perfLogs } = await supabase
+        .from("bot_performance_log")
         .select("*")
         .eq("user_id", session.user.id);
 
@@ -119,9 +171,24 @@ const TradingBot = () => {
           ? (executedTrades.length / allTrades.length) * 100
           : 0;
 
-        // Mock P&L calculation - would be real in production
-        const profitLoss = executedTrades.reduce((acc, trade) => {
-          return acc + (Math.random() * 200 - 100); // Mock calculation
+        // Calculate enhanced stats from performance logs
+        let avgConfidence = 0;
+        let koinoniaUsageRate = 0;
+        let chartAnalysisUsageRate = 0;
+
+        if (perfLogs && perfLogs.length > 0) {
+          const logsWithConfidence = perfLogs.filter((l: any) => l.screener_match_score);
+          avgConfidence = logsWithConfidence.length > 0
+            ? logsWithConfidence.reduce((acc: number, l: any) => acc + (l.screener_match_score || 0), 0) / logsWithConfidence.length
+            : 0;
+
+          koinoniaUsageRate = (perfLogs.filter((l: any) => l.koinonia_signal_used).length / perfLogs.length) * 100;
+          chartAnalysisUsageRate = (perfLogs.filter((l: any) => l.chart_analysis_used).length / perfLogs.length) * 100;
+        }
+
+        // Mock P&L calculation
+        const profitLoss = executedTrades.reduce((acc) => {
+          return acc + (Math.random() * 200 - 100);
         }, 0);
 
         setStats({
@@ -129,6 +196,9 @@ const TradingBot = () => {
           successRate: Math.round(successRate),
           profitLoss: Math.round(profitLoss),
           todayTrades,
+          avgConfidence: Math.round(avgConfidence),
+          koinoniaUsageRate: Math.round(koinoniaUsageRate),
+          chartAnalysisUsageRate: Math.round(chartAnalysisUsageRate),
         });
       }
     } catch (error) {
@@ -158,7 +228,7 @@ const TradingBot = () => {
       toast({
         title: newStatus ? "Bot Started" : "Bot Stopped",
         description: newStatus
-          ? "The AI trading bot is now active"
+          ? "The AI trading bot is now active with 90%+ confidence gate"
           : "The AI trading bot has been paused",
       });
     } catch (error: any) {
@@ -218,7 +288,7 @@ const TradingBot = () => {
                 AI Trading Bot
               </h1>
               <p className="text-muted-foreground">
-                Automated trading powered by AI
+                Automated trading with 90%+ confidence gate
               </p>
             </div>
           </div>
@@ -243,8 +313,8 @@ const TradingBot = () => {
           </Button>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-6">
+        {/* Enhanced Stats Cards */}
+        <div className="grid md:grid-cols-4 lg:grid-cols-7 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -296,10 +366,198 @@ const TradingBot = () => {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <Target className="w-3 h-3" />
+                Avg Confidence
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                {stats.avgConfidence}%
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <Brain className="w-3 h-3" />
+                Koinonia Used
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                {stats.koinoniaUsageRate}%
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <LineChart className="w-3 h-3" />
+                Chart Analysis
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                {stats.chartAnalysisUsageRate}%
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Analysis Sources Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5" />
+              Bot Analysis Pipeline
+            </CardTitle>
+            <CardDescription>
+              Data sources used for trading decisions (90%+ confidence required)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-4 gap-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Brain className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">Koinonia Indicator</div>
+                  <div className="text-sm text-muted-foreground">Patterns & Signals</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <LineChart className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">AI Chart Analysis</div>
+                  <div className="text-sm text-muted-foreground">Support/Resistance</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">Live Streaming</div>
+                  <div className="text-sm text-muted-foreground">Real-time Quotes</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Newspaper className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">News Sentiment</div>
+                  <div className="text-sm text-muted-foreground">Market Mood</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Settings */}
         <AutoTradingSettings />
+
+        {/* Recent Performance Logs */}
+        {performanceLogs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="w-5 h-5" />
+                Analysis Breakdown
+              </CardTitle>
+              <CardDescription>Recent trade analysis sources and confidence scores</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {performanceLogs.map((log) => (
+                  <div key={log.id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="font-semibold text-lg">{log.symbol}</div>
+                        <Badge variant="outline">{log.strategy}</Badge>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-muted-foreground">Confidence Score</div>
+                        <div className="font-bold text-primary">{log.screener_match_score || 0}%</div>
+                      </div>
+                    </div>
+                    
+                    {/* Confidence Progress Bar */}
+                    <div className="mb-3">
+                      <Progress 
+                        value={log.screener_match_score || 0} 
+                        className="h-2"
+                      />
+                    </div>
+
+                    {/* Analysis Sources */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <Badge 
+                        variant={log.koinonia_signal_used ? "default" : "secondary"}
+                        className="flex items-center gap-1"
+                      >
+                        {log.koinonia_signal_used ? (
+                          <CheckCircle className="w-3 h-3" />
+                        ) : (
+                          <XCircle className="w-3 h-3" />
+                        )}
+                        Koinonia
+                      </Badge>
+                      <Badge 
+                        variant={log.chart_analysis_used ? "default" : "secondary"}
+                        className="flex items-center gap-1"
+                      >
+                        {log.chart_analysis_used ? (
+                          <CheckCircle className="w-3 h-3" />
+                        ) : (
+                          <XCircle className="w-3 h-3" />
+                        )}
+                        Chart Analysis
+                      </Badge>
+                      {log.live_price_at_entry && (
+                        <Badge variant="outline">
+                          Live: ${log.live_price_at_entry.toFixed(2)}
+                        </Badge>
+                      )}
+                      {log.sentiment_at_entry && (
+                        <Badge 
+                          variant={log.sentiment_at_entry === "bullish" ? "default" : 
+                                   log.sentiment_at_entry === "bearish" ? "destructive" : "secondary"}
+                        >
+                          {log.sentiment_at_entry}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Patterns Detected */}
+                    {log.patterns_detected && log.patterns_detected.length > 0 && (
+                      <div className="text-sm">
+                        <span className="text-muted-foreground">Patterns: </span>
+                        {log.patterns_detected.join(", ")}
+                      </div>
+                    )}
+
+                    {/* Entry Info */}
+                    <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                      <span>Entry: ${log.entry_price?.toFixed(2)}</span>
+                      <span>Discipline: {((log.discipline_score || 0) * 100).toFixed(0)}%</span>
+                      <span>{new Date(log.trade_opened_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Trade History */}
         <Card>
@@ -322,17 +580,20 @@ const TradingBot = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          trade.action === 'BUY' ? 'bg-success/10' : 'bg-destructive/10'
+                          trade.action === 'BUY' ? 'bg-success/10' : 
+                          trade.action === 'pass' ? 'bg-muted' : 'bg-destructive/10'
                         }`}>
                           {trade.action === 'BUY' ? (
                             <TrendingUp className="w-5 h-5 text-success" />
+                          ) : trade.action === 'pass' ? (
+                            <XCircle className="w-5 h-5 text-muted-foreground" />
                           ) : (
                             <TrendingDown className="w-5 h-5 text-destructive" />
                           )}
                         </div>
                         <div>
                           <div className="font-semibold text-foreground">
-                            {trade.action} {trade.symbol}
+                            {trade.action === 'pass' ? `PASS - ${trade.symbol}` : `${trade.action} ${trade.symbol}`}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {new Date(trade.executed_at).toLocaleString()}
@@ -340,16 +601,22 @@ const TradingBot = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold text-foreground">
-                          {trade.quantity} @ ${trade.price}
-                        </div>
-                        <div className={`text-sm ${
-                          trade.status === 'executed' ? 'text-success' :
-                          trade.status === 'failed' ? 'text-destructive' :
-                          'text-warning'
-                        }`}>
-                          {trade.status.toUpperCase()}
-                        </div>
+                        {trade.action !== 'pass' && (
+                          <div className="font-semibold text-foreground">
+                            {trade.quantity} @ ${trade.price}
+                          </div>
+                        )}
+                        <Badge 
+                          variant={
+                            trade.status === 'executed' ? 'default' :
+                            trade.status === 'passed' ? 'secondary' :
+                            trade.status === 'confidence_below_threshold' ? 'secondary' :
+                            trade.status === 'failed' ? 'destructive' :
+                            'outline'
+                          }
+                        >
+                          {trade.status}
+                        </Badge>
                       </div>
                     </div>
                     {trade.reasoning && (
