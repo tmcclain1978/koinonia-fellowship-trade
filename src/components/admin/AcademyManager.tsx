@@ -11,6 +11,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, GripVertical, ChevronRight, ChevronDown, BookOpen, Layers, FileText, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import QuizEditor from "./QuizEditor";
 
 interface Course {
   id: string;
@@ -67,6 +70,9 @@ const AcademyManager = () => {
   // Parent references for creating new items
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
+  
+  // Quiz questions state for lesson editor
+  const [lessonQuizQuestions, setLessonQuizQuestions] = useState<any[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -257,6 +263,12 @@ const AcademyManager = () => {
     
     try {
       const moduleLessons = lessons.filter(l => l.module_id === selectedModuleId);
+      
+      // Only include quiz_questions if there are valid questions
+      const validQuizQuestions = lessonQuizQuestions.filter(q => 
+        q.question.trim() && q.options.some((o: string) => o.trim())
+      );
+      
       const lessonData = {
         module_id: editingLesson?.module_id || selectedModuleId!,
         title: formData.get("title") as string,
@@ -265,6 +277,7 @@ const AcademyManager = () => {
         thumbnail_url: formData.get("thumbnail_url") as string || null,
         duration: formData.get("duration") as string || null,
         content_markdown: formData.get("content_markdown") as string || null,
+        quiz_questions: validQuizQuestions.length > 0 ? validQuizQuestions : null,
         status: formData.get("status") as string,
         order_index: editingLesson?.order_index ?? moduleLessons.length,
       };
@@ -290,6 +303,7 @@ const AcademyManager = () => {
       setIsLessonDialogOpen(false);
       setEditingLesson(null);
       setSelectedModuleId(null);
+      setLessonQuizQuestions([]);
       fetchData();
     } catch (error) {
       console.error("Error saving lesson:", error);
@@ -506,61 +520,101 @@ const AcademyManager = () => {
         </Dialog>
 
         {/* Lesson Dialog */}
-        <Dialog open={isLessonDialogOpen} onOpenChange={setIsLessonDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <Dialog 
+          open={isLessonDialogOpen} 
+          onOpenChange={(open) => {
+            setIsLessonDialogOpen(open);
+            if (!open) {
+              setLessonQuizQuestions([]);
+              setEditingLesson(null);
+              setSelectedModuleId(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <form onSubmit={saveLesson}>
               <DialogHeader>
                 <DialogTitle>{editingLesson ? "Edit" : "Create"} Lesson</DialogTitle>
                 <DialogDescription>
-                  {editingLesson ? "Update lesson details" : "Create a new lesson"}
+                  {editingLesson ? "Update lesson details and quiz questions" : "Create a new lesson with optional quiz"}
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input id="title" name="title" defaultValue={editingLesson?.title} required />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea id="description" name="description" defaultValue={editingLesson?.description ?? ''} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="video_url">Video URL</Label>
-                  <Input id="video_url" name="video_url" type="url" placeholder="https://youtube.com/..." defaultValue={editingLesson?.video_url ?? ''} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="thumbnail_url">Thumbnail URL</Label>
-                  <Input id="thumbnail_url" name="thumbnail_url" type="url" defaultValue={editingLesson?.thumbnail_url ?? ''} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="duration">Duration</Label>
-                  <Input id="duration" name="duration" placeholder="15 min" defaultValue={editingLesson?.duration ?? ''} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="content_markdown">Content (Markdown)</Label>
-                  <Textarea 
-                    id="content_markdown" 
-                    name="content_markdown" 
-                    className="min-h-[200px] font-mono text-sm"
-                    defaultValue={editingLesson?.content_markdown ?? ''} 
-                    placeholder="## Lesson Content&#10;&#10;Write your lesson content in Markdown format..."
+              
+              <Tabs defaultValue="details" className="mt-4">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="details">Lesson Details</TabsTrigger>
+                  <TabsTrigger value="quiz">
+                    Quiz Questions
+                    {lessonQuizQuestions.length > 0 && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {lessonQuizQuestions.length}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="details" className="space-y-4 mt-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="title">Title</Label>
+                    <Input id="title" name="title" defaultValue={editingLesson?.title} required />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea id="description" name="description" defaultValue={editingLesson?.description ?? ''} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="video_url">Video URL</Label>
+                      <Input id="video_url" name="video_url" type="url" placeholder="https://youtube.com/..." defaultValue={editingLesson?.video_url ?? ''} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="duration">Duration</Label>
+                      <Input id="duration" name="duration" placeholder="15 min" defaultValue={editingLesson?.duration ?? ''} />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="thumbnail_url">Thumbnail URL</Label>
+                    <Input id="thumbnail_url" name="thumbnail_url" type="url" defaultValue={editingLesson?.thumbnail_url ?? ''} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="content_markdown">Content (Markdown)</Label>
+                    <Textarea 
+                      id="content_markdown" 
+                      name="content_markdown" 
+                      className="min-h-[200px] font-mono text-sm"
+                      defaultValue={editingLesson?.content_markdown ?? ''} 
+                      placeholder="## Lesson Content&#10;&#10;Write your lesson content in Markdown format..."
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select name="status" defaultValue={editingLesson?.status || "draft"}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="published">Published</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="quiz" className="mt-4">
+                  <QuizEditor 
+                    questions={lessonQuizQuestions} 
+                    onChange={setLessonQuizQuestions} 
                   />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select name="status" defaultValue={editingLesson?.status || "draft"}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="published">Published</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                </TabsContent>
+              </Tabs>
+              
+              <Separator className="my-4" />
+              
               <DialogFooter>
-                <Button type="submit">{editingLesson ? "Update" : "Create"}</Button>
+                <Button type="button" variant="outline" onClick={() => setIsLessonDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">{editingLesson ? "Update" : "Create"} Lesson</Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -741,6 +795,7 @@ const AcademyManager = () => {
                                       onClick={() => {
                                         setSelectedModuleId(module.id);
                                         setEditingLesson(null);
+                                        setLessonQuizQuestions([]);
                                         setIsLessonDialogOpen(true);
                                       }}
                                     >
@@ -830,6 +885,13 @@ const AcademyManager = () => {
                                               onClick={() => {
                                                 setSelectedModuleId(module.id);
                                                 setEditingLesson(lesson);
+                                                // Parse existing quiz questions
+                                                const existingQuiz = lesson.quiz_questions;
+                                                if (Array.isArray(existingQuiz)) {
+                                                  setLessonQuizQuestions(existingQuiz);
+                                                } else {
+                                                  setLessonQuizQuestions([]);
+                                                }
                                                 setIsLessonDialogOpen(true);
                                               }}
                                             >
