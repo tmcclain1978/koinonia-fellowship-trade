@@ -79,6 +79,15 @@ const Analytics = () => {
             Deep market analysis with heat maps, IV/OI charts, technical indicators, news sentiment, and strategy backtesting
           </p>
 
+          {/* Demo Data Notice */}
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6 flex items-start gap-3">
+            <span className="bg-yellow-500 text-black text-xs font-semibold px-2 py-1 rounded shrink-0">DEMO DATA</span>
+            <p className="text-sm text-muted-foreground">
+              Charts on this page display sample data for demonstration purposes. 
+              Connect your brokerage account to view real market data and analytics.
+            </p>
+          </div>
+
           {/* Controls */}
           <Card className="mb-6">
             <CardContent className="pt-6">

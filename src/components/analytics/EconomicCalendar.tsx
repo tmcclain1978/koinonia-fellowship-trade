@@ -156,6 +156,15 @@ export function EconomicCalendar() {
 
   return (
     <div className="space-y-6">
+      {/* Demo Data Notice */}
+      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
+        <Badge className="bg-yellow-500 text-black shrink-0">DEMO DATA</Badge>
+        <p className="text-sm text-muted-foreground">
+          This calendar displays sample economic events for demonstration. 
+          Real-time economic calendar data will be integrated with a live data feed.
+        </p>
+      </div>
+
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">

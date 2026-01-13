@@ -163,6 +163,15 @@ export function FREDDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Data Source Notice */}
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-start gap-3">
+        <Badge className="bg-blue-500 text-white shrink-0">FRED API</Badge>
+        <p className="text-sm text-muted-foreground">
+          Data is fetched from the Federal Reserve Economic Data (FRED) API. 
+          If the API is unavailable, demo data will be displayed.
+        </p>
+      </div>
+
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">

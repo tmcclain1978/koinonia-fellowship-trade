@@ -155,6 +155,15 @@ export function QuantStatsModule() {
 
   return (
     <div className="space-y-6">
+      {/* Demo Data Notice */}
+      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
+        <Badge className="bg-yellow-500 text-black shrink-0">DEMO DATA</Badge>
+        <p className="text-sm text-muted-foreground">
+          This module displays simulated portfolio data for demonstration purposes. 
+          Connect your brokerage account or import your trade history to analyze your actual performance.
+        </p>
+      </div>
+
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
