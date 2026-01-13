@@ -1288,6 +1288,7 @@ export type Database = {
           id_verified_at: string | null
           stripe_verification_session_id: string | null
           stripe_verified_at: string | null
+          theme_preference: string | null
           trading_experience: string | null
           updated_at: string | null
           user_id: string
@@ -1305,6 +1306,7 @@ export type Database = {
           id_verified_at?: string | null
           stripe_verification_session_id?: string | null
           stripe_verified_at?: string | null
+          theme_preference?: string | null
           trading_experience?: string | null
           updated_at?: string | null
           user_id: string
@@ -1322,6 +1324,7 @@ export type Database = {
           id_verified_at?: string | null
           stripe_verification_session_id?: string | null
           stripe_verified_at?: string | null
+          theme_preference?: string | null
           trading_experience?: string | null
           updated_at?: string | null
           user_id?: string
