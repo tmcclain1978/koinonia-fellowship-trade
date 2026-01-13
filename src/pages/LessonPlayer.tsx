@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navigation from "@/components/Navigation";
+import { QuizComponent, QuizQuestion } from "@/components/academy/QuizComponent";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,8 @@ import {
   Circle,
   PlayCircle,
   BookOpen,
-  Clock
+  Clock,
+  Brain
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,6 +28,7 @@ interface Lesson {
   duration: string | null;
   module_id: string;
   order_index: number;
+  quiz_questions: QuizQuestion[] | null;
 }
 
 interface Module {
@@ -60,6 +63,7 @@ const LessonPlayer = () => {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [quizScore, setQuizScore] = useState<number | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -90,7 +94,14 @@ const LessonPlayer = () => {
       return;
     }
 
-    setLesson(lessonData);
+    // Parse quiz_questions from JSON
+    const parsedLesson: Lesson = {
+      ...lessonData,
+      quiz_questions: Array.isArray(lessonData.quiz_questions) 
+        ? (lessonData.quiz_questions as unknown as QuizQuestion[])
+        : null
+    };
+    setLesson(parsedLesson);
 
     // Fetch module
     const { data: moduleData } = await supabase
@@ -135,21 +146,23 @@ const LessonPlayer = () => {
           // Fetch user progress
           const { data: progressData } = await supabase
             .from("user_course_progress")
-            .select("lesson_id, completed")
+            .select("lesson_id, completed, quiz_score")
             .eq("user_id", userId)
             .eq("course_id", courseData.id);
 
-          const progressMap = new Map(progressData?.map(p => [p.lesson_id, p.completed]) || []);
+          const progressMap = new Map(progressData?.map(p => [p.lesson_id, { completed: p.completed, quiz_score: p.quiz_score }]) || []);
 
           if (lessonsData) {
             setAllLessons(lessonsData.map(l => ({
               ...l,
-              completed: progressMap.get(l.id) || false
+              completed: progressMap.get(l.id)?.completed || false
             })));
           }
 
-          // Check if current lesson is completed
-          setIsCompleted(progressMap.get(lessonId) || false);
+          // Check if current lesson is completed and get quiz score
+          const currentProgress = progressMap.get(lessonId);
+          setIsCompleted(currentProgress?.completed || false);
+          setQuizScore(currentProgress?.quiz_score || null);
         }
       }
     }
@@ -216,6 +229,44 @@ const LessonPlayer = () => {
         toast.success("🎉 Congratulations! You've completed the course and earned a certificate!");
       }
     }
+  };
+
+  const handleQuizComplete = async (score: number, totalQuestions: number) => {
+    if (!user || !lesson || !course) return;
+
+    const scorePercentage = Math.round((score / totalQuestions) * 100);
+    
+    const { error } = await supabase
+      .from("user_course_progress")
+      .upsert({
+        user_id: user.id,
+        course_id: course.id,
+        lesson_id: lesson.id,
+        quiz_score: scorePercentage,
+        completed: true,
+        completed_at: new Date().toISOString()
+      }, {
+        onConflict: "user_id,lesson_id"
+      });
+
+    if (error) {
+      toast.error("Failed to save quiz score");
+      return;
+    }
+
+    setQuizScore(scorePercentage);
+    setIsCompleted(true);
+    setAllLessons(prev => prev.map(l => 
+      l.id === lesson.id ? { ...l, completed: true } : l
+    ));
+
+    if (scorePercentage >= 70) {
+      toast.success(`Quiz passed with ${scorePercentage}%!`);
+    } else {
+      toast.info(`Quiz completed with ${scorePercentage}%. Review and try again for a higher score!`);
+    }
+
+    await checkCourseCompletion();
   };
 
   const getAdjacentLessons = () => {
@@ -365,6 +416,21 @@ const LessonPlayer = () => {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Quiz Section */}
+          {lesson.quiz_questions && lesson.quiz_questions.length > 0 && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <Brain className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold text-foreground">Lesson Quiz</h2>
+              </div>
+              <QuizComponent
+                questions={lesson.quiz_questions}
+                onComplete={handleQuizComplete}
+                previousScore={quizScore}
+              />
+            </div>
           )}
 
           {/* Navigation */}
