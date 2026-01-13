@@ -67,8 +67,22 @@ const Trading = () => {
   const [leg4Strike, setLeg4Strike] = useState("");
   const [stockQuantity, setStockQuantity] = useState("100");
   const [chartInterval, setChartInterval] = useState("D");
+  const [intervalButtonsDisabled, setIntervalButtonsDisabled] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Handle interval change with debounce to prevent rapid switching
+  const handleIntervalChange = (newInterval: string) => {
+    if (intervalButtonsDisabled || newInterval === chartInterval) return;
+    
+    setIntervalButtonsDisabled(true);
+    setChartInterval(newInterval);
+    
+    // Re-enable buttons after 500ms to prevent rapid switching
+    setTimeout(() => {
+      setIntervalButtonsDisabled(false);
+    }, 500);
+  };
 
   // Fetch options chain data from Schwab
   const fetchOptionsChain = async () => {
@@ -389,7 +403,9 @@ const Trading = () => {
                       key={interval.value}
                       variant={chartInterval === interval.value ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setChartInterval(interval.value)}
+                      onClick={() => handleIntervalChange(interval.value)}
+                      disabled={intervalButtonsDisabled}
+                      className={intervalButtonsDisabled && chartInterval !== interval.value ? "opacity-50" : ""}
                     >
                       {interval.label}
                     </Button>

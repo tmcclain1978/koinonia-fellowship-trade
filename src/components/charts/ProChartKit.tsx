@@ -54,6 +54,7 @@ export const ProChartKit = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isTransitioning, setIsTransitioning] = useState(false); // Brief loading state for smooth transitions
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
   const [showPremarket, setShowPremarket] = useState(false);
@@ -63,6 +64,11 @@ export const ProChartKit = ({
   const isInitialLoadRef = useRef(true);
   const lastCandleTimestampRef = useRef<number | null>(null);
   const currentIntervalStartRef = useRef<number | null>(null);
+  
+  // Interval switch guard to prevent race conditions
+  const isSwitchingIntervalRef = useRef(false);
+  const previousIntervalRef = useRef<string>(interval);
+  const fetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
   // Volume tracking for real-time accumulation
   const baseVolumeRef = useRef<number>(0); // Volume from initial candle load
@@ -271,15 +277,42 @@ export const ProChartKit = ({
     onPriceUpdate: handleSchwabPriceUpdate,
   });
 
+  // Reset all tracking refs atomically when interval changes - prevents race conditions
+  const resetAllTrackingRefs = useCallback(() => {
+    console.log("🔄 Resetting all tracking refs atomically");
+    currentIntervalStartRef.current = null;
+    isInitialLoadRef.current = true;
+    lastCandleTimestampRef.current = null;
+    // Reset volume tracking
+    baseVolumeRef.current = 0;
+    accumulatedVolumeRef.current = 0;
+    lastVolumeUpdateRef.current = 0;
+    lastProcessedPriceRef.current = null;
+    setStreamingVolume(0);
+  }, []);
+
   // Initialize chart
   useEffect(() => {
     console.log("🎨 ProChartKit useEffect triggered", { symbol, interval, theme, hasContainer: !!containerRef.current });
     
-    // Small delay to ensure container is in DOM
+    // Check if this is an interval switch
+    const isIntervalSwitch = previousIntervalRef.current !== interval;
+    previousIntervalRef.current = interval;
+    
+    if (isIntervalSwitch) {
+      console.log("🔀 Interval switch detected:", previousIntervalRef.current, "→", interval);
+      isSwitchingIntervalRef.current = true;
+      setIsTransitioning(true);
+      // Reset all refs atomically before chart re-init
+      resetAllTrackingRefs();
+    }
+    
+    // Small delay to ensure container is in DOM (slightly longer for interval switches)
     const timer = setTimeout(() => {
       if (!containerRef.current) {
         console.error("❌ Container ref is still null after delay!");
         setLoading(false);
+        setIsTransitioning(false);
         return;
       }
 
@@ -394,15 +427,34 @@ export const ProChartKit = ({
         // Set optimal bar spacing for crisp candles
         chart.setBarSpace(8);
         
-        fetchAndLoadData();
+        // Clear any existing data before fetching new data (prevents stale data showing)
+        chart.clearData();
+        
+        // Debounced fetch to prevent rapid API calls during quick interval switching
+        if (fetchDebounceRef.current) {
+          clearTimeout(fetchDebounceRef.current);
+        }
+        fetchDebounceRef.current = setTimeout(() => {
+          fetchAndLoadData();
+          // Clear switching flag after data loads
+          setTimeout(() => {
+            isSwitchingIntervalRef.current = false;
+            setIsTransitioning(false);
+          }, 200);
+        }, isIntervalSwitch ? 150 : 0); // Small debounce for interval switches
       } catch (error) {
         console.error("❌ Failed to initialize chart:", error);
         setLoading(false);
+        setIsTransitioning(false);
+        isSwitchingIntervalRef.current = false;
       }
-    }, 100);
+    }, isIntervalSwitch ? 50 : 100); // Faster init for interval switches
 
     return () => {
       clearTimeout(timer);
+      if (fetchDebounceRef.current) {
+        clearTimeout(fetchDebounceRef.current);
+      }
       unsubRef.current?.();
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
@@ -416,7 +468,7 @@ export const ProChartKit = ({
         chartRef.current = null;
       }
     };
-  }, [symbol, interval, theme]);
+  }, [symbol, interval, theme, resetAllTrackingRefs]);
 
   // Handle candle type changes dynamically - also reapply after chart re-init (interval/symbol change)
   useEffect(() => {
@@ -474,28 +526,14 @@ export const ProChartKit = ({
   useEffect(() => {
     if (chartRef.current && !replayMode) {
       // Reset tracking refs when premarket changes (treat as new data load)
-      isInitialLoadRef.current = true;
-      lastCandleTimestampRef.current = null;
-      currentIntervalStartRef.current = null;
-      // Reset volume tracking
-      baseVolumeRef.current = 0;
-      accumulatedVolumeRef.current = 0;
-      lastVolumeUpdateRef.current = 0;
-      setStreamingVolume(0);
+      resetAllTrackingRefs();
+      // Clear chart before loading new data for smooth transition
+      chartRef.current.clearData();
       fetchAndLoadData(false);
     }
-  }, [showPremarket]);
+  }, [showPremarket, resetAllTrackingRefs]);
 
-  // Reset interval tracking when interval changes
-  useEffect(() => {
-    currentIntervalStartRef.current = null;
-    isInitialLoadRef.current = true;
-    // Reset volume tracking for new interval
-    baseVolumeRef.current = 0;
-    accumulatedVolumeRef.current = 0;
-    lastVolumeUpdateRef.current = 0;
-    setStreamingVolume(0);
-  }, [interval]);
+  // Note: interval reset is now handled in the main chart init useEffect to prevent race conditions
 
   // Replay playback effect
   useEffect(() => {
