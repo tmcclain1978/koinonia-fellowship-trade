@@ -131,8 +131,12 @@ export type Database = {
           created_at: string | null
           enabled: boolean | null
           id: string
+          max_daily_loss: number | null
           max_daily_trades: number | null
           max_position_size: number | null
+          max_session_trades: number | null
+          max_weekly_loss: number | null
+          portfolio_stop_loss_percent: number | null
           risk_tolerance: string | null
           updated_at: string | null
           user_id: string
@@ -142,8 +146,12 @@ export type Database = {
           created_at?: string | null
           enabled?: boolean | null
           id?: string
+          max_daily_loss?: number | null
           max_daily_trades?: number | null
           max_position_size?: number | null
+          max_session_trades?: number | null
+          max_weekly_loss?: number | null
+          portfolio_stop_loss_percent?: number | null
           risk_tolerance?: string | null
           updated_at?: string | null
           user_id: string
@@ -153,8 +161,12 @@ export type Database = {
           created_at?: string | null
           enabled?: boolean | null
           id?: string
+          max_daily_loss?: number | null
           max_daily_trades?: number | null
           max_position_size?: number | null
+          max_session_trades?: number | null
+          max_weekly_loss?: number | null
+          portfolio_stop_loss_percent?: number | null
           risk_tolerance?: string | null
           updated_at?: string | null
           user_id?: string
@@ -1467,6 +1479,45 @@ export type Database = {
         }
         Relationships: []
       }
+      trade_reviews: {
+        Row: {
+          created_at: string | null
+          id: string
+          rating: number | null
+          trade_id: string | null
+          trade_type: string
+          updated_at: string | null
+          user_id: string
+          what_went_right: string | null
+          what_went_wrong: string | null
+          would_take_again: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          rating?: number | null
+          trade_id?: string | null
+          trade_type: string
+          updated_at?: string | null
+          user_id: string
+          what_went_right?: string | null
+          what_went_wrong?: string | null
+          would_take_again?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          rating?: number | null
+          trade_id?: string | null
+          trade_type?: string
+          updated_at?: string | null
+          user_id?: string
+          what_went_right?: string | null
+          what_went_wrong?: string | null
+          would_take_again?: boolean | null
+        }
+        Relationships: []
+      }
       trading_journal: {
         Row: {
           ai_analysis: string | null
@@ -1522,6 +1573,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trading_sessions: {
+        Row: {
+          created_at: string | null
+          ended_at: string | null
+          id: string
+          session_pnl: number | null
+          started_at: string | null
+          trades_count: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          ended_at?: string | null
+          id?: string
+          session_pnl?: number | null
+          started_at?: string | null
+          trades_count?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          ended_at?: string | null
+          id?: string
+          session_pnl?: number | null
+          started_at?: string | null
+          trades_count?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       trading_signals: {
         Row: {

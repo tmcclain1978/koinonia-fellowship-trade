@@ -16,6 +16,7 @@ import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
 import RealTimeAnalysisDashboard from "@/components/RealTimeAnalysisDashboard";
 import DataSourceAccuracyTracker from "@/components/DataSourceAccuracyTracker";
+import { useTradingStats } from "@/hooks/useTradingStats";
 
 interface Trade {
   id: string;
@@ -59,21 +60,13 @@ const TradingBot = () => {
   const navigate = useNavigate();
   const { subscription } = useSubscription();
   const { toast } = useToast();
+  const { stats: tradingStats, reload: reloadStats } = useTradingStats();
   const [botEnabled, setBotEnabled] = useState(false);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [performanceLogs, setPerformanceLogs] = useState<PerformanceLog[]>([]);
   const [tradingMode, setTradingMode] = useState<"paper" | "live">("paper");
   const [showLiveConfirmDialog, setShowLiveConfirmDialog] = useState(false);
   const [confirmText, setConfirmText] = useState("");
-  const [stats, setStats] = useState<BotStats>({
-    totalTrades: 0,
-    successRate: 0,
-    profitLoss: 0,
-    todayTrades: 0,
-    avgConfidence: 0,
-    koinoniaUsageRate: 0,
-    chartAnalysisUsageRate: 0,
-  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,7 +75,6 @@ const TradingBot = () => {
     loadTradingMode();
     loadTrades();
     loadPerformanceLogs();
-    loadStats();
   }, []);
 
   const checkAuth = async () => {
@@ -224,68 +216,7 @@ const TradingBot = () => {
     }
   };
 
-  const loadStats = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data: allTrades } = await supabase
-        .from("auto_trades_log")
-        .select("*")
-        .eq("user_id", session.user.id);
-
-      const { data: perfLogs } = await supabase
-        .from("bot_performance_log")
-        .select("*")
-        .eq("user_id", session.user.id);
-
-      if (allTrades) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const todayTrades = allTrades.filter(
-          (t) => new Date(t.executed_at) >= today
-        ).length;
-
-        const executedTrades = allTrades.filter((t) => t.status === "executed");
-        const successRate = executedTrades.length > 0
-          ? (executedTrades.length / allTrades.length) * 100
-          : 0;
-
-        // Calculate enhanced stats from performance logs
-        let avgConfidence = 0;
-        let koinoniaUsageRate = 0;
-        let chartAnalysisUsageRate = 0;
-
-        if (perfLogs && perfLogs.length > 0) {
-          const logsWithConfidence = perfLogs.filter((l: any) => l.screener_match_score);
-          avgConfidence = logsWithConfidence.length > 0
-            ? logsWithConfidence.reduce((acc: number, l: any) => acc + (l.screener_match_score || 0), 0) / logsWithConfidence.length
-            : 0;
-
-          koinoniaUsageRate = (perfLogs.filter((l: any) => l.koinonia_signal_used).length / perfLogs.length) * 100;
-          chartAnalysisUsageRate = (perfLogs.filter((l: any) => l.chart_analysis_used).length / perfLogs.length) * 100;
-        }
-
-        // Mock P&L calculation
-        const profitLoss = executedTrades.reduce((acc) => {
-          return acc + (Math.random() * 200 - 100);
-        }, 0);
-
-        setStats({
-          totalTrades: allTrades.length,
-          successRate: Math.round(successRate),
-          profitLoss: Math.round(profitLoss),
-          todayTrades,
-          avgConfidence: Math.round(avgConfidence),
-          koinoniaUsageRate: Math.round(koinoniaUsageRate),
-          chartAnalysisUsageRate: Math.round(chartAnalysisUsageRate),
-        });
-      }
-    } catch (error) {
-      console.error("Error loading stats:", error);
-    }
-  };
+  // Stats are now loaded from useTradingStats hook
 
   const toggleBot = async () => {
     try {
@@ -453,7 +384,7 @@ const TradingBot = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">
-                {stats.totalTrades}
+                {tradingStats.totalTrades}
               </div>
             </CardContent>
           </Card>
@@ -466,7 +397,7 @@ const TradingBot = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-success">
-                {stats.successRate}%
+                {tradingStats.successRate}%
               </div>
             </CardContent>
           </Card>
@@ -478,8 +409,8 @@ const TradingBot = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${stats.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                ${stats.profitLoss >= 0 ? '+' : ''}{stats.profitLoss}
+              <div className={`text-2xl font-bold ${tradingStats.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
+                ${tradingStats.profitLoss >= 0 ? '+' : ''}{tradingStats.profitLoss}
               </div>
             </CardContent>
           </Card>
@@ -492,7 +423,7 @@ const TradingBot = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-foreground">
-                {stats.todayTrades}
+                {tradingStats.todayTrades}
               </div>
             </CardContent>
           </Card>
@@ -506,7 +437,7 @@ const TradingBot = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-primary">
-                {stats.avgConfidence}%
+                {tradingStats.avgConfidence}%
               </div>
             </CardContent>
           </Card>
@@ -520,7 +451,7 @@ const TradingBot = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-primary">
-                {stats.koinoniaUsageRate}%
+                {tradingStats.koinoniaUsageRate}%
               </div>
             </CardContent>
           </Card>
@@ -534,7 +465,7 @@ const TradingBot = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-primary">
-                {stats.chartAnalysisUsageRate}%
+                {tradingStats.chartAnalysisUsageRate}%
               </div>
             </CardContent>
           </Card>
