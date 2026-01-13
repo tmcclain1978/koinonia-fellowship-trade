@@ -14,6 +14,9 @@ import TradingJournal from "./pages/TradingJournal";
 import Analytics from "./pages/Analytics";
 import AdvancedAnalytics from "./pages/AdvancedAnalytics";
 import Education from "./pages/Education";
+import Academy from "./pages/Academy";
+import CourseDetail from "./pages/CourseDetail";
+import LessonPlayer from "./pages/LessonPlayer";
 import Podcast from "./pages/Podcast";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
@@ -51,6 +54,9 @@ const App = () => (
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/advanced-analytics" element={<AdvancedAnalytics />} />
             <Route path="/education" element={<Education />} />
+            <Route path="/academy" element={<Academy />} />
+            <Route path="/academy/course/:courseId" element={<CourseDetail />} />
+            <Route path="/academy/lesson/:lessonId" element={<LessonPlayer />} />
             <Route path="/podcast" element={<Podcast />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin" element={<Admin />} />
