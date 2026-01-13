@@ -552,8 +552,20 @@ export const ProChartKit = ({
   }, [showPremarket, resetAllTrackingRefs]);
 
   // Update Y-axis scale when slider changes
+  // Update Y-axis scale when slider changes - includes custom tick generation
   useEffect(() => {
     if (!chartRef.current) return;
+    
+    // Calculate tick count based on scale - more ticks when zoomed in (lower scale value)
+    const getTickCount = (scale: number) => {
+      if (scale <= 5) return 15;      // Very zoomed in: many fine ticks
+      if (scale <= 10) return 12;     // Zoomed in: more ticks
+      if (scale <= 20) return 10;     // Normal: standard ticks
+      if (scale <= 35) return 8;      // Zoomed out: fewer ticks
+      return 6;                        // Very zoomed out: minimal ticks
+    };
+    
+    const tickCount = getTickCount(yAxisScale);
     
     chartRef.current.setPaneOptions({
       id: 'candle_pane',
@@ -561,6 +573,50 @@ export const ProChartKit = ({
         gap: {
           top: yAxisScale / 100,
           bottom: yAxisScale / 100,
+        },
+        createTicks: (params) => {
+          const { range, defaultTicks } = params;
+          const priceRange = range.to - range.from;
+          
+          // If no range or very small, use defaults
+          if (!priceRange || priceRange < 0.01) {
+            return defaultTicks;
+          }
+          
+          // Calculate appropriate step size based on scale and price range
+          const baseStep = priceRange / tickCount;
+          
+          // Round to nice numbers based on the magnitude
+          const magnitude = Math.pow(10, Math.floor(Math.log10(baseStep)));
+          const normalized = baseStep / magnitude;
+          
+          let niceStep: number;
+          if (normalized <= 1) niceStep = magnitude;
+          else if (normalized <= 2) niceStep = 2 * magnitude;
+          else if (normalized <= 5) niceStep = 5 * magnitude;
+          else niceStep = 10 * magnitude;
+          
+          // For zoomed in views, allow smaller increments
+          if (yAxisScale <= 5 && niceStep > 0.01) {
+            niceStep = Math.max(0.01, niceStep / 2);
+          }
+          
+          // Generate ticks
+          const ticks: Array<{ coord: number; value: number | string; text: string }> = [];
+          const startValue = Math.ceil(range.from / niceStep) * niceStep;
+          
+          for (let value = startValue; value <= range.to; value += niceStep) {
+            // Calculate decimal places based on step size
+            const decimals = niceStep < 0.01 ? 3 : niceStep < 0.1 ? 2 : niceStep < 1 ? 2 : niceStep < 10 ? 1 : 0;
+            
+            ticks.push({
+              coord: 0, // klinecharts will calculate the coord
+              value: value,
+              text: value.toFixed(decimals)
+            });
+          }
+          
+          return ticks.length > 0 ? ticks : defaultTicks;
         }
       }
     });
