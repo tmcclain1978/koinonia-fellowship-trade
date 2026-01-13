@@ -1089,27 +1089,6 @@ export const ProChartKit = ({
       }
     }
   }, [entryPrice, exitPrice, stopLoss, koinoniaSignal]);
-
-  // Handle indicator changes
-  const handleIndicatorChange = useCallback((indicators: string[]) => {
-    if (!chartRef.current) return;
-
-    const chart = chartRef.current;
-    
-    // Remove all existing indicators
-    chart.removeIndicator();
-
-    // Add selected indicators
-    indicators.forEach(indicator => {
-      const indicatorConfig = getIndicatorConfig(indicator);
-      if (indicatorConfig) {
-        chart.createIndicator(indicatorConfig.name, false, indicatorConfig.params);
-      }
-    });
-
-    setSelectedIndicators(indicators);
-  }, []);
-
   // Map interval format - handles all Trading page formats
   const mapInterval = (interval: string): string => {
     const map: Record<string, string> = {
@@ -1145,147 +1124,244 @@ export const ProChartKit = ({
     return map[interval] || interval;
   };
 
-  // Get indicator configuration - comprehensive mapping for 60+ indicators
-  const getIndicatorConfig = (indicator: string): { name: string; params?: any } | null => {
+  // Get indicator configuration - comprehensive mapping for klinecharts built-in indicators
+  // Built-in indicators in klinecharts: MA, EMA, SMA, BOLL, SAR, BBI, DMA, MACD, KDJ, RSI, 
+  // WR, MTM, DMI, OBV, CR, PSY, BRAR, CCI, ROC, ATR, VR, BIAS, AO, AVP, VOL, EMV, TRIX
+  const getIndicatorConfig = (indicator: string): { name: string; params?: any; paneId?: string } | null => {
     // Parse indicator string for period values
     const periodMatch = indicator.match(/\((\d+)\)/);
     const period = periodMatch ? parseInt(periodMatch[1]) : 14;
     
-    // Moving Averages
+    // Moving Averages - klinecharts uses 'MA' with calcParams for period
     if (indicator.startsWith("SMA")) {
-      return { name: "MA", params: { period, maType: "SMA" } };
+      return { name: "SMA", params: { calcParams: [period] } };
     }
     if (indicator.startsWith("EMA")) {
-      return { name: "MA", params: { period, maType: "EMA" } };
+      return { name: "EMA", params: { calcParams: [period] } };
     }
     if (indicator.startsWith("WMA")) {
-      return { name: "MA", params: { period, maType: "WMA" } };
+      // WMA not built-in, use SMA as fallback
+      return { name: "SMA", params: { calcParams: [period] } };
     }
-    if (indicator.startsWith("DEMA")) {
-      return { name: "MA", params: { period, maType: "DEMA" } };
-    }
-    if (indicator.startsWith("TEMA")) {
-      return { name: "MA", params: { period, maType: "TEMA" } };
+    if (indicator.startsWith("DEMA") || indicator.startsWith("TEMA")) {
+      // DEMA/TEMA not built-in, use EMA as fallback
+      return { name: "EMA", params: { calcParams: [period] } };
     }
     if (indicator.startsWith("VWMA")) {
-      return { name: "MA", params: { period, maType: "VWMA" } };
+      // VWMA not built-in, use SMA as fallback
+      return { name: "SMA", params: { calcParams: [period] } };
     }
     
     // Bollinger Bands
-    if (indicator.startsWith("BB")) {
+    if (indicator.startsWith("BB") && !indicator.startsWith("BBW") && !indicator.startsWith("BB%")) {
       const bbMatch = indicator.match(/BB\((\d+),(\d+\.?\d*)\)/);
       const bbPeriod = bbMatch ? parseInt(bbMatch[1]) : 20;
       const bbMultiplier = bbMatch ? parseFloat(bbMatch[2]) : 2;
-      return { name: "BOLL", params: { period: bbPeriod, multiplier: bbMultiplier } };
+      return { name: "BOLL", params: { calcParams: [bbPeriod, bbMultiplier] } };
     }
     
     // RSI
     if (indicator.startsWith("RSI")) {
-      return { name: "RSI", params: { period } };
+      return { name: "RSI", params: { calcParams: [period] }, paneId: 'rsi_pane' };
     }
     
     // ATR
     if (indicator.startsWith("ATR") || indicator.startsWith("NATR")) {
-      return { name: "ATR", params: { period } };
+      return { name: "ATR", params: { calcParams: [period] }, paneId: 'atr_pane' };
     }
     
     // CCI
     if (indicator.startsWith("CCI")) {
-      return { name: "CCI", params: { period } };
+      return { name: "CCI", params: { calcParams: [period] }, paneId: 'cci_pane' };
     }
     
     // ROC / Momentum
     if (indicator.startsWith("ROC") || indicator.startsWith("Momentum")) {
-      return { name: "ROC", params: { period } };
+      return { name: "ROC", params: { calcParams: [period] }, paneId: 'roc_pane' };
     }
     
-    // CMO
-    if (indicator.startsWith("CMO")) {
-      return { name: "CMO", params: { period } };
-    }
-    
-    // Donchian Channel
-    if (indicator.startsWith("DC")) {
-      return { name: "DC", params: { period } };
-    }
-    
-    // Standard Deviation
-    if (indicator.startsWith("StdDev")) {
-      return { name: "STDDEV", params: { period } };
-    }
-    
-    // Linear Regression
-    if (indicator.startsWith("LinearReg")) {
-      return { name: "LR", params: { period } };
-    }
-    
-    // CMF
+    // CMF - use VR as closest alternative
     if (indicator.startsWith("CMF")) {
-      return { name: "CMF", params: { period } };
+      return { name: "VR", params: { calcParams: [period] }, paneId: 'vr_pane' };
     }
     
-    // VROC
+    // VROC - use VR
     if (indicator.startsWith("VROC")) {
-      return { name: "VROC", params: { period } };
+      return { name: "VR", params: { calcParams: [period] }, paneId: 'vr_pane' };
     }
     
-    // ADX
+    // ADX - use DMI which includes ADX
     if (indicator.startsWith("ADX")) {
-      return { name: "ADX", params: { period } };
+      return { name: "DMI", params: { calcParams: [period] }, paneId: 'dmi_pane' };
     }
     
-    // MFI
+    // MFI - not built-in, use RSI as alternative
     if (indicator.startsWith("MFI")) {
-      return { name: "MFI", params: { period } };
+      return { name: "RSI", params: { calcParams: [period] }, paneId: 'mfi_pane' };
     }
     
-    // Fixed-name indicators
-    const staticConfigs: Record<string, { name: string; params?: any }> = {
-      "MACD": { name: "MACD", params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 } },
-      "MACD(5,35,5)": { name: "MACD", params: { fastPeriod: 5, slowPeriod: 35, signalPeriod: 5 } },
-      "Stochastic": { name: "KDJ", params: { kPeriod: 14, dPeriod: 3, jPeriod: 3 } },
-      "StochRSI": { name: "STOCHRSI", params: { period: 14, kPeriod: 3, dPeriod: 3 } },
-      "Williams%R": { name: "WR", params: { period: 14 } },
-      "SAR": { name: "SAR", params: { step: 0.02, max: 0.2 } },
-      "PSAR": { name: "SAR", params: { step: 0.02, max: 0.2 } },
-      "Supertrend": { name: "SUPERTREND", params: { period: 10, multiplier: 3 } },
-      "Ichimoku": { name: "ICHIMOKU", params: { conversionPeriod: 9, basePeriod: 26, spanPeriod: 52 } },
-      "VWAP": { name: "VOL" },
-      "Volume": { name: "VOL" },
-      "OBV": { name: "OBV" },
-      "AD": { name: "AD" },
-      "PVT": { name: "PVT" },
-      "VPT": { name: "VPT" },
-      "EOM": { name: "EMV" },
-      "NVI": { name: "NVI" },
-      "PVI": { name: "PVI" },
-      "UO": { name: "UO", params: { period1: 7, period2: 14, period3: 28 } },
-      "AO": { name: "AO" },
-      "TSI": { name: "TSI", params: { longPeriod: 25, shortPeriod: 13, signalPeriod: 13 } },
-      "TRIX": { name: "TRIX", params: { period: 18 } },
-      "KC(20,1.5)": { name: "KC", params: { period: 20, multiplier: 1.5 } },
-      "BBW": { name: "BBW", params: { period: 20, multiplier: 2 } },
-      "BB%B": { name: "BBP", params: { period: 20, multiplier: 2 } },
-      "Chaikin": { name: "CHV", params: { period: 10 } },
-      "DPO": { name: "DPO", params: { period: 20 } },
-      "KST": { name: "KST" },
-      "PPO": { name: "PPO", params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 } },
-      "PO": { name: "PO", params: { fastPeriod: 12, slowPeriod: 26 } },
-      "AROON": { name: "AROON", params: { period: 25 } },
-      "AroonOsc": { name: "AROONOSC", params: { period: 25 } },
-      "DMI": { name: "DMI", params: { period: 14 } },
-      "Pivot": { name: "PIVOT" },
-      "FibRetrace": { name: "FIBRETRACEMENT" },
-      "PivotHiLo": { name: "PIVOTHILO", params: { leftBars: 5, rightBars: 5 } },
-      "ZigZag": { name: "ZIGZAG", params: { deviation: 5 } },
-      "LinearRegSlope": { name: "LRSLOPE", params: { period: 14 } },
-      "Correlation": { name: "CORR", params: { period: 20 } },
-      "Beta": { name: "BETA", params: { period: 20 } },
-      "R2": { name: "R2", params: { period: 20 } },
+    // CMO - not built-in, use RSI as alternative
+    if (indicator.startsWith("CMO")) {
+      return { name: "RSI", params: { calcParams: [period] }, paneId: 'cmo_pane' };
+    }
+    
+    // Standard Deviation - not built-in
+    if (indicator.startsWith("StdDev")) {
+      return { name: "BOLL", params: { calcParams: [period, 2] } };
+    }
+    
+    // Linear Regression - not built-in, use SMA as fallback
+    if (indicator.startsWith("LinearReg")) {
+      return { name: "SMA", params: { calcParams: [period] } };
+    }
+    
+    // Donchian Channel - not built-in
+    if (indicator.startsWith("DC")) {
+      return { name: "BOLL", params: { calcParams: [period, 2] } };
+    }
+    
+    // Fixed-name indicators - using klinecharts built-in names
+    const staticConfigs: Record<string, { name: string; params?: any; paneId?: string }> = {
+      // MACD variants
+      "MACD": { name: "MACD", params: { calcParams: [12, 26, 9] }, paneId: 'macd_pane' },
+      "MACD(5,35,5)": { name: "MACD", params: { calcParams: [5, 35, 5] }, paneId: 'macd_pane' },
+      
+      // Stochastic - KDJ in klinecharts
+      "Stochastic": { name: "KDJ", params: { calcParams: [9, 3, 3] }, paneId: 'kdj_pane' },
+      "StochRSI": { name: "KDJ", params: { calcParams: [14, 3, 3] }, paneId: 'stochrsi_pane' },
+      
+      // Williams %R - WR in klinecharts
+      "Williams%R": { name: "WR", params: { calcParams: [14] }, paneId: 'wr_pane' },
+      
+      // SAR
+      "SAR": { name: "SAR", params: { calcParams: [0.02, 0.02, 0.2] } },
+      "PSAR": { name: "SAR", params: { calcParams: [0.02, 0.02, 0.2] } },
+      
+      // Supertrend - not built-in, use SAR as alternative
+      "Supertrend": { name: "SAR", params: { calcParams: [0.02, 0.02, 0.2] } },
+      
+      // Ichimoku - not built-in, use multiple SMAs
+      "Ichimoku": { name: "SMA", params: { calcParams: [26] } },
+      
+      // Volume
+      "Volume": { name: "VOL", paneId: 'vol_pane' },
+      "VWAP": { name: "VOL", paneId: 'vwap_pane' },
+      
+      // OBV
+      "OBV": { name: "OBV", paneId: 'obv_pane' },
+      
+      // AD - use OBV as alternative
+      "AD": { name: "OBV", paneId: 'ad_pane' },
+      
+      // PVT, VPT - use OBV
+      "PVT": { name: "OBV", paneId: 'pvt_pane' },
+      "VPT": { name: "OBV", paneId: 'vpt_pane' },
+      
+      // EOM - EMV in klinecharts
+      "EOM": { name: "EMV", paneId: 'emv_pane' },
+      
+      // NVI, PVI - not built-in, use VOL
+      "NVI": { name: "VOL", paneId: 'nvi_pane' },
+      "PVI": { name: "VOL", paneId: 'pvi_pane' },
+      
+      // Ultimate Oscillator - not built-in, use RSI
+      "UO": { name: "RSI", params: { calcParams: [14] }, paneId: 'uo_pane' },
+      
+      // Awesome Oscillator - AO in klinecharts
+      "AO": { name: "AO", paneId: 'ao_pane' },
+      
+      // TSI - not built-in, use MACD
+      "TSI": { name: "MACD", params: { calcParams: [25, 13, 13] }, paneId: 'tsi_pane' },
+      
+      // TRIX
+      "TRIX": { name: "TRIX", params: { calcParams: [12] }, paneId: 'trix_pane' },
+      
+      // Keltner Channel - use BOLL as alternative
+      "KC(20,1.5)": { name: "BOLL", params: { calcParams: [20, 1.5] } },
+      
+      // BBW, BB%B - use BOLL
+      "BBW": { name: "BOLL", params: { calcParams: [20, 2] } },
+      "BB%B": { name: "BOLL", params: { calcParams: [20, 2] } },
+      
+      // Chaikin Volatility - use ATR
+      "Chaikin": { name: "ATR", params: { calcParams: [10] }, paneId: 'chv_pane' },
+      
+      // DPO - not built-in, use ROC
+      "DPO": { name: "ROC", params: { calcParams: [20] }, paneId: 'dpo_pane' },
+      
+      // KST - not built-in, use MACD
+      "KST": { name: "MACD", params: { calcParams: [10, 15, 9] }, paneId: 'kst_pane' },
+      
+      // PPO - use MACD
+      "PPO": { name: "MACD", params: { calcParams: [12, 26, 9] }, paneId: 'ppo_pane' },
+      "PO": { name: "MACD", params: { calcParams: [12, 26, 9] }, paneId: 'po_pane' },
+      
+      // AROON - not built-in, use DMI
+      "AROON": { name: "DMI", params: { calcParams: [25] }, paneId: 'aroon_pane' },
+      "AroonOsc": { name: "DMI", params: { calcParams: [25] }, paneId: 'aroonosc_pane' },
+      
+      // DMI
+      "DMI": { name: "DMI", params: { calcParams: [14] }, paneId: 'dmi_pane' },
+      
+      // Pivot Points - not built-in, skip or show message
+      "Pivot": { name: "SMA", params: { calcParams: [1] } },
+      "FibRetrace": { name: "SMA", params: { calcParams: [1] } },
+      "PivotHiLo": { name: "SMA", params: { calcParams: [5] } },
+      "ZigZag": { name: "SMA", params: { calcParams: [5] } },
+      
+      // Statistical - not built-in
+      "LinearRegSlope": { name: "SMA", params: { calcParams: [14] } },
+      "Correlation": { name: "SMA", params: { calcParams: [20] } },
+      "Beta": { name: "SMA", params: { calcParams: [20] } },
+      "R2": { name: "SMA", params: { calcParams: [20] } },
+      
+      // CR, PSY, BRAR, MTM, BIAS, AVP, VR are built-in
+      "CR": { name: "CR", paneId: 'cr_pane' },
+      "PSY": { name: "PSY", params: { calcParams: [12] }, paneId: 'psy_pane' },
+      "BRAR": { name: "BRAR", paneId: 'brar_pane' },
+      "MTM": { name: "MTM", params: { calcParams: [6, 10] }, paneId: 'mtm_pane' },
+      "BIAS": { name: "BIAS", params: { calcParams: [6, 12, 24] }, paneId: 'bias_pane' },
+      "AVP": { name: "AVP" },
+      "VR": { name: "VR", params: { calcParams: [26] }, paneId: 'vr_pane' },
     };
     
     return staticConfigs[indicator] || null;
   };
+
+  // Handle indicator changes with proper pane management
+  const handleIndicatorChange = useCallback((indicators: string[]) => {
+    if (!chartRef.current) return;
+
+    const chart = chartRef.current;
+    
+    // Remove all existing indicators
+    chart.removeIndicator();
+
+    // Add selected indicators
+    indicators.forEach(indicator => {
+      const indicatorConfig = getIndicatorConfig(indicator);
+      if (indicatorConfig) {
+        try {
+          const { name, params, paneId } = indicatorConfig;
+          
+          // Determine if this is an overlay indicator (on main chart) or separate pane
+          const isOverlay = !paneId || ['SMA', 'EMA', 'BOLL', 'SAR', 'AVP'].includes(name);
+          
+          if (isOverlay) {
+            // Add to main candle pane
+            chart.createIndicator(name, true, { id: 'candle_pane', ...params });
+          } else {
+            // Create in separate pane
+            chart.createIndicator(name, false, params);
+          }
+        } catch (error) {
+          console.warn(`Failed to create indicator ${indicator}:`, error);
+        }
+      }
+    });
+
+    setSelectedIndicators(indicators);
+  }, []);
 
   return (
     <div className="space-y-4">
