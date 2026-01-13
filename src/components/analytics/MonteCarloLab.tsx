@@ -130,6 +130,15 @@ export function MonteCarloLab() {
 
   return (
     <div className="space-y-6">
+      {/* Simulation Info Notice */}
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-start gap-3">
+        <Badge className="bg-blue-500 text-white shrink-0">SIMULATION</Badge>
+        <p className="text-sm text-muted-foreground">
+          Monte Carlo simulations use statistical modeling to project possible outcomes. 
+          Results are probabilistic estimates based on historical return patterns, not predictions.
+        </p>
+      </div>
+
       {/* Simulation Controls */}
       <Card>
         <CardHeader>
