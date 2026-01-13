@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle, FlaskConical, Zap } from "lucide-react";
+import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle, FlaskConical, Zap, Lightbulb, Search } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
@@ -550,7 +550,7 @@ const TradingBot = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-4 gap-4">
+            <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <Brain className="w-5 h-5 text-primary" />
@@ -585,6 +585,24 @@ const TradingBot = () => {
                 <div>
                   <div className="font-medium">News Sentiment</div>
                   <div className="text-sm text-muted-foreground">Market Mood</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Lightbulb className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">AI Trade Suggestions</div>
+                  <div className="text-sm text-muted-foreground">Smart Picks</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Search className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="font-medium">AI Stock Analysis</div>
+                  <div className="text-sm text-muted-foreground">Deep Insights</div>
                 </div>
               </div>
             </div>
@@ -650,6 +668,28 @@ const TradingBot = () => {
                           <XCircle className="w-3 h-3" />
                         )}
                         Chart Analysis
+                      </Badge>
+                      <Badge 
+                        variant={log.analysis_sources?.includes("ai_trade_suggestions") ? "default" : "secondary"}
+                        className="flex items-center gap-1"
+                      >
+                        {log.analysis_sources?.includes("ai_trade_suggestions") ? (
+                          <CheckCircle className="w-3 h-3" />
+                        ) : (
+                          <XCircle className="w-3 h-3" />
+                        )}
+                        Trade Suggestions
+                      </Badge>
+                      <Badge 
+                        variant={log.analysis_sources?.includes("ai_stock_analysis") ? "default" : "secondary"}
+                        className="flex items-center gap-1"
+                      >
+                        {log.analysis_sources?.includes("ai_stock_analysis") ? (
+                          <CheckCircle className="w-3 h-3" />
+                        ) : (
+                          <XCircle className="w-3 h-3" />
+                        )}
+                        Stock Analysis
                       </Badge>
                       {log.live_price_at_entry && (
                         <Badge variant="outline">

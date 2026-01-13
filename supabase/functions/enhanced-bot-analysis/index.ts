@@ -6,6 +6,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface TradeSuggestion {
+  symbol: string;
+  action: string;
+  confidence: number;
+  targetPrice: number;
+  reasoning: string;
+}
+
+interface StockAnalysisResult {
+  symbol: string;
+  analysis: string;
+  recommendation?: string;
+}
+
 interface AnalysisResult {
   symbol: string;
   livePrice: {
@@ -31,6 +45,8 @@ interface AnalysisResult {
     keyLevel: number;
     predictedDirection: string;
   } | null;
+  tradeSuggestion: TradeSuggestion | null;
+  stockAnalysis: StockAnalysisResult | null;
   compositeScore: number;
   analysisSourcesUsed: string[];
   recommendation: string;
@@ -56,6 +72,20 @@ serve(async (req) => {
     }
 
     console.log(`[Enhanced Bot Analysis] Analyzing ${symbols.length} symbols for user ${userId}`);
+
+    // Fetch global trade suggestions once (not per symbol)
+    let globalTradeSuggestions: TradeSuggestion[] = [];
+    try {
+      const suggestionsResponse = await supabase.functions.invoke("generate-trade-suggestions", {
+        body: {}
+      });
+      if (suggestionsResponse.data?.suggestions) {
+        globalTradeSuggestions = suggestionsResponse.data.suggestions;
+        console.log(`[Enhanced Bot Analysis] Got ${globalTradeSuggestions.length} global trade suggestions`);
+      }
+    } catch (e) {
+      console.error("[Enhanced Bot Analysis] Error fetching trade suggestions:", e);
+    }
 
     const results: AnalysisResult[] = [];
 
@@ -107,8 +137,8 @@ serve(async (req) => {
           };
           analysisSourcesUsed.push("koinonia_indicator");
           
-          // Add to composite score (up to 40 points)
-          compositeScore += koinoniaSignal.confidence * 40;
+          // Add to composite score (up to 30 points)
+          compositeScore += koinoniaSignal.confidence * 30;
           scoreComponents++;
           
           console.log(`[Enhanced Bot Analysis] Koinonia signal for ${symbol}: ${koinoniaSignal.direction} (${koinoniaSignal.confidence})`);
@@ -135,15 +165,15 @@ serve(async (req) => {
           };
           analysisSourcesUsed.push("chart_analysis");
           
-          // Add to composite score based on price proximity to key levels (up to 30 points)
+          // Add to composite score based on price proximity to key levels (up to 20 points)
           if (livePrice && chartAnalysis.supportLevels.length > 0) {
             const nearestSupport = chartAnalysis.supportLevels[0];
             const distanceToSupport = Math.abs((livePrice.last - nearestSupport) / livePrice.last);
             if (distanceToSupport < 0.02) { // Within 2% of support
-              compositeScore += 30;
+              compositeScore += 20;
               scoreComponents++;
             } else if (distanceToSupport < 0.05) { // Within 5% of support
-              compositeScore += 15;
+              compositeScore += 10;
               scoreComponents++;
             }
           }
@@ -154,15 +184,62 @@ serve(async (req) => {
         console.error(`[Enhanced Bot Analysis] Error fetching chart analysis for ${symbol}:`, e);
       }
 
-      // 4. Calculate final composite score
-      // Add sentiment alignment bonus (up to 30 points)
+      // 4. Check AI Trade Suggestions for this symbol
+      let tradeSuggestion: TradeSuggestion | null = null;
+      const matchingSuggestion = globalTradeSuggestions.find(
+        s => s.symbol.toUpperCase() === symbol.toUpperCase()
+      );
+      if (matchingSuggestion) {
+        tradeSuggestion = matchingSuggestion;
+        analysisSourcesUsed.push("ai_trade_suggestions");
+        
+        // Add to composite score based on suggestion confidence (up to 20 points)
+        compositeScore += (matchingSuggestion.confidence / 100) * 20;
+        scoreComponents++;
+        
+        console.log(`[Enhanced Bot Analysis] Trade suggestion for ${symbol}: ${matchingSuggestion.action} (${matchingSuggestion.confidence}%)`);
+      }
+
+      // 5. Fetch AI Stock Analysis
+      let stockAnalysis: StockAnalysisResult | null = null;
+      try {
+        const analysisResponse = await supabase.functions.invoke("analyze-stock", {
+          body: { symbol, timeframe: "day trading" }
+        });
+
+        if (analysisResponse.data && !analysisResponse.error) {
+          stockAnalysis = {
+            symbol: analysisResponse.data.symbol,
+            analysis: analysisResponse.data.analysis,
+            recommendation: extractRecommendation(analysisResponse.data.analysis)
+          };
+          analysisSourcesUsed.push("ai_stock_analysis");
+          
+          // Add to composite score if analysis contains bullish/bearish signals (up to 15 points)
+          const analysisLower = (stockAnalysis.analysis || "").toLowerCase();
+          if (analysisLower.includes("strong buy") || analysisLower.includes("bullish")) {
+            compositeScore += 15;
+            scoreComponents++;
+          } else if (analysisLower.includes("buy") || analysisLower.includes("call")) {
+            compositeScore += 10;
+            scoreComponents++;
+          }
+          
+          console.log(`[Enhanced Bot Analysis] Stock analysis for ${symbol} completed`);
+        }
+      } catch (e) {
+        console.error(`[Enhanced Bot Analysis] Error fetching stock analysis for ${symbol}:`, e);
+      }
+
+      // 6. Calculate final composite score
+      // Add direction alignment bonus (up to 15 points)
       if (koinoniaSignal && chartAnalysis) {
         const directionsMatch = 
           (koinoniaSignal.direction === "bullish" && chartAnalysis.predictedDirection === "bullish") ||
           (koinoniaSignal.direction === "bearish" && chartAnalysis.predictedDirection === "bearish");
         
         if (directionsMatch) {
-          compositeScore += 30;
+          compositeScore += 15;
           scoreComponents++;
         }
         
@@ -170,6 +247,15 @@ serve(async (req) => {
         if (koinoniaSignal.sentiment !== "neutral" && 
             ((koinoniaSignal.sentiment === "bullish" && koinoniaSignal.direction === "bullish") ||
              (koinoniaSignal.sentiment === "bearish" && koinoniaSignal.direction === "bearish"))) {
+          compositeScore += 5;
+        }
+      }
+
+      // Trade suggestion alignment bonus (up to 10 points)
+      if (tradeSuggestion && koinoniaSignal) {
+        const suggestionBullish = tradeSuggestion.action === "BUY";
+        const signalBullish = koinoniaSignal.direction === "bullish";
+        if (suggestionBullish === signalBullish) {
           compositeScore += 10;
         }
       }
@@ -192,6 +278,8 @@ serve(async (req) => {
         livePrice,
         koinoniaSignal,
         chartAnalysis,
+        tradeSuggestion,
+        stockAnalysis,
         compositeScore: normalizedScore,
         analysisSourcesUsed,
         recommendation
@@ -210,6 +298,7 @@ serve(async (req) => {
       JSON.stringify({
         allAnalysis: results,
         highConfidenceOpportunities,
+        globalTradeSuggestions,
         totalAnalyzed: symbols.length,
         timestamp: new Date().toISOString()
       }),
@@ -223,3 +312,20 @@ serve(async (req) => {
     );
   }
 });
+
+// Helper function to extract recommendation from analysis text
+function extractRecommendation(analysis: string): string {
+  const lower = analysis.toLowerCase();
+  if (lower.includes("strong buy") || lower.includes("highly recommend call")) {
+    return "STRONG_BUY";
+  } else if (lower.includes("buy") || lower.includes("call")) {
+    return "BUY";
+  } else if (lower.includes("strong sell") || lower.includes("highly recommend put")) {
+    return "STRONG_SELL";
+  } else if (lower.includes("sell") || lower.includes("put")) {
+    return "SELL";
+  } else if (lower.includes("hold") || lower.includes("neutral")) {
+    return "HOLD";
+  }
+  return "NEUTRAL";
+}
