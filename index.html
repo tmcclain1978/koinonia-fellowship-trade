@@ -17,6 +17,29 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    
+    <!-- Early theme loading to prevent flash -->
+    <script>
+      (function() {
+        const themes = {
+          cyan: { primary: '195 100% 50%', primaryGlow: '185 100% 60%', accent: '200 100% 65%', accentGlow: '185 100% 75%' },
+          purple: { primary: '270 100% 60%', primaryGlow: '280 100% 70%', accent: '260 100% 65%', accentGlow: '270 100% 75%' },
+          emerald: { primary: '160 84% 45%', primaryGlow: '150 80% 55%', accent: '165 80% 50%', accentGlow: '155 80% 60%' },
+          gold: { primary: '45 100% 50%', primaryGlow: '35 100% 60%', accent: '40 100% 55%', accentGlow: '38 100% 65%' },
+          rose: { primary: '345 90% 55%', primaryGlow: '350 90% 65%', accent: '340 85% 60%', accentGlow: '345 85% 70%' },
+          slate: { primary: '215 20% 55%', primaryGlow: '220 15% 65%', accent: '210 20% 60%', accentGlow: '215 18% 70%' }
+        };
+        const stored = localStorage.getItem('koinonia-theme');
+        const theme = stored && themes[stored] ? stored : 'cyan';
+        const colors = themes[theme];
+        const root = document.documentElement;
+        root.setAttribute('data-theme', theme);
+        root.style.setProperty('--primary', colors.primary);
+        root.style.setProperty('--primary-glow', colors.primaryGlow);
+        root.style.setProperty('--accent', colors.accent);
+        root.style.setProperty('--accent-glow', colors.accentGlow);
+      })();
+    </script>
   </head>
 
   <body>

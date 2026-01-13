@@ -10,6 +10,7 @@ import { ArrowLeft, Save, CheckCircle2, AlertCircle, Link as LinkIcon, Bug, Copy
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
+import ThemeColorPicker from "@/components/settings/ThemeColorPicker";
 
 interface OAuthDebugInfo {
   clientIdPresent: boolean;
@@ -341,6 +342,8 @@ const Settings = () => {
         </Button>
 
         <div className="space-y-6">
+          <ThemeColorPicker />
+          
           <Card>
             <CardHeader>
               <CardTitle>Brokerage Selection</CardTitle>
