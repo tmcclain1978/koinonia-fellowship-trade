@@ -22,22 +22,36 @@
     <script>
       (function() {
         const themes = {
-          cyan: { primary: '195 100% 50%', primaryGlow: '185 100% 60%', accent: '200 100% 65%', accentGlow: '185 100% 75%' },
-          purple: { primary: '270 100% 60%', primaryGlow: '280 100% 70%', accent: '260 100% 65%', accentGlow: '270 100% 75%' },
-          emerald: { primary: '160 84% 45%', primaryGlow: '150 80% 55%', accent: '165 80% 50%', accentGlow: '155 80% 60%' },
-          gold: { primary: '45 100% 50%', primaryGlow: '35 100% 60%', accent: '40 100% 55%', accentGlow: '38 100% 65%' },
-          rose: { primary: '345 90% 55%', primaryGlow: '350 90% 65%', accent: '340 85% 60%', accentGlow: '345 85% 70%' },
-          slate: { primary: '215 20% 55%', primaryGlow: '220 15% 65%', accent: '210 20% 60%', accentGlow: '215 18% 70%' }
+          cyan: { primary: '195 100% 50%', primaryGlow: '185 100% 60%', accent: '200 100% 65%', accentGlow: '185 100% 75%', background: '220 20% 10%', backgroundAlt: '220 18% 14%', bgGradientStart: '220 20% 8%', bgGradientMid: '220 20% 10%', bgGradientEnd: '220 18% 10%', bgGlowPrimary: '195 100% 50%', bgGlowAccent: '185 100% 65%', bgGlowMuted: '220 20% 15%', card: '220 18% 16%', cardHover: '220 18% 20%', border: '220 15% 28%', muted: '220 15% 22%', popover: '220 18% 18%', input: '220 18% 20%' },
+          purple: { primary: '270 100% 60%', primaryGlow: '280 100% 70%', accent: '260 100% 65%', accentGlow: '270 100% 75%', background: '260 20% 10%', backgroundAlt: '260 18% 14%', bgGradientStart: '260 25% 7%', bgGradientMid: '260 20% 10%', bgGradientEnd: '265 18% 9%', bgGlowPrimary: '270 100% 50%', bgGlowAccent: '280 100% 65%', bgGlowMuted: '260 20% 15%', card: '260 18% 14%', cardHover: '260 18% 18%', border: '260 15% 26%', muted: '260 15% 20%', popover: '260 18% 16%', input: '260 18% 18%' },
+          emerald: { primary: '160 84% 45%', primaryGlow: '150 80% 55%', accent: '165 80% 50%', accentGlow: '155 80% 60%', background: '165 25% 9%', backgroundAlt: '165 20% 12%', bgGradientStart: '165 30% 6%', bgGradientMid: '165 25% 9%', bgGradientEnd: '160 22% 8%', bgGlowPrimary: '160 84% 45%', bgGlowAccent: '150 80% 55%', bgGlowMuted: '165 20% 14%', card: '165 22% 12%', cardHover: '165 22% 16%', border: '165 18% 24%', muted: '165 18% 18%', popover: '165 20% 14%', input: '165 20% 16%' },
+          gold: { primary: '45 100% 50%', primaryGlow: '35 100% 60%', accent: '40 100% 55%', accentGlow: '38 100% 65%', background: '30 25% 10%', backgroundAlt: '30 22% 14%', bgGradientStart: '30 30% 7%', bgGradientMid: '30 25% 10%', bgGradientEnd: '35 22% 9%', bgGlowPrimary: '45 100% 50%', bgGlowAccent: '35 100% 60%', bgGlowMuted: '30 22% 15%', card: '30 22% 14%', cardHover: '30 22% 18%', border: '30 18% 26%', muted: '30 18% 20%', popover: '30 20% 16%', input: '30 20% 18%' },
+          rose: { primary: '345 90% 55%', primaryGlow: '350 90% 65%', accent: '340 85% 60%', accentGlow: '345 85% 70%', background: '340 25% 10%', backgroundAlt: '340 22% 14%', bgGradientStart: '340 30% 7%', bgGradientMid: '340 25% 10%', bgGradientEnd: '345 22% 9%', bgGlowPrimary: '345 90% 50%', bgGlowAccent: '350 85% 60%', bgGlowMuted: '340 22% 15%', card: '340 22% 14%', cardHover: '340 22% 18%', border: '340 18% 26%', muted: '340 18% 20%', popover: '340 20% 16%', input: '340 20% 18%' },
+          slate: { primary: '215 20% 55%', primaryGlow: '220 15% 65%', accent: '210 20% 60%', accentGlow: '215 18% 70%', background: '215 18% 11%', backgroundAlt: '215 16% 15%', bgGradientStart: '215 20% 8%', bgGradientMid: '215 18% 11%', bgGradientEnd: '220 16% 10%', bgGlowPrimary: '215 20% 45%', bgGlowAccent: '220 15% 55%', bgGlowMuted: '215 16% 16%', card: '215 16% 15%', cardHover: '215 16% 19%', border: '215 14% 26%', muted: '215 14% 21%', popover: '215 16% 17%', input: '215 16% 19%' }
         };
         const stored = localStorage.getItem('koinonia-theme');
         const theme = stored && themes[stored] ? stored : 'cyan';
-        const colors = themes[theme];
+        const c = themes[theme];
         const root = document.documentElement;
         root.setAttribute('data-theme', theme);
-        root.style.setProperty('--primary', colors.primary);
-        root.style.setProperty('--primary-glow', colors.primaryGlow);
-        root.style.setProperty('--accent', colors.accent);
-        root.style.setProperty('--accent-glow', colors.accentGlow);
+        root.style.setProperty('--primary', c.primary);
+        root.style.setProperty('--primary-glow', c.primaryGlow);
+        root.style.setProperty('--accent', c.accent);
+        root.style.setProperty('--accent-glow', c.accentGlow);
+        root.style.setProperty('--background', c.background);
+        root.style.setProperty('--background-alt', c.backgroundAlt);
+        root.style.setProperty('--bg-gradient-start', c.bgGradientStart);
+        root.style.setProperty('--bg-gradient-mid', c.bgGradientMid);
+        root.style.setProperty('--bg-gradient-end', c.bgGradientEnd);
+        root.style.setProperty('--bg-glow-primary', c.bgGlowPrimary);
+        root.style.setProperty('--bg-glow-accent', c.bgGlowAccent);
+        root.style.setProperty('--bg-glow-muted', c.bgGlowMuted);
+        root.style.setProperty('--card', c.card);
+        root.style.setProperty('--card-hover', c.cardHover);
+        root.style.setProperty('--border', c.border);
+        root.style.setProperty('--muted', c.muted);
+        root.style.setProperty('--popover', c.popover);
+        root.style.setProperty('--input', c.input);
       })();
     </script>
   </head>

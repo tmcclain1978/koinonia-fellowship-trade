@@ -5,18 +5,26 @@
 @tailwind utilities;
 
 /* Koinonia Financial Design System
-   Fellowship that guides finance - Professional blue gradient theme
+   Fellowship that guides finance - Dynamic theme system
    All colors MUST be HSL.
 */
 
 @layer base {
   :root {
-    /* Core Brand Colors - Deep Slate to Bright Cyan */
+    /* Core Brand Colors - Dynamic based on theme */
     --background: 220 20% 10%;
     --background-alt: 220 18% 14%;
     --foreground: 210 40% 98%;
 
-    /* Primary - Bright Financial Blue */
+    /* Background gradient values - Dynamic */
+    --bg-gradient-start: 220 20% 8%;
+    --bg-gradient-mid: 220 20% 10%;
+    --bg-gradient-end: 220 18% 10%;
+    --bg-glow-primary: 195 100% 50%;
+    --bg-glow-accent: 185 100% 65%;
+    --bg-glow-muted: 220 20% 15%;
+
+    /* Primary - Dynamic accent color */
     --primary: 195 100% 50%;
     --primary-glow: 195 100% 60%;
     --primary-dark: 195 100% 35%;
@@ -26,12 +34,12 @@
     --secondary: 220 18% 18%;
     --secondary-foreground: 210 40% 95%;
 
-    /* Accent - Cyan Highlight */
+    /* Accent - Dynamic highlight */
     --accent: 185 100% 65%;
     --accent-foreground: 220 20% 10%;
     --accent-glow: 185 100% 75%;
 
-    /* Surface Colors - Elevated Slate Cards */
+    /* Surface Colors - Dynamic cards */
     --card: 220 18% 16%;
     --card-hover: 220 18% 20%;
     --card-foreground: 210 40% 95%;
@@ -39,7 +47,7 @@
     --popover: 220 18% 18%;
     --popover-foreground: 210 40% 95%;
 
-    /* UI States */
+    /* UI States - Dynamic */
     --muted: 220 15% 22%;
     --muted-foreground: 215 20% 65%;
 
@@ -52,22 +60,22 @@
     --warning: 45 93% 47%;
     --warning-foreground: 220 20% 10%;
 
-    /* Borders & Inputs - More visible */
+    /* Borders & Inputs - Dynamic */
     --border: 220 15% 28%;
     --border-hover: 195 100% 50%;
     --input: 220 18% 20%;
     --ring: 195 100% 50%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(220 20% 10%), hsl(195 100% 25%));
-    --gradient-accent: linear-gradient(135deg, hsl(195 100% 50%), hsl(185 100% 65%));
-    --gradient-hero: linear-gradient(135deg, hsl(220 20% 8%) 0%, hsl(195 100% 15%) 50%, hsl(185 100% 25%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(220 18% 16%), hsl(220 18% 14%));
+    --gradient-primary: linear-gradient(135deg, hsl(var(--background)), hsl(var(--primary) / 0.25));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--bg-gradient-start)) 0%, hsl(var(--primary) / 0.15) 50%, hsl(var(--accent) / 0.25) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(var(--card) / 0.9));
 
-    /* Shadows - Enhanced card shadows */
-    --shadow-glow: 0 0 40px hsl(195 100% 50% / 0.3);
-    --shadow-card: 0 4px 20px -4px hsl(0 0% 0% / 0.5), 0 0 0 1px hsl(220 15% 28% / 0.5);
-    --shadow-elegant: 0 20px 60px -20px hsl(195 100% 50% / 0.2);
+    /* Shadows - Dynamic glow colors */
+    --shadow-glow: 0 0 40px hsl(var(--primary) / 0.3);
+    --shadow-card: 0 4px 20px -4px hsl(0 0% 0% / 0.5), 0 0 0 1px hsl(var(--border) / 0.5);
+    --shadow-elegant: 0 20px 60px -20px hsl(var(--primary) / 0.2);
 
     /* Animations */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -77,25 +85,14 @@
   }
 
   .dark {
-    /* Keep dark mode consistent with main theme */
-    --background: 220 20% 10%;
-    --background-alt: 220 18% 14%;
+    /* Keep dark mode consistent with main theme - inherits CSS variables */
     --foreground: 210 40% 98%;
-    --primary: 195 100% 50%;
     --primary-foreground: 220 20% 10%;
-    --secondary: 220 18% 18%;
     --secondary-foreground: 210 40% 95%;
-    --accent: 185 100% 65%;
     --accent-foreground: 220 20% 10%;
-    --card: 220 18% 16%;
     --card-foreground: 210 40% 95%;
-    --popover: 220 18% 18%;
     --popover-foreground: 210 40% 95%;
-    --muted: 220 15% 22%;
     --muted-foreground: 215 20% 65%;
-    --border: 220 15% 28%;
-    --input: 220 18% 20%;
-    --ring: 195 100% 50%;
   }
 }
 
@@ -105,21 +102,22 @@
   }
 
   body {
-    @apply bg-background text-foreground;
-    /* Layered slate background with subtle gradients */
+    @apply text-foreground;
+    /* Dynamic layered background with theme gradients */
     background: 
       linear-gradient(180deg, 
-        hsl(220 20% 8%) 0%, 
-        hsl(220 20% 10%) 30%,
-        hsl(220 18% 12%) 70%,
-        hsl(220 18% 10%) 100%
+        hsl(var(--bg-gradient-start)) 0%, 
+        hsl(var(--bg-gradient-mid)) 30%,
+        hsl(var(--background)) 70%,
+        hsl(var(--bg-gradient-end)) 100%
       );
+    background-color: hsl(var(--background));
     background-attachment: fixed;
     min-height: 100vh;
     overflow-x: hidden;
   }
 
-  /* Subtle gradient overlay for depth */
+  /* Dynamic gradient overlay for depth */
   body::before {
     content: '';
     position: fixed;
@@ -128,9 +126,9 @@
     right: 0;
     bottom: 0;
     background: 
-      radial-gradient(ellipse 80% 50% at 20% -10%, hsl(195 100% 50% / 0.08), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 110%, hsl(185 100% 65% / 0.06), transparent),
-      radial-gradient(ellipse 100% 60% at 50% 50%, hsl(220 20% 15% / 0.4), transparent);
+      radial-gradient(ellipse 80% 50% at 20% -10%, hsl(var(--bg-glow-primary) / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 110%, hsl(var(--bg-glow-accent) / 0.06), transparent),
+      radial-gradient(ellipse 100% 60% at 50% 50%, hsl(var(--bg-glow-muted) / 0.4), transparent);
     pointer-events: none;
     z-index: -1;
   }
@@ -357,9 +355,3 @@
 .star-6 { top: 85%; left: 65%; animation-delay: 2.5s; }
 .star-7 { top: 35%; left: 50%; animation-delay: 0.8s; }
 .star-8 { top: 65%; left: 25%; animation-delay: 1.2s; }
-
-/* Theme-specific accent glow variable */
-:root {
-  --accent-glow: 185 100% 75%;
-  --primary-glow: 195 100% 60%;
-}
