@@ -17,6 +17,10 @@ import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAn
 import { PositionsRiskModule } from "@/components/paper-trading/PositionsRiskModule";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 import { StreamingPositionsTracker } from "@/components/StreamingPositionsTracker";
+import { PerformanceStreakTracker } from "@/components/analytics/PerformanceStreakTracker";
+import { DrawdownChart } from "@/components/analytics/DrawdownChart";
+import { TimeOfDayHeatmap } from "@/components/analytics/TimeOfDayHeatmap";
+import { PositionSizeCalculator } from "@/components/analytics/PositionSizeCalculator";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -1288,6 +1292,17 @@ const PaperTrading = () => {
         {/* Positions & Risk Module */}
         <div className="mb-6">
           <PositionsRiskModule />
+        </div>
+
+        {/* Performance Analytics Section */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          <PerformanceStreakTracker />
+          <DrawdownChart />
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          <TimeOfDayHeatmap />
+          <PositionSizeCalculator />
         </div>
 
         {/* Paper Trading Analytics */}
