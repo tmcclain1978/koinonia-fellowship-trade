@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { init, dispose, Chart, KLineData, CandleType, LineType } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain } from "lucide-react";
+import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { IndicatorPanel } from "./IndicatorPanel";
 import { DrawingToolbar } from "./DrawingToolbar";
 import { ChartSettings } from "./ChartSettings";
@@ -15,6 +16,7 @@ import { AIChartAnalysis } from "./AIChartAnalysis";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
@@ -108,6 +110,10 @@ export const ProChartKit = ({
     predictions: true,
     premarket: true,
   });
+  
+  // Y-axis scale control state (gap percentage - higher = more zoomed out, lower = more zoomed in)
+  const [yAxisScale, setYAxisScale] = useState<number>(10); // Default 10% gap
+  const [showScaleControls, setShowScaleControls] = useState<boolean>(false);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -427,6 +433,18 @@ export const ProChartKit = ({
         // Set optimal bar spacing for crisp candles
         chart.setBarSpace(8);
         
+        // Enable Y-axis scroll zoom and set initial scale gaps
+        chart.setPaneOptions({
+          id: 'candle_pane',
+          axis: {
+            scrollZoomEnabled: true,
+            gap: {
+              top: yAxisScale / 100,
+              bottom: yAxisScale / 100,
+            }
+          }
+        });
+        
         // Clear any existing data before fetching new data (prevents stale data showing)
         chart.clearData();
         
@@ -532,6 +550,21 @@ export const ProChartKit = ({
       fetchAndLoadData(false);
     }
   }, [showPremarket, resetAllTrackingRefs]);
+
+  // Update Y-axis scale when slider changes
+  useEffect(() => {
+    if (!chartRef.current) return;
+    
+    chartRef.current.setPaneOptions({
+      id: 'candle_pane',
+      axis: {
+        gap: {
+          top: yAxisScale / 100,
+          bottom: yAxisScale / 100,
+        }
+      }
+    });
+  }, [yAxisScale]);
 
   // Note: interval reset is now handled in the main chart init useEffect to prevent race conditions
 
@@ -1186,6 +1219,71 @@ export const ProChartKit = ({
           value={candleType}
           onChange={setCandleType}
         />
+
+        {/* Y-Axis Scale Control */}
+        <Popover open={showScaleControls} onOpenChange={setShowScaleControls}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Maximize2 className="w-4 h-4" />
+              <span className="text-xs">Scale</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-4" align="start">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Price Scale</span>
+                <span className="text-xs text-muted-foreground">{yAxisScale}%</span>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <ZoomIn className="w-4 h-4 text-muted-foreground" />
+                <Slider
+                  value={[yAxisScale]}
+                  onValueChange={(value) => setYAxisScale(value[0])}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className="flex-1"
+                />
+                <ZoomOut className="w-4 h-4 text-muted-foreground" />
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1 gap-1"
+                  onClick={() => setYAxisScale(Math.max(1, yAxisScale - 5))}
+                >
+                  <Minimize2 className="w-3 h-3" />
+                  Tighter
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1 gap-1"
+                  onClick={() => setYAxisScale(Math.min(50, yAxisScale + 5))}
+                >
+                  <Maximize2 className="w-3 h-3" />
+                  Wider
+                </Button>
+              </div>
+              
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full"
+                onClick={() => setYAxisScale(10)}
+              >
+                Reset to Default
+              </Button>
+              
+              <p className="text-xs text-muted-foreground">
+                Drag the slider or use mouse wheel on the price axis to adjust the vertical scale.
+              </p>
+            </div>
+          </PopoverContent>
+        </Popover>
         
         <div className={`flex items-center space-x-2 px-2 py-1 rounded-md transition-colors ${
           showPremarket ? 'bg-amber-500/20 border border-amber-500/40' : ''
