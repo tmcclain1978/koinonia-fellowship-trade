@@ -23,6 +23,7 @@ import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreamin
 import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
 import { applyAIOverlays, clearAIOverlays, type ChartAnalysis, type OverlayVisibility } from "@/utils/chartAnalysisOverlays";
 import { toast } from "sonner";
+import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 
 interface ProChartKitProps {
   symbol: string;
@@ -65,6 +66,16 @@ export const ProChartKit = ({
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
+    }
+  });
+  
+  // Indicator settings (color, width, data source)
+  const [indicatorSettings, setIndicatorSettings] = useState<IndicatorSettingsMap>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-indicator-settings');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
     }
   });
   
@@ -141,6 +152,15 @@ export const ProChartKit = ({
       console.warn('Failed to save indicators to localStorage:', e);
     }
   }, [selectedIndicators]);
+  
+  // Persist indicator settings to localStorage when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-indicator-settings', JSON.stringify(indicatorSettings));
+    } catch (e) {
+      console.warn('Failed to save indicator settings to localStorage:', e);
+    }
+  }, [indicatorSettings]);
   
   // Persist Y-axis scale to localStorage when it changes
   useEffect(() => {
@@ -1364,31 +1384,51 @@ export const ProChartKit = ({
     return staticConfigs[indicator] || null;
   };
 
-  // Handle indicator changes with proper pane management
-  const handleIndicatorChange = useCallback((indicators: string[]) => {
+  // Handle indicator changes with proper pane management and custom styles
+  const handleIndicatorChange = useCallback((indicators: string[], settings?: IndicatorSettingsMap) => {
     if (!chartRef.current) return;
 
     const chart = chartRef.current;
+    const currentSettings = settings || indicatorSettings;
     
     // Remove all existing indicators
     chart.removeIndicator();
 
-    // Add selected indicators
-    indicators.forEach(indicator => {
+    // Add selected indicators with custom styles
+    indicators.forEach((indicator, index) => {
       const indicatorConfig = getIndicatorConfig(indicator);
       if (indicatorConfig) {
         try {
           const { name, params, paneId } = indicatorConfig;
           
+          // Get custom settings for this indicator
+          const customSettings = currentSettings[indicator] || getDefaultIndicatorSettings(indicator, index);
+          
           // Determine if this is an overlay indicator (on main chart) or separate pane
           const isOverlay = !paneId || ['SMA', 'EMA', 'BOLL', 'SAR', 'AVP'].includes(name);
           
+          // Build styles based on custom settings
+          const customStyles = {
+            lines: [
+              { color: customSettings.color, size: customSettings.width },
+              { color: customSettings.color, size: customSettings.width },
+              { color: customSettings.color, size: customSettings.width },
+            ]
+          };
+          
           if (isOverlay) {
-            // Add to main candle pane
-            chart.createIndicator(name, true, { id: 'candle_pane', ...params });
+            // Add to main candle pane with custom styles
+            chart.createIndicator(name, true, { 
+              id: 'candle_pane', 
+              ...params,
+              styles: customStyles,
+            });
           } else {
-            // Create in separate pane
-            chart.createIndicator(name, false, params);
+            // Create in separate pane with custom styles
+            chart.createIndicator(name, false, {
+              ...params,
+              styles: customStyles,
+            });
           }
         } catch (error) {
           console.warn(`Failed to create indicator ${indicator}:`, error);
@@ -1397,7 +1437,16 @@ export const ProChartKit = ({
     });
 
     setSelectedIndicators(indicators);
-  }, []);
+  }, [indicatorSettings]);
+
+  // Handle indicator settings changes
+  const handleIndicatorSettingsChange = useCallback((newSettings: IndicatorSettingsMap) => {
+    setIndicatorSettings(newSettings);
+    // Re-apply indicators with new settings
+    if (chartRef.current && selectedIndicators.length > 0) {
+      handleIndicatorChange(selectedIndicators, newSettings);
+    }
+  }, [selectedIndicators, handleIndicatorChange]);
 
   return (
     <div className="space-y-4">
@@ -1524,6 +1573,8 @@ export const ProChartKit = ({
         <IndicatorPanel 
           selectedIndicators={selectedIndicators}
           onIndicatorChange={handleIndicatorChange}
+          indicatorSettings={indicatorSettings}
+          onSettingsChange={handleIndicatorSettingsChange}
         />
         <DrawingToolbar chart={chartRef.current} />
         <ChartSettings 
