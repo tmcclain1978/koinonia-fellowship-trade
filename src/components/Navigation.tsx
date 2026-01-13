@@ -54,8 +54,8 @@ const Navigation = () => {
   // Show authenticated navigation if user is logged in
   if (user) {
     return (
-      <nav className="fixed top-0 w-full z-50 bg-card/95 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-6 py-3">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-b border-border overflow-hidden">
+        <div className="max-w-full px-4 lg:px-6 py-3">
           <div className="flex items-center justify-between">
             {/* Logo */}
             <Link to="/dashboard" className="flex items-center space-x-3">
@@ -68,8 +68,8 @@ const Navigation = () => {
             </Link>
 
             {/* Desktop Menu */}
-            <div className="hidden md:flex items-center space-x-6">
-              <Link 
+            <div className="hidden lg:flex items-center gap-3 xl:gap-4 flex-1 justify-end overflow-hidden">
+              <Link
                 to="/dashboard" 
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/dashboard" 
@@ -170,27 +170,21 @@ const Navigation = () => {
                 Podcast
               </Link>
               
-              <div className="flex items-center gap-3 ml-4 pl-4 border-l border-border">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <User className="w-4 h-4" />
-                  <span className="max-w-[150px] truncate">{user.email}</span>
-                </div>
-                <Button variant="ghost" size="sm" asChild>
+              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border shrink-0">
+                <Button variant="ghost" size="sm" asChild className="px-2">
                   <Link to="/settings">
-                    <Settings className="w-4 h-4 mr-2" />
-                    Settings
+                    <Settings className="w-4 h-4" />
                   </Link>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleSignOut}>
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
+                <Button variant="ghost" size="sm" onClick={handleSignOut} className="px-2">
+                  <LogOut className="w-4 h-4" />
                 </Button>
               </div>
             </div>
 
             {/* Mobile Menu Button */}
             <button
-              className="md:hidden text-foreground"
+              className="lg:hidden text-foreground"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -199,7 +193,7 @@ const Navigation = () => {
 
           {/* Mobile Menu */}
           {isMenuOpen && (
-            <div className="md:hidden mt-4 py-4 border-t border-border">
+            <div className="lg:hidden mt-4 py-4 border-t border-border">
               <div className="flex flex-col space-y-4">
                 <Link 
                   to="/dashboard" 
