@@ -57,7 +57,17 @@ export const ProChartKit = ({
   const chartRef = useRef<Chart | null>(null);
   const [loading, setLoading] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false); // Brief loading state for smooth transitions
-  const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
+  
+  // Load persisted settings from localStorage
+  const [selectedIndicators, setSelectedIndicators] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-indicators');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
   const [showPremarket, setShowPremarket] = useState(false);
   const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
@@ -112,8 +122,34 @@ export const ProChartKit = ({
   });
   
   // Y-axis scale control state (gap percentage - higher = more zoomed out, lower = more zoomed in)
-  const [yAxisScale, setYAxisScale] = useState<number>(10); // Default 10% gap
+  // Load from localStorage with fallback to default
+  const [yAxisScale, setYAxisScale] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-yaxis-scale');
+      return saved ? parseFloat(saved) : 10;
+    } catch {
+      return 10;
+    }
+  });
   const [showScaleControls, setShowScaleControls] = useState<boolean>(false);
+  
+  // Persist indicators to localStorage when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-indicators', JSON.stringify(selectedIndicators));
+    } catch (e) {
+      console.warn('Failed to save indicators to localStorage:', e);
+    }
+  }, [selectedIndicators]);
+  
+  // Persist Y-axis scale to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-yaxis-scale', String(yAxisScale));
+    } catch (e) {
+      console.warn('Failed to save Y-axis scale to localStorage:', e);
+    }
+  }, [yAxisScale]);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
