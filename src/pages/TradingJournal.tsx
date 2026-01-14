@@ -16,6 +16,7 @@ import JournalCalendar from "@/components/journal/JournalCalendar";
 import JournalEntryModal from "@/components/journal/JournalEntryModal";
 import JournalSummary from "@/components/journal/JournalSummary";
 import TagManager from "@/components/journal/TagManager";
+import JournalImageUpload from "@/components/journal/JournalImageUpload";
 import { format } from "date-fns";
 import { exportToCSV, exportToPDF } from "@/utils/journalExport";
 
@@ -27,6 +28,7 @@ interface JournalEntry {
   content: string;
   emotions: string[] | null;
   tags: string[] | null;
+  image_urls: string[] | null;
   ai_analysis: string | null;
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
@@ -60,6 +62,7 @@ const TradingJournal = () => {
     content: '',
     emotions: [] as string[],
     tags: [] as string[],
+    image_urls: [] as string[],
   });
 
   const emotionOptions = ['Confident', 'Anxious', 'FOMO', 'Disciplined', 'Impulsive', 'Patient', 'Greedy', 'Fearful'];
@@ -148,6 +151,7 @@ const TradingJournal = () => {
           content: newEntry.content,
           emotions: newEntry.emotions.length > 0 ? newEntry.emotions : null,
           tags: newEntry.tags.length > 0 ? newEntry.tags : null,
+          image_urls: newEntry.image_urls.length > 0 ? newEntry.image_urls : null,
         });
 
       if (error) throw error;
@@ -163,6 +167,7 @@ const TradingJournal = () => {
         content: '',
         emotions: [],
         tags: [],
+        image_urls: [],
       });
       setNewTagInput("");
 
@@ -712,6 +717,20 @@ const TradingJournal = () => {
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Screenshots Section */}
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      Screenshots
+                    </Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Attach chart screenshots for analysis
+                    </p>
+                    <JournalImageUpload
+                      images={newEntry.image_urls}
+                      onImagesChange={(urls) => setNewEntry({ ...newEntry, image_urls: urls })}
+                    />
                   </div>
 
                   <div>
