@@ -10,10 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { BookOpen, Calendar, Search, X, Tag, Heart, Download, FileText, FileSpreadsheet, Plus } from "lucide-react";
+import { BookOpen, Calendar, Search, X, Tag, Heart, Download, FileText, FileSpreadsheet, Plus, Settings } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import JournalCalendar from "@/components/journal/JournalCalendar";
 import JournalEntryModal from "@/components/journal/JournalEntryModal";
+import JournalSummary from "@/components/journal/JournalSummary";
+import TagManager from "@/components/journal/TagManager";
 import { format } from "date-fns";
 import { exportToCSV, exportToPDF } from "@/utils/journalExport";
 
@@ -45,6 +47,9 @@ const TradingJournal = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedEntries, setSelectedEntries] = useState<JournalEntry[]>([]);
+  
+  // Tag Manager state
+  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   
   // Tags state
   const [newTagInput, setNewTagInput] = useState("");
@@ -328,6 +333,30 @@ const TradingJournal = () => {
     }
   };
 
+  const handleBulkTagUpdate = async (updates: { entryId: string; tags: string[] }[]) => {
+    try {
+      // Update each entry's tags
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('trading_journal')
+          .update({ tags: update.tags.length > 0 ? update.tags : null })
+          .eq('id', update.entryId);
+
+        if (error) throw error;
+      }
+
+      // Reload entries to get fresh data
+      await loadEntries();
+    } catch (error: any) {
+      toast({
+        title: "Error updating tags",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
   const handleExportCSV = () => {
     if (entries.length === 0) {
       toast({
@@ -401,7 +430,18 @@ const TradingJournal = () => {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Tag Manager Button */}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={() => setIsTagManagerOpen(true)}
+              >
+                <Settings className="w-4 h-4" />
+                Manage Tags
+              </Button>
+              
               {/* Export Button */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -524,6 +564,9 @@ const TradingJournal = () => {
               </div>
             </div>
           </div>
+
+          {/* Journal Summary */}
+          <JournalSummary entries={entries} />
 
           {/* Stats Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -724,6 +767,14 @@ const TradingJournal = () => {
         onEdit={handleEditEntry}
         onDelete={handleDeleteEntry}
         allTags={allTags}
+      />
+
+      {/* Tag Manager */}
+      <TagManager
+        isOpen={isTagManagerOpen}
+        onClose={() => setIsTagManagerOpen(false)}
+        entries={entries}
+        onUpdateTags={handleBulkTagUpdate}
       />
     </>
   );
