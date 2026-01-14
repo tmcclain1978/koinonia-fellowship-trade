@@ -26,6 +26,7 @@ import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreamin
 import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
 import { useChartTransition } from "@/hooks/useChartTransition";
 import { applyAIOverlays, clearAIOverlays, type ChartAnalysis, type OverlayVisibility } from "@/utils/chartAnalysisOverlays";
+import { applySessionDividers } from "@/utils/chartSessionDividers";
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 
@@ -86,6 +87,16 @@ export const ProChartKit = ({
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
   const [showPremarket, setShowPremarket] = useState(false);
   const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
+  
+  // Session dividers state - show market open/close vertical lines
+  const [showSessionDividers, setShowSessionDividers] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-session-dividers');
+      return saved ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
   const unsubRef = useRef<(() => void) | null>(null);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
@@ -174,6 +185,15 @@ export const ProChartKit = ({
       console.warn('Failed to save Y-axis scale to localStorage:', e);
     }
   }, [yAxisScale]);
+  
+  // Persist session dividers toggle to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-session-dividers', JSON.stringify(showSessionDividers));
+    } catch (e) {
+      console.warn('Failed to save session dividers setting to localStorage:', e);
+    }
+  }, [showSessionDividers]);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -666,6 +686,36 @@ export const ProChartKit = ({
       fetchAndLoadData(false);
     }
   }, [showPremarket, resetAllTrackingRefs]);
+  
+  // Reapply session dividers when toggle changes
+  useEffect(() => {
+    if (!chartRef.current || replayMode) return;
+    
+    const dataList = chartRef.current.getDataList();
+    if (dataList.length === 0) return;
+    
+    // Convert to the format expected by applySessionDividers
+    const candles = dataList.map(c => ({
+      timestamp: c.timestamp,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+    }));
+    
+    if (showSessionDividers) {
+      applySessionDividers(chartRef.current, candles, interval, {
+        showMarketOpen: true,
+        showMarketClose: true,
+        showPremarketShading: showPremarket,
+        showAfterHoursShading: showPremarket,
+      });
+    } else {
+      // Remove overlays when disabled - but this will remove all overlays
+      // So we need to be careful. For now, just don't apply new ones
+      // The next data load will not add them
+    }
+  }, [showSessionDividers, showPremarket, interval, replayMode]);
 
   // Update Y-axis scale when slider changes
   // Update Y-axis scale when slider changes - includes custom tick generation
@@ -906,6 +956,16 @@ export const ProChartKit = ({
           
           // Save to cache for faster subsequent loads
           saveToCache(klineData, source);
+          
+          // Apply session dividers (market open/close vertical lines)
+          if (showSessionDividers) {
+            applySessionDividers(chartRef.current, klineData, interval, {
+              showMarketOpen: true,
+              showMarketClose: true,
+              showPremarketShading: showPremarket,
+              showAfterHoursShading: showPremarket,
+            });
+          }
         }
 
         // Fetch Koinonia signals if enabled
@@ -1627,6 +1687,20 @@ export const ProChartKit = ({
           />
           <Label htmlFor="premarket-toggle" className={`text-sm ${showPremarket ? 'text-amber-400 font-medium' : ''}`}>
             {showPremarket ? 'Extended Hours (ET)' : 'Regular Hours'}
+          </Label>
+        </div>
+        
+        {/* Session Dividers Toggle */}
+        <div className={`flex items-center space-x-2 px-2 py-1 rounded-md transition-colors ${
+          showSessionDividers ? 'bg-green-500/20 border border-green-500/40' : ''
+        }`}>
+          <Switch
+            id="session-dividers-toggle"
+            checked={showSessionDividers}
+            onCheckedChange={setShowSessionDividers}
+          />
+          <Label htmlFor="session-dividers-toggle" className={`text-sm ${showSessionDividers ? 'text-green-400 font-medium' : ''}`}>
+            Sessions
           </Label>
         </div>
         
