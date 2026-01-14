@@ -7,12 +7,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { BookOpen, Calendar, Search, X, Tag, Heart } from "lucide-react";
+import { BookOpen, Calendar, Search, X, Tag, Heart, Download, FileText, FileSpreadsheet, Plus } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import JournalCalendar from "@/components/journal/JournalCalendar";
 import JournalEntryModal from "@/components/journal/JournalEntryModal";
 import { format } from "date-fns";
+import { exportToCSV, exportToPDF } from "@/utils/journalExport";
 
 interface JournalEntry {
   id: string;
@@ -21,6 +24,7 @@ interface JournalEntry {
   entry_type: string;
   content: string;
   emotions: string[] | null;
+  tags: string[] | null;
   ai_analysis: string | null;
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
@@ -42,14 +46,27 @@ const TradingJournal = () => {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedEntries, setSelectedEntries] = useState<JournalEntry[]>([]);
   
+  // Tags state
+  const [newTagInput, setNewTagInput] = useState("");
+  
   const [newEntry, setNewEntry] = useState({
     entry_type: 'trade',
     symbol: '',
     content: '',
     emotions: [] as string[],
+    tags: [] as string[],
   });
 
   const emotionOptions = ['Confident', 'Anxious', 'FOMO', 'Disciplined', 'Impulsive', 'Patient', 'Greedy', 'Fearful'];
+
+  // Get all unique tags from entries for suggestions
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    entries.forEach(entry => {
+      entry.tags?.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [entries]);
 
   // Search results
   const searchResults = useMemo(() => {
@@ -66,6 +83,9 @@ const TradingJournal = () => {
       
       // Search in emotions
       if (entry.emotions?.some(e => e.toLowerCase().includes(query))) return true;
+      
+      // Search in tags
+      if (entry.tags?.some(t => t.toLowerCase().includes(query))) return true;
       
       // Search in entry type
       if (entry.entry_type.toLowerCase().includes(query)) return true;
@@ -96,7 +116,7 @@ const TradingJournal = () => {
         .order('entry_date', { ascending: false });
 
       if (error) throw error;
-      setEntries(data || []);
+      setEntries((data || []) as JournalEntry[]);
     } catch (error: any) {
       toast({
         title: "Error loading journal",
@@ -122,6 +142,7 @@ const TradingJournal = () => {
           symbol: newEntry.symbol || null,
           content: newEntry.content,
           emotions: newEntry.emotions.length > 0 ? newEntry.emotions : null,
+          tags: newEntry.tags.length > 0 ? newEntry.tags : null,
         });
 
       if (error) throw error;
@@ -136,7 +157,9 @@ const TradingJournal = () => {
         symbol: '',
         content: '',
         emotions: [],
+        tags: [],
       });
+      setNewTagInput("");
 
       loadEntries();
     } catch (error: any) {
@@ -167,7 +190,6 @@ const TradingJournal = () => {
 
       loadEntries();
       
-      // Update modal entries if open
       if (isModalOpen && selectedEntries.length > 0) {
         const updatedEntries = selectedEntries.map(entry => 
           entry.id === journalId 
@@ -196,6 +218,31 @@ const TradingJournal = () => {
     }));
   };
 
+  const addTag = (tag: string) => {
+    const trimmedTag = tag.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (trimmedTag && !newEntry.tags.includes(trimmedTag)) {
+      setNewEntry(prev => ({
+        ...prev,
+        tags: [...prev.tags, trimmedTag]
+      }));
+    }
+    setNewTagInput("");
+  };
+
+  const removeTag = (tag: string) => {
+    setNewEntry(prev => ({
+      ...prev,
+      tags: prev.tags.filter(t => t !== tag)
+    }));
+  };
+
+  const handleTagInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag(newTagInput);
+    }
+  };
+
   const handleSelectDate = (date: Date, dayEntries: JournalEntry[]) => {
     setSelectedDate(date);
     setSelectedEntries(dayEntries);
@@ -204,7 +251,6 @@ const TradingJournal = () => {
 
   const handleSearchResultClick = (entry: JournalEntry) => {
     const entryDate = new Date(entry.entry_date);
-    // Find all entries for that date
     const dateKey = format(entryDate, 'yyyy-MM-dd');
     const dayEntries = entries.filter(e => 
       format(new Date(e.entry_date), 'yyyy-MM-dd') === dateKey
@@ -230,13 +276,11 @@ const TradingJournal = () => {
         description: "Your journal entry has been updated successfully",
       });
 
-      // Update local state
       const updatedEntries = entries.map(entry => 
         entry.id === id ? { ...entry, ...updates } : entry
       );
       setEntries(updatedEntries);
       
-      // Update modal entries
       const updatedSelectedEntries = selectedEntries.map(entry => 
         entry.id === id ? { ...entry, ...updates } : entry
       );
@@ -265,15 +309,12 @@ const TradingJournal = () => {
         description: "Your journal entry has been deleted",
       });
 
-      // Update local state
       const updatedEntries = entries.filter(entry => entry.id !== id);
       setEntries(updatedEntries);
       
-      // Update modal entries
       const updatedSelectedEntries = selectedEntries.filter(entry => entry.id !== id);
       setSelectedEntries(updatedSelectedEntries);
       
-      // Close modal if no entries left for that date
       if (updatedSelectedEntries.length === 0) {
         setIsModalOpen(false);
       }
@@ -285,6 +326,34 @@ const TradingJournal = () => {
       });
       throw error;
     }
+  };
+
+  const handleExportCSV = () => {
+    if (entries.length === 0) {
+      toast({
+        title: "No entries to export",
+        description: "Create some journal entries first",
+        variant: "destructive",
+      });
+      return;
+    }
+    exportToCSV(entries);
+    toast({
+      title: "Export complete",
+      description: "Your journal has been exported to CSV",
+    });
+  };
+
+  const handleExportPDF = () => {
+    if (entries.length === 0) {
+      toast({
+        title: "No entries to export",
+        description: "Create some journal entries first",
+        variant: "destructive",
+      });
+      return;
+    }
+    exportToPDF(entries);
   };
 
   const highlightMatch = (text: string, query: string) => {
@@ -332,96 +401,127 @@ const TradingJournal = () => {
               </div>
             </div>
             
-            {/* Search Bar */}
-            <div className="relative w-full md:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by symbol, content, emotion..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-10"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setShowSearchResults(false);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+            <div className="flex items-center gap-3">
+              {/* Export Button */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Download className="w-4 h-4" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportCSV} className="gap-2">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Export as CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleExportPDF} className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Export as PDF
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               
-              {/* Search Results Dropdown */}
-              {showSearchResults && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-                  {searchResults.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground">
-                      No entries found for "{searchQuery}"
-                    </div>
-                  ) : (
-                    <>
-                      <div className="p-2 border-b border-border bg-muted/30">
-                        <p className="text-xs text-muted-foreground">
-                          {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
-                        </p>
+              {/* Search Bar */}
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search symbol, content, tags..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setShowSearchResults(false);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+                
+                {/* Search Results Dropdown */}
+                {showSearchResults && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                    {searchResults.length === 0 ? (
+                      <div className="p-4 text-center text-muted-foreground">
+                        No entries found for "{searchQuery}"
                       </div>
-                      {searchResults.slice(0, 10).map((entry) => (
-                        <button
-                          key={entry.id}
-                          onClick={() => handleSearchResultClick(entry)}
-                          className="w-full p-3 text-left hover:bg-accent/50 border-b border-border last:border-b-0 transition-colors"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            {entry.symbol && (
-                              <span className="font-bold text-primary text-sm">
-                                {highlightMatch(entry.symbol, searchQuery)}
-                              </span>
-                            )}
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border capitalize ${getEntryTypeStyles(entry.entry_type)}`}>
-                              <Tag className="w-2 h-2 inline mr-0.5" />
-                              {entry.entry_type}
-                            </span>
-                            <span className="text-xs text-muted-foreground ml-auto">
-                              {format(new Date(entry.entry_date), 'MMM d, yyyy')}
-                            </span>
-                          </div>
-                          <p className="text-sm text-foreground line-clamp-2">
-                            {highlightMatch(entry.content.slice(0, 150), searchQuery)}
-                            {entry.content.length > 150 && '...'}
+                    ) : (
+                      <>
+                        <div className="p-2 border-b border-border bg-muted/30">
+                          <p className="text-xs text-muted-foreground">
+                            {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
                           </p>
-                          {entry.emotions && entry.emotions.length > 0 && (
-                            <div className="flex items-center gap-1 mt-1.5">
-                              <Heart className="w-3 h-3 text-muted-foreground" />
-                              <div className="flex flex-wrap gap-1">
-                                {entry.emotions.slice(0, 3).map(emotion => (
-                                  <span 
-                                    key={emotion} 
-                                    className="text-[10px] px-1.5 py-0.5 bg-accent/30 text-accent-foreground rounded"
-                                  >
-                                    {highlightMatch(emotion, searchQuery)}
-                                  </span>
-                                ))}
-                                {entry.emotions.length > 3 && (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    +{entry.emotions.length - 3} more
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                      {searchResults.length > 10 && (
-                        <div className="p-2 text-center text-xs text-muted-foreground bg-muted/30">
-                          Showing first 10 results. Refine your search for more specific results.
                         </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+                        {searchResults.slice(0, 10).map((entry) => (
+                          <button
+                            key={entry.id}
+                            onClick={() => handleSearchResultClick(entry)}
+                            className="w-full p-3 text-left hover:bg-accent/50 border-b border-border last:border-b-0 transition-colors"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              {entry.symbol && (
+                                <span className="font-bold text-primary text-sm">
+                                  {highlightMatch(entry.symbol, searchQuery)}
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border capitalize ${getEntryTypeStyles(entry.entry_type)}`}>
+                                <Tag className="w-2 h-2 inline mr-0.5" />
+                                {entry.entry_type}
+                              </span>
+                              <span className="text-xs text-muted-foreground ml-auto">
+                                {format(new Date(entry.entry_date), 'MMM d, yyyy')}
+                              </span>
+                            </div>
+                            <p className="text-sm text-foreground line-clamp-2">
+                              {highlightMatch(entry.content.slice(0, 150), searchQuery)}
+                              {entry.content.length > 150 && '...'}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              {entry.tags && entry.tags.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Tag className="w-3 h-3 text-muted-foreground" />
+                                  {entry.tags.slice(0, 3).map(tag => (
+                                    <span 
+                                      key={tag} 
+                                      className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded"
+                                    >
+                                      #{highlightMatch(tag, searchQuery)}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {entry.emotions && entry.emotions.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Heart className="w-3 h-3 text-muted-foreground" />
+                                  {entry.emotions.slice(0, 2).map(emotion => (
+                                    <span 
+                                      key={emotion} 
+                                      className="text-[10px] px-1.5 py-0.5 bg-accent/30 text-accent-foreground rounded"
+                                    >
+                                      {highlightMatch(emotion, searchQuery)}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                        {searchResults.length > 10 && (
+                          <div className="p-2 text-center text-xs text-muted-foreground bg-muted/30">
+                            Showing first 10 results. Refine your search for more specific results.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -450,9 +550,9 @@ const TradingJournal = () => {
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-2xl font-bold text-accent">
-                  {entries.filter(e => e.ai_analysis).length}
+                  {allTags.length}
                 </p>
-                <p className="text-sm text-muted-foreground">AI Analyzed</p>
+                <p className="text-sm text-muted-foreground">Custom Tags</p>
               </CardContent>
             </Card>
           </div>
@@ -498,9 +598,77 @@ const TradingJournal = () => {
                       placeholder="What happened? What did you learn? What could you improve?"
                       value={newEntry.content}
                       onChange={(e) => setNewEntry({ ...newEntry, content: e.target.value })}
-                      rows={6}
+                      rows={5}
                       required
                     />
+                  </div>
+
+                  {/* Tags Section */}
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      Tags
+                    </Label>
+                    <div className="mt-2 space-y-2">
+                      {/* Current Tags */}
+                      {newEntry.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {newEntry.tags.map(tag => (
+                            <Badge 
+                              key={tag} 
+                              variant="secondary"
+                              className="gap-1 pr-1"
+                            >
+                              #{tag}
+                              <button 
+                                type="button"
+                                onClick={() => removeTag(tag)}
+                                className="ml-1 hover:text-destructive"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Tag Input */}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Add a tag..."
+                          value={newTagInput}
+                          onChange={(e) => setNewTagInput(e.target.value)}
+                          onKeyDown={handleTagInputKeyDown}
+                          className="flex-1"
+                        />
+                        <Button 
+                          type="button" 
+                          size="icon" 
+                          variant="outline"
+                          onClick={() => addTag(newTagInput)}
+                          disabled={!newTagInput.trim()}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      
+                      {/* Suggested Tags */}
+                      {allTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs text-muted-foreground mr-1">Suggestions:</span>
+                          {allTags.slice(0, 8).filter(t => !newEntry.tags.includes(t)).map(tag => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => addTag(tag)}
+                              className="text-xs px-2 py-0.5 bg-muted hover:bg-accent rounded transition-colors"
+                            >
+                              #{tag}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -555,6 +723,7 @@ const TradingJournal = () => {
         analyzingId={analyzing}
         onEdit={handleEditEntry}
         onDelete={handleDeleteEntry}
+        allTags={allTags}
       />
     </>
   );

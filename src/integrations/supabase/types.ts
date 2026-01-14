@@ -1533,6 +1533,7 @@ export type Database = {
           entry_type: string
           id: string
           symbol: string | null
+          tags: string[] | null
           trade_id: string | null
           updated_at: string
           user_id: string
@@ -1548,6 +1549,7 @@ export type Database = {
           entry_type: string
           id?: string
           symbol?: string | null
+          tags?: string[] | null
           trade_id?: string | null
           updated_at?: string
           user_id: string
@@ -1563,6 +1565,7 @@ export type Database = {
           entry_type?: string
           id?: string
           symbol?: string | null
+          tags?: string[] | null
           trade_id?: string | null
           updated_at?: string
           user_id?: string
