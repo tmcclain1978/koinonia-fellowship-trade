@@ -16,6 +16,8 @@ import { AIChartAnalysis } from "./AIChartAnalysis";
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
 import { ChartLoadingSkeleton } from "./ChartLoadingSkeleton";
 import { ConnectionQualityIndicator } from "./ConnectionQualityIndicator";
+import { ChartAnnotationPanel } from "./ChartAnnotationPanel";
+import { VolumeProfilePanel } from "./VolumeProfilePanel";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,8 @@ import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEastern
 import { useChartTransition } from "@/hooks/useChartTransition";
 import { applyAIOverlays, clearAIOverlays, type ChartAnalysis, type OverlayVisibility } from "@/utils/chartAnalysisOverlays";
 import { applySessionDividers } from "@/utils/chartSessionDividers";
+import { applyAnnotationsToChart } from "@/utils/chartAnnotations";
+import { applyVolumeProfileToChart, calculateVolumeProfile, clearVolumeProfileOverlays } from "@/utils/volumeProfile";
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 
@@ -159,6 +163,16 @@ export const ProChartKit = ({
   });
   const [showScaleControls, setShowScaleControls] = useState<boolean>(false);
   
+  // Volume profile state
+  const [showVolumeProfile, setShowVolumeProfile] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-volume-profile');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+
   // Persist indicators to localStorage when they change
   useEffect(() => {
     try {
@@ -194,6 +208,15 @@ export const ProChartKit = ({
       console.warn('Failed to save session dividers setting to localStorage:', e);
     }
   }, [showSessionDividers]);
+  
+  // Persist volume profile toggle to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-volume-profile', JSON.stringify(showVolumeProfile));
+    } catch (e) {
+      console.warn('Failed to save volume profile setting to localStorage:', e);
+    }
+  }, [showVolumeProfile]);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -966,6 +989,25 @@ export const ProChartKit = ({
               showAfterHoursShading: showPremarket,
             });
           }
+          
+          // Apply volume profile if enabled
+          if (showVolumeProfile) {
+            const candles = klineData.map(c => ({
+              timestamp: c.timestamp,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume || 0,
+            }));
+            const profile = calculateVolumeProfile(candles, 24);
+            if (profile) {
+              applyVolumeProfileToChart(chartRef.current, profile);
+            }
+          }
+          
+          // Apply saved annotations
+          applyAnnotationsToChart(chartRef.current, symbol);
         }
 
         // Fetch Koinonia signals if enabled
@@ -1711,6 +1753,18 @@ export const ProChartKit = ({
           onSettingsChange={handleIndicatorSettingsChange}
         />
         <DrawingToolbar chart={chartRef.current} />
+        <ChartAnnotationPanel 
+          chart={chartRef.current} 
+          symbol={symbol}
+          currentPrice={currentPrice || undefined}
+          onAnnotationsChange={() => applyAnnotationsToChart(chartRef.current, symbol)}
+        />
+        <VolumeProfilePanel
+          chart={chartRef.current}
+          symbol={symbol}
+          enabled={showVolumeProfile}
+          onEnabledChange={setShowVolumeProfile}
+        />
         <ChartSettings 
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}
