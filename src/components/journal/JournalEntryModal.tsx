@@ -7,12 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Sparkles, TrendingUp, Lightbulb, Calendar, Tag, Heart, Edit2, Trash2, X, Save, MoreVertical, Plus, ImageIcon, ZoomIn } from "lucide-react";
+import { Sparkles, TrendingUp, Lightbulb, Calendar, Tag, Heart, Edit2, Trash2, X, Save, MoreVertical, Plus, ImageIcon, ZoomIn, ScanSearch, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import FormattedAIInsight from "@/components/FormattedAIInsight";
 import JournalImageUpload from "@/components/journal/JournalImageUpload";
 import { Dialog as ImageDialog, DialogContent as ImageDialogContent, DialogTrigger as ImageDialogTrigger } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface JournalEntry {
   id: string;
@@ -26,6 +28,7 @@ interface JournalEntry {
   ai_analysis: string | null;
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
+  chart_analysis: string | null;
 }
 
 interface JournalEntryModalProps {
@@ -65,7 +68,55 @@ const JournalEntryModal = ({
   const [newTagInput, setNewTagInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [analyzingChartId, setAnalyzingChartId] = useState<string | null>(null);
+  const [chartAnalysisResults, setChartAnalysisResults] = useState<Record<string, string>>({});
+  const { toast } = useToast();
 
+  const analyzeChartImages = async (entry: JournalEntry) => {
+    if (!entry.image_urls || entry.image_urls.length === 0) {
+      toast({
+        title: "No images to analyze",
+        description: "Attach chart screenshots first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setAnalyzingChartId(entry.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-chart-image', {
+        body: {
+          imageUrls: entry.image_urls,
+          symbol: entry.symbol,
+          entryType: entry.entry_type,
+          content: entry.content
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.analysis) {
+        setChartAnalysisResults(prev => ({
+          ...prev,
+          [entry.id]: data.analysis
+        }));
+        toast({
+          title: "Chart Analysis Complete",
+          description: `Analyzed ${data.imagesAnalyzed} screenshot(s)`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Chart analysis error:', error);
+      toast({
+        title: "Analysis failed",
+        description: error.message || "Could not analyze chart images",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzingChartId(null);
+    }
+  };
   const startEditing = (entry: JournalEntry) => {
     setEditingId(entry.id);
     setEditForm({
@@ -440,38 +491,74 @@ const JournalEntryModal = ({
                     />
                   ) : (
                     entry.image_urls && entry.image_urls.length > 0 ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {entry.image_urls.map((url, index) => (
-                          <div 
-                            key={url} 
-                            className="relative group aspect-video rounded-lg overflow-hidden border border-border bg-muted"
-                          >
-                            <img
-                              src={url}
-                              alt={`Chart screenshot ${index + 1}`}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                            
-                            {/* Zoom overlay */}
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <ImageDialog>
-                                <ImageDialogTrigger asChild>
-                                  <Button size="icon" variant="secondary" className="h-8 w-8">
-                                    <ZoomIn className="w-4 h-4" />
-                                  </Button>
-                                </ImageDialogTrigger>
-                                <ImageDialogContent className="max-w-4xl p-0 overflow-hidden">
-                                  <img
-                                    src={url}
-                                    alt={`Chart screenshot ${index + 1}`}
-                                    className="w-full h-auto"
-                                  />
-                                </ImageDialogContent>
-                              </ImageDialog>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {entry.image_urls.map((url, index) => (
+                            <div 
+                              key={url} 
+                              className="relative group aspect-video rounded-lg overflow-hidden border border-border bg-muted"
+                            >
+                              <img
+                                src={url}
+                                alt={`Chart screenshot ${index + 1}`}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
+                              
+                              {/* Zoom overlay */}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <ImageDialog>
+                                  <ImageDialogTrigger asChild>
+                                    <Button size="icon" variant="secondary" className="h-8 w-8">
+                                      <ZoomIn className="w-4 h-4" />
+                                    </Button>
+                                  </ImageDialogTrigger>
+                                  <ImageDialogContent className="max-w-4xl p-0 overflow-hidden">
+                                    <img
+                                      src={url}
+                                      alt={`Chart screenshot ${index + 1}`}
+                                      className="w-full h-auto"
+                                    />
+                                  </ImageDialogContent>
+                                </ImageDialog>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Analyze Chart Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => analyzeChartImages(entry)}
+                          disabled={analyzingChartId === entry.id}
+                          className="gap-2"
+                        >
+                          {analyzingChartId === entry.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Analyzing Charts...
+                            </>
+                          ) : (
+                            <>
+                              <ScanSearch className="w-4 h-4" />
+                              Analyze Chart Patterns
+                            </>
+                          )}
+                        </Button>
+                        
+                        {/* Chart Analysis Results */}
+                        {(chartAnalysisResults[entry.id] || entry.chart_analysis) && (
+                          <div className="mt-3 p-4 bg-accent/10 rounded-lg border border-accent/20">
+                            <div className="flex items-center gap-2 text-accent-foreground mb-3">
+                              <ScanSearch className="w-4 h-4" />
+                              <span className="font-semibold text-sm">Chart Pattern Analysis</span>
+                            </div>
+                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                              <FormattedAIInsight analysis={chartAnalysisResults[entry.id] || entry.chart_analysis || ''} />
                             </div>
                           </div>
-                        ))}
+                        )}
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground italic">No screenshots attached</p>

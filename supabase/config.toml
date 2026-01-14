@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.bot-stock-screener]
 verify_jwt = false
+
+[functions.analyze-chart-image]
+verify_jwt = false
