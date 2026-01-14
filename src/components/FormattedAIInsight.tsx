@@ -8,7 +8,10 @@ import {
   BarChart3,
   Lightbulb,
   Clock,
-  DollarSign
+  DollarSign,
+  CheckCircle,
+  XCircle,
+  Activity
 } from "lucide-react";
 import { useMemo } from "react";
 
@@ -21,155 +24,212 @@ interface ParsedSection {
   title: string;
   icon: React.ReactNode;
   content: string[];
-  type: 'bullish' | 'bearish' | 'neutral' | 'warning' | 'info';
+  type: 'bullish' | 'bearish' | 'neutral' | 'warning' | 'info' | 'success';
 }
+
+// Clean text by removing all special characters and markdown
+const cleanText = (text: string): string => {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold markers but keep text
+    .replace(/\*([^*]+)\*/g, '$1')     // Remove italic markers but keep text
+    .replace(/#{1,6}\s*/g, '')         // Remove markdown headers
+    .replace(/---+/g, '')              // Remove horizontal rules
+    .replace(/```[\s\S]*?```/g, '')    // Remove code blocks
+    .replace(/`([^`]+)`/g, '$1')       // Remove inline code markers
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links but keep text
+    .replace(/[•●◦▪►▸→←↑↓]/g, '')      // Remove bullet characters
+    .replace(/^\s*[-*+]\s+/gm, '')     // Remove list markers
+    .replace(/^\s*\d+\.\s+/gm, '')     // Remove numbered list markers
+    .replace(/\n{3,}/g, '\n\n')        // Reduce multiple newlines
+    .trim();
+};
+
+// Extract clean sentences from text
+const extractSentences = (text: string): string[] => {
+  const cleaned = cleanText(text);
+  return cleaned
+    .split(/[.\n]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 10 && !s.match(/^(summary|overview|analysis|recommendation|risk|conclusion|technical|fundamental)$/i));
+};
 
 const FormattedAIInsight = ({ analysis, className = "" }: FormattedAIInsightProps) => {
   const parsedSections = useMemo(() => {
     if (!analysis) return [];
 
-    // Clean up the analysis text
-    let cleanText = analysis
-      .replace(/\*\*/g, '') // Remove bold markers
-      .replace(/\*/g, '')   // Remove italic markers
-      .replace(/#{1,6}\s*/g, '') // Remove markdown headers
-      .replace(/---+/g, '') // Remove horizontal rules
-      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-      .trim();
-
+    const cleaned = cleanText(analysis);
     const sections: ParsedSection[] = [];
 
-    // Define category patterns to detect
-    const categoryPatterns = [
-      { 
-        regex: /(?:summary|overview|executive summary|analysis summary)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|target|stop|key level|price action|trend|$))/i,
-        title: 'Summary',
-        icon: <Brain className="w-4 h-4" />,
+    // Define section detection with keyword groups
+    const sectionDefinitions = [
+      {
+        keywords: ['what went well', 'strength', 'good execution', 'positive', 'success', 'correctly', 'well done'],
+        title: 'What Went Well',
+        icon: <CheckCircle className="w-4 h-4" />,
+        type: 'success' as const
+      },
+      {
+        keywords: ['what went wrong', 'mistake', 'error', 'failure', 'poorly', 'should not', 'avoid'],
+        title: 'Areas for Improvement',
+        icon: <XCircle className="w-4 h-4" />,
+        type: 'warning' as const
+      },
+      {
+        keywords: ['pattern', 'behavior', 'tendency', 'habit', 'recurring', 'often', 'typically'],
+        title: 'Behavioral Patterns',
+        icon: <Activity className="w-4 h-4" />,
         type: 'info' as const
       },
-      { 
-        regex: /(?:technical analysis|technical indicators?|technicals)[:\s]*([^]*?)(?=(?:fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|target|stop|key level|summary|$))/i,
+      {
+        keywords: ['risk', 'danger', 'caution', 'warning', 'careful', 'beware'],
+        title: 'Risk Assessment',
+        icon: <AlertTriangle className="w-4 h-4" />,
+        type: 'warning' as const
+      },
+      {
+        keywords: ['entry', 'exit', 'setup', 'trigger', 'signal', 'confirmation'],
+        title: 'Trade Execution',
+        icon: <Target className="w-4 h-4" />,
+        type: 'info' as const
+      },
+      {
+        keywords: ['emotional', 'psychology', 'discipline', 'fear', 'greed', 'fomo', 'patience', 'impulse'],
+        title: 'Trading Psychology',
+        icon: <Brain className="w-4 h-4" />,
+        type: 'neutral' as const
+      },
+      {
+        keywords: ['improve', 'next time', 'suggestion', 'recommend', 'consider', 'try', 'should'],
+        title: 'Recommendations',
+        icon: <Lightbulb className="w-4 h-4" />,
+        type: 'info' as const
+      },
+      {
+        keywords: ['stop loss', 'stop', 'protective', 'max loss'],
+        title: 'Risk Management',
+        icon: <Shield className="w-4 h-4" />,
+        type: 'warning' as const
+      },
+      {
+        keywords: ['target', 'profit', 'gain', 'upside', 'potential'],
+        title: 'Profit Potential',
+        icon: <DollarSign className="w-4 h-4" />,
+        type: 'bullish' as const
+      },
+      {
+        keywords: ['technical', 'indicator', 'chart', 'support', 'resistance', 'trend', 'momentum'],
         title: 'Technical Analysis',
         icon: <BarChart3 className="w-4 h-4" />,
         type: 'info' as const
       },
-      { 
-        regex: /(?:trend|price action|momentum)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|target|stop|key level|summary|$))/i,
-        title: 'Trend & Momentum',
-        icon: <TrendingUp className="w-4 h-4" />,
-        type: 'info' as const
-      },
-      { 
-        regex: /(?:support|resistance|key levels?)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|recommendation|entry|exit|target|stop|trend|summary|$))/i,
-        title: 'Key Levels',
-        icon: <Target className="w-4 h-4" />,
-        type: 'neutral' as const
-      },
-      { 
-        regex: /(?:risk|risks?|warning|caution)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|recommendation|support|resistance|entry|exit|target|stop|key level|summary|$))/i,
-        title: 'Risk Factors',
-        icon: <AlertTriangle className="w-4 h-4" />,
-        type: 'warning' as const
-      },
-      { 
-        regex: /(?:entry|exit|trade setup|trading plan|strategy)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|recommendation|support|resistance|target|stop|key level|summary|$))/i,
-        title: 'Trade Setup',
-        icon: <Clock className="w-4 h-4" />,
-        type: 'info' as const
-      },
-      { 
-        regex: /(?:target|price target|profit target|take profit)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|stop|key level|summary|$))/i,
-        title: 'Price Targets',
-        icon: <DollarSign className="w-4 h-4" />,
-        type: 'bullish' as const
-      },
-      { 
-        regex: /(?:stop loss|stop|protective stop)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|target|key level|summary|$))/i,
-        title: 'Stop Loss',
-        icon: <Shield className="w-4 h-4" />,
-        type: 'warning' as const
-      },
-      { 
-        regex: /(?:recommendation|conclusion|verdict|outlook|bias)[:\s]*([^]*?)(?=(?:technical|fundamental|sentiment|risk|support|resistance|entry|exit|target|stop|key level|summary|$))/i,
-        title: 'Recommendation',
-        icon: <Lightbulb className="w-4 h-4" />,
-        type: 'info' as const
-      },
-      { 
-        regex: /(?:bullish|positive|upside)[:\s]*([^]*?)(?=(?:bearish|negative|downside|technical|fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|target|stop|key level|summary|$))/i,
+      {
+        keywords: ['bullish', 'uptrend', 'buy', 'long', 'positive momentum'],
         title: 'Bullish Factors',
         icon: <TrendingUp className="w-4 h-4" />,
         type: 'bullish' as const
       },
-      { 
-        regex: /(?:bearish|negative|downside)[:\s]*([^]*?)(?=(?:bullish|positive|upside|technical|fundamental|sentiment|risk|recommendation|support|resistance|entry|exit|target|stop|key level|summary|$))/i,
+      {
+        keywords: ['bearish', 'downtrend', 'sell', 'short', 'negative momentum'],
         title: 'Bearish Factors',
         icon: <TrendingDown className="w-4 h-4" />,
         type: 'bearish' as const
       },
+      {
+        keywords: ['timing', 'when', 'duration', 'timeframe', 'period'],
+        title: 'Timing Analysis',
+        icon: <Clock className="w-4 h-4" />,
+        type: 'neutral' as const
+      }
     ];
 
-    // Try to extract sections based on patterns
-    let foundSections = false;
-    for (const pattern of categoryPatterns) {
-      const match = cleanText.match(pattern.regex);
-      if (match && match[1]?.trim()) {
-        const content = match[1]
-          .split(/[\n\r]+/)
-          .map(line => line.replace(/^[-•●◦▪]\s*/, '').trim())
-          .filter(line => line.length > 5);
-        
-        if (content.length > 0) {
-          foundSections = true;
-          sections.push({
-            title: pattern.title,
-            icon: pattern.icon,
-            content,
-            type: pattern.type
-          });
+    // Split content into paragraphs
+    const paragraphs = cleaned.split(/\n\n+/).filter(p => p.trim().length > 20);
+    
+    // Analyze each paragraph and assign to appropriate section
+    const sectionContent: Map<string, string[]> = new Map();
+    
+    paragraphs.forEach(para => {
+      const lowerPara = para.toLowerCase();
+      let matched = false;
+      
+      for (const def of sectionDefinitions) {
+        const matchCount = def.keywords.filter(kw => lowerPara.includes(kw)).length;
+        if (matchCount >= 1) {
+          if (!sectionContent.has(def.title)) {
+            sectionContent.set(def.title, []);
+          }
+          // Clean and add the paragraph
+          const cleanedPara = para.split(/[.\n]/)
+            .map(s => s.trim())
+            .filter(s => s.length > 15)
+            .join('. ');
+          if (cleanedPara) {
+            sectionContent.get(def.title)!.push(cleanedPara);
+          }
+          matched = true;
+          break;
         }
       }
-    }
-
-    // If no sections found, create a general breakdown by paragraphs/sentences
-    if (!foundSections) {
-      const paragraphs = cleanText.split(/\n\n+/).filter(p => p.trim());
       
-      if (paragraphs.length >= 3) {
-        // Split into logical sections
-        const third = Math.ceil(paragraphs.length / 3);
-        
-        sections.push({
-          title: 'Analysis Overview',
-          icon: <Brain className="w-4 h-4" />,
-          content: paragraphs.slice(0, third).map(p => p.trim()),
-          type: 'info'
-        });
-        
-        sections.push({
-          title: 'Key Observations',
-          icon: <BarChart3 className="w-4 h-4" />,
-          content: paragraphs.slice(third, third * 2).map(p => p.trim()),
-          type: 'neutral'
-        });
-        
-        sections.push({
-          title: 'Trading Considerations',
+      // If no match, add to a general section
+      if (!matched) {
+        if (!sectionContent.has('Key Insights')) {
+          sectionContent.set('Key Insights', []);
+        }
+        const cleanedPara = para.split(/[.\n]/)
+          .map(s => s.trim())
+          .filter(s => s.length > 15)
+          .join('. ');
+        if (cleanedPara) {
+          sectionContent.get('Key Insights')!.push(cleanedPara);
+        }
+      }
+    });
+
+    // Convert to sections array
+    const orderedTitles = [
+      'What Went Well',
+      'Areas for Improvement',
+      'Behavioral Patterns',
+      'Trading Psychology',
+      'Technical Analysis',
+      'Trade Execution',
+      'Risk Assessment',
+      'Risk Management',
+      'Profit Potential',
+      'Bullish Factors',
+      'Bearish Factors',
+      'Timing Analysis',
+      'Recommendations',
+      'Key Insights'
+    ];
+
+    orderedTitles.forEach(title => {
+      const content = sectionContent.get(title);
+      if (content && content.length > 0) {
+        const def = sectionDefinitions.find(d => d.title === title) || {
+          title: 'Key Insights',
           icon: <Lightbulb className="w-4 h-4" />,
-          content: paragraphs.slice(third * 2).map(p => p.trim()),
-          type: 'info'
-        });
-      } else {
-        // Just one section for short content
-        const lines = cleanText
-          .split(/[\n\r]+/)
-          .map(line => line.replace(/^[-•●◦▪]\s*/, '').trim())
-          .filter(line => line.length > 5);
+          type: 'info' as const
+        };
         
         sections.push({
-          title: 'Analysis',
-          icon: <Brain className="w-4 h-4" />,
-          content: lines,
+          title: def.title,
+          icon: def.icon,
+          content: content,
+          type: def.type
+        });
+      }
+    });
+
+    // If no sections were created, create a simple breakdown
+    if (sections.length === 0 && cleaned.length > 0) {
+      const sentences = extractSentences(cleaned);
+      if (sentences.length > 0) {
+        sections.push({
+          title: 'Key Insights',
+          icon: <Lightbulb className="w-4 h-4" />,
+          content: sentences.slice(0, 5),
           type: 'info'
         });
       }
@@ -180,21 +240,24 @@ const FormattedAIInsight = ({ analysis, className = "" }: FormattedAIInsightProp
 
   const getTypeStyles = (type: ParsedSection['type']) => {
     switch (type) {
+      case 'success':
+        return 'bg-success/10 border-l-4 border-l-success border-t-0 border-r-0 border-b-0';
       case 'bullish':
-        return 'bg-success/10 border-success/20 text-success';
+        return 'bg-success/10 border-l-4 border-l-success border-t-0 border-r-0 border-b-0';
       case 'bearish':
-        return 'bg-destructive/10 border-destructive/20 text-destructive';
+        return 'bg-destructive/10 border-l-4 border-l-destructive border-t-0 border-r-0 border-b-0';
       case 'warning':
-        return 'bg-warning/10 border-warning/20 text-warning';
+        return 'bg-warning/10 border-l-4 border-l-warning border-t-0 border-r-0 border-b-0';
       case 'neutral':
-        return 'bg-muted/50 border-border text-muted-foreground';
+        return 'bg-muted/50 border-l-4 border-l-muted-foreground border-t-0 border-r-0 border-b-0';
       default:
-        return 'bg-primary/5 border-primary/20 text-primary';
+        return 'bg-primary/5 border-l-4 border-l-primary border-t-0 border-r-0 border-b-0';
     }
   };
 
-  const getIconStyles = (type: ParsedSection['type']) => {
+  const getIconColor = (type: ParsedSection['type']) => {
     switch (type) {
+      case 'success':
       case 'bullish':
         return 'text-success';
       case 'bearish':
@@ -213,25 +276,22 @@ const FormattedAIInsight = ({ analysis, className = "" }: FormattedAIInsightProp
   }
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`space-y-3 ${className}`}>
       {parsedSections.map((section, idx) => (
         <div 
           key={idx} 
-          className={`rounded-lg border p-4 ${getTypeStyles(section.type)}`}
+          className={`rounded-lg p-4 ${getTypeStyles(section.type)}`}
         >
-          <div className={`flex items-center gap-2 mb-3 font-semibold ${getIconStyles(section.type)}`}>
+          <div className={`flex items-center gap-2 mb-3 font-semibold text-sm uppercase tracking-wide ${getIconColor(section.type)}`}>
             {section.icon}
             <span>{section.title}</span>
           </div>
-          <div className="space-y-2 text-foreground">
+          <div className="space-y-2">
             {section.content.map((item, itemIdx) => (
               <p 
                 key={itemIdx} 
-                className="text-sm leading-relaxed"
+                className="text-sm text-foreground leading-relaxed pl-6"
               >
-                {section.content.length > 1 && (
-                  <span className="text-muted-foreground mr-2">•</span>
-                )}
                 {item}
               </p>
             ))}
