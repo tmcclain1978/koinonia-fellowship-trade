@@ -35,6 +35,7 @@ import { DailyLossGuardProvider, DailyLossGuardSettings, DailyLossGuardStatus } 
 import { PortfolioGreeks } from "@/components/risk/PortfolioGreeks";
 import { StreakTracker } from "@/components/analytics/StreakTracker";
 import { TradeReplay } from "@/components/analytics/TradeReplay";
+import { MultiTimeframeAnalysis } from "@/components/charts/MultiTimeframeAnalysis";
 import { useChartHotkeys } from "@/hooks/useChartHotkeys";
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -636,6 +637,13 @@ const Trading = () => {
 
             {/* Analysis Tab */}
             <TabsContent value="analysis" className="space-y-6">
+              {/* Multi-Timeframe Analysis */}
+              <MultiTimeframeAnalysis
+                symbol={symbol}
+                userId={user?.id}
+                onSymbolChange={setSymbol}
+              />
+              
               <div className="grid lg:grid-cols-3 gap-6">
                 <KoinoniaIndicator 
                   symbol={symbol}
