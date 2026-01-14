@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Sparkles, TrendingUp, Lightbulb, Calendar, Tag, Heart, Edit2, Trash2, X, Save, MoreVertical } from "lucide-react";
+import { Sparkles, TrendingUp, Lightbulb, Calendar, Tag, Heart, Edit2, Trash2, X, Save, MoreVertical, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import FormattedAIInsight from "@/components/FormattedAIInsight";
@@ -18,6 +19,7 @@ interface JournalEntry {
   entry_type: string;
   content: string;
   emotions: string[] | null;
+  tags: string[] | null;
   ai_analysis: string | null;
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
@@ -32,6 +34,7 @@ interface JournalEntryModalProps {
   analyzingId: string | null;
   onEdit: (id: string, updates: Partial<JournalEntry>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  allTags: string[];
 }
 
 const emotionOptions = ['Confident', 'Anxious', 'FOMO', 'Disciplined', 'Impulsive', 'Patient', 'Greedy', 'Fearful'];
@@ -44,7 +47,8 @@ const JournalEntryModal = ({
   onAnalyze,
   analyzingId,
   onEdit,
-  onDelete
+  onDelete,
+  allTags
 }: JournalEntryModalProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
@@ -52,7 +56,9 @@ const JournalEntryModal = ({
     entry_type: string;
     content: string;
     emotions: string[];
-  }>({ symbol: '', entry_type: '', content: '', emotions: [] });
+    tags: string[];
+  }>({ symbol: '', entry_type: '', content: '', emotions: [], tags: [] });
+  const [newTagInput, setNewTagInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -62,13 +68,16 @@ const JournalEntryModal = ({
       symbol: entry.symbol || '',
       entry_type: entry.entry_type,
       content: entry.content,
-      emotions: entry.emotions || []
+      emotions: entry.emotions || [],
+      tags: entry.tags || []
     });
+    setNewTagInput("");
   };
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditForm({ symbol: '', entry_type: '', content: '', emotions: [] });
+    setEditForm({ symbol: '', entry_type: '', content: '', emotions: [], tags: [] });
+    setNewTagInput("");
   };
 
   const saveEdit = async () => {
@@ -79,7 +88,8 @@ const JournalEntryModal = ({
         symbol: editForm.symbol || null,
         entry_type: editForm.entry_type,
         content: editForm.content,
-        emotions: editForm.emotions.length > 0 ? editForm.emotions : null
+        emotions: editForm.emotions.length > 0 ? editForm.emotions : null,
+        tags: editForm.tags.length > 0 ? editForm.tags : null
       });
       setEditingId(null);
     } finally {
@@ -103,6 +113,31 @@ const JournalEntryModal = ({
         ? prev.emotions.filter(e => e !== emotion)
         : [...prev.emotions, emotion]
     }));
+  };
+
+  const addTag = (tag: string) => {
+    const trimmedTag = tag.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (trimmedTag && !editForm.tags.includes(trimmedTag)) {
+      setEditForm(prev => ({
+        ...prev,
+        tags: [...prev.tags, trimmedTag]
+      }));
+    }
+    setNewTagInput("");
+  };
+
+  const removeTag = (tag: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      tags: prev.tags.filter(t => t !== tag)
+    }));
+  };
+
+  const handleTagInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag(newTagInput);
+    }
   };
 
   const getEntryTypeStyles = (type: string) => {
@@ -267,6 +302,84 @@ const JournalEntryModal = ({
                     <p className="text-foreground leading-relaxed whitespace-pre-wrap">
                       {entry.content}
                     </p>
+                  )}
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    Tags
+                  </h4>
+                  {editingId === entry.id ? (
+                    <div className="space-y-2">
+                      {editForm.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {editForm.tags.map(tag => (
+                            <Badge 
+                              key={tag} 
+                              variant="secondary"
+                              className="gap-1 pr-1"
+                            >
+                              #{tag}
+                              <button 
+                                type="button"
+                                onClick={() => removeTag(tag)}
+                                className="ml-1 hover:text-destructive"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Add a tag..."
+                          value={newTagInput}
+                          onChange={(e) => setNewTagInput(e.target.value)}
+                          onKeyDown={handleTagInputKeyDown}
+                          className="flex-1 h-8"
+                        />
+                        <Button 
+                          type="button" 
+                          size="icon" 
+                          variant="outline"
+                          className="h-8 w-8"
+                          onClick={() => addTag(newTagInput)}
+                          disabled={!newTagInput.trim()}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      {allTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs text-muted-foreground mr-1">Suggestions:</span>
+                          {allTags.slice(0, 6).filter(t => !editForm.tags.includes(t)).map(tag => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => addTag(tag)}
+                              className="text-xs px-2 py-0.5 bg-muted hover:bg-accent rounded transition-colors"
+                            >
+                              #{tag}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    entry.tags && entry.tags.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {entry.tags.map(tag => (
+                          <Badge key={tag} variant="outline" className="text-xs">
+                            #{tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No tags</p>
+                    )
                   )}
                 </div>
 
