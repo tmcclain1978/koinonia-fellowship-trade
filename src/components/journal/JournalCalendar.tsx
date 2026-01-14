@@ -1,7 +1,11 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isWithinInterval, parseISO } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 
 interface JournalEntry {
   id: string;
@@ -20,12 +24,44 @@ interface JournalCalendarProps {
   onSelectDate: (date: Date, entries: JournalEntry[]) => void;
 }
 
+type EntryTypeFilter = 'all' | 'trade' | 'lesson' | 'observation' | 'goal';
+
 const JournalCalendar = ({ entries, onSelectDate }: JournalCalendarProps) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [typeFilter, setTypeFilter] = useState<EntryTypeFilter>('all');
+  const [dateRangeStart, setDateRangeStart] = useState<Date | undefined>(undefined);
+  const [dateRangeEnd, setDateRangeEnd] = useState<Date | undefined>(undefined);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter entries based on type and date range
+  const filteredEntries = useMemo(() => {
+    return entries.filter(entry => {
+      // Type filter
+      if (typeFilter !== 'all' && entry.entry_type !== typeFilter) {
+        return false;
+      }
+      
+      // Date range filter
+      if (dateRangeStart || dateRangeEnd) {
+        const entryDate = parseISO(entry.entry_date);
+        if (dateRangeStart && dateRangeEnd) {
+          if (!isWithinInterval(entryDate, { start: dateRangeStart, end: dateRangeEnd })) {
+            return false;
+          }
+        } else if (dateRangeStart && entryDate < dateRangeStart) {
+          return false;
+        } else if (dateRangeEnd && entryDate > dateRangeEnd) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [entries, typeFilter, dateRangeStart, dateRangeEnd]);
 
   const entriesByDate = useMemo(() => {
     const map = new Map<string, JournalEntry[]>();
-    entries.forEach(entry => {
+    filteredEntries.forEach(entry => {
       const dateKey = format(new Date(entry.entry_date), 'yyyy-MM-dd');
       if (!map.has(dateKey)) {
         map.set(dateKey, []);
@@ -33,14 +69,13 @@ const JournalCalendar = ({ entries, onSelectDate }: JournalCalendarProps) => {
       map.get(dateKey)!.push(entry);
     });
     return map;
-  }, [entries]);
+  }, [filteredEntries]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start, end });
     
-    // Pad the beginning with empty days
     const startDay = start.getDay();
     const paddedDays: (Date | null)[] = Array(startDay).fill(null);
     
@@ -65,8 +100,134 @@ const JournalCalendar = ({ entries, onSelectDate }: JournalCalendarProps) => {
     return 'bg-accent';
   };
 
+  const clearFilters = () => {
+    setTypeFilter('all');
+    setDateRangeStart(undefined);
+    setDateRangeEnd(undefined);
+  };
+
+  const hasActiveFilters = typeFilter !== 'all' || dateRangeStart || dateRangeEnd;
+
   return (
     <div className="bg-card rounded-lg border border-border p-4">
+      {/* Filter Toggle */}
+      <div className="flex items-center justify-between mb-4">
+        <Button 
+          variant={showFilters ? "default" : "outline"} 
+          size="sm"
+          onClick={() => setShowFilters(!showFilters)}
+          className="gap-2"
+        >
+          <Filter className="w-4 h-4" />
+          Filters
+          {hasActiveFilters && (
+            <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
+              !
+            </Badge>
+          )}
+        </Button>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+            <X className="w-4 h-4 mr-1" />
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <div className="mb-4 p-4 bg-muted/30 rounded-lg border border-border space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Entry Type Filter */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Entry Type</label>
+              <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as EntryTypeFilter)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="trade">Trade</SelectItem>
+                  <SelectItem value="lesson">Lesson</SelectItem>
+                  <SelectItem value="observation">Observation</SelectItem>
+                  <SelectItem value="goal">Goal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date Range Start */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">From Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full h-9 justify-start text-left font-normal">
+                    {dateRangeStart ? format(dateRangeStart, 'MMM d, yyyy') : 'Select start'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateRangeStart}
+                    onSelect={setDateRangeStart}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Date Range End */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">To Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full h-9 justify-start text-left font-normal">
+                    {dateRangeEnd ? format(dateRangeEnd, 'MMM d, yyyy') : 'Select end'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateRangeEnd}
+                    onSelect={setDateRangeEnd}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          {/* Active Filters Summary */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+              {typeFilter !== 'all' && (
+                <Badge variant="secondary" className="capitalize">
+                  Type: {typeFilter}
+                  <button onClick={() => setTypeFilter('all')} className="ml-1 hover:text-destructive">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {dateRangeStart && (
+                <Badge variant="secondary">
+                  From: {format(dateRangeStart, 'MMM d')}
+                  <button onClick={() => setDateRangeStart(undefined)} className="ml-1 hover:text-destructive">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {dateRangeEnd && (
+                <Badge variant="secondary">
+                  To: {format(dateRangeEnd, 'MMM d')}
+                  <button onClick={() => setDateRangeEnd(undefined)} className="ml-1 hover:text-destructive">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Calendar Header */}
       <div className="flex items-center justify-between mb-4">
         <Button variant="ghost" size="icon" onClick={goToPreviousMonth}>
@@ -132,9 +293,14 @@ const JournalCalendar = ({ entries, onSelectDate }: JournalCalendarProps) => {
         })}
       </div>
 
-      {/* Legend */}
+      {/* Results Summary */}
       <div className="mt-4 pt-4 border-t border-border">
-        <p className="text-xs text-muted-foreground mb-2">Entry Types:</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-muted-foreground">Entry Types:</p>
+          <p className="text-xs text-muted-foreground">
+            Showing {filteredEntries.length} of {entries.length} entries
+          </p>
+        </div>
         <div className="flex flex-wrap gap-3 text-xs">
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-primary" />

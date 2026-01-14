@@ -170,6 +170,77 @@ const TradingJournal = () => {
     setIsModalOpen(true);
   };
 
+  const handleEditEntry = async (id: string, updates: Partial<JournalEntry>) => {
+    try {
+      const { error } = await supabase
+        .from('trading_journal')
+        .update(updates)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Entry updated",
+        description: "Your journal entry has been updated successfully",
+      });
+
+      // Update local state
+      const updatedEntries = entries.map(entry => 
+        entry.id === id ? { ...entry, ...updates } : entry
+      );
+      setEntries(updatedEntries);
+      
+      // Update modal entries
+      const updatedSelectedEntries = selectedEntries.map(entry => 
+        entry.id === id ? { ...entry, ...updates } : entry
+      );
+      setSelectedEntries(updatedSelectedEntries);
+    } catch (error: any) {
+      toast({
+        title: "Error updating entry",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const handleDeleteEntry = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('trading_journal')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Entry deleted",
+        description: "Your journal entry has been deleted",
+      });
+
+      // Update local state
+      const updatedEntries = entries.filter(entry => entry.id !== id);
+      setEntries(updatedEntries);
+      
+      // Update modal entries
+      const updatedSelectedEntries = selectedEntries.filter(entry => entry.id !== id);
+      setSelectedEntries(updatedSelectedEntries);
+      
+      // Close modal if no entries left for that date
+      if (updatedSelectedEntries.length === 0) {
+        setIsModalOpen(false);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error deleting entry",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
   const totalEntries = entries.length;
   const entriesThisMonth = entries.filter(e => {
     const entryDate = new Date(e.entry_date);
@@ -318,6 +389,8 @@ const TradingJournal = () => {
         selectedDate={selectedDate}
         onAnalyze={handleAnalyze}
         analyzingId={analyzing}
+        onEdit={handleEditEntry}
+        onDelete={handleDeleteEntry}
       />
     </>
   );
