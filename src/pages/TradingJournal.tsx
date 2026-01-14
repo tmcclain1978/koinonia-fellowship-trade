@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { BookOpen, Sparkles, TrendingUp, Lightbulb } from "lucide-react";
 import Navigation from "@/components/Navigation";
+import FormattedAIInsight from "@/components/FormattedAIInsight";
 
 interface JournalEntry {
   id: string;
@@ -280,22 +281,26 @@ const TradingJournal = () => {
                       )}
 
                       {entry.ai_analysis && (
-                        <div className="mt-4 p-4 bg-accent/10 rounded-lg space-y-3">
+                        <div className="mt-4 p-4 bg-accent/10 rounded-lg space-y-4">
                           <div className="flex items-center gap-2 text-accent">
                             <Lightbulb className="w-4 h-4" />
                             <span className="font-semibold text-sm">AI Insights</span>
                           </div>
-                          <p className="text-sm">{entry.ai_analysis}</p>
+                          
+                          <FormattedAIInsight analysis={entry.ai_analysis} />
                           
                           {entry.ai_suggestions && entry.ai_suggestions.length > 0 && (
-                            <div className="space-y-1">
-                              <p className="text-sm font-semibold flex items-center gap-2">
+                            <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                              <p className="text-sm font-semibold flex items-center gap-2 text-primary mb-2">
                                 <TrendingUp className="w-4 h-4" />
-                                Suggestions:
+                                Actionable Suggestions
                               </p>
-                              <ul className="list-disc list-inside space-y-1">
+                              <ul className="space-y-2">
                                 {entry.ai_suggestions.map((suggestion, idx) => (
-                                  <li key={idx} className="text-sm">{suggestion}</li>
+                                  <li key={idx} className="text-sm flex items-start gap-2">
+                                    <span className="text-primary font-bold">{idx + 1}.</span>
+                                    <span>{suggestion}</span>
+                                  </li>
                                 ))}
                               </ul>
                             </div>
