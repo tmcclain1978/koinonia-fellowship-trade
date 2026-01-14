@@ -97,13 +97,18 @@ const JournalEntryModal = ({
       if (error) throw error;
 
       if (data?.analysis) {
+        // Save the analysis to the database
+        await onEdit(entry.id, { chart_analysis: data.analysis });
+        
+        // Update local state for immediate display
         setChartAnalysisResults(prev => ({
           ...prev,
           [entry.id]: data.analysis
         }));
+        
         toast({
-          title: "Chart Analysis Complete",
-          description: `Analyzed ${data.imagesAnalyzed} screenshot(s)`,
+          title: "Chart Analysis Saved",
+          description: `Analyzed ${data.imagesAnalyzed} screenshot(s) and saved to journal`,
         });
       }
     } catch (error: any) {
