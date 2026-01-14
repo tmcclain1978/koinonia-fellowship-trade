@@ -18,6 +18,7 @@ import { ChartLoadingSkeleton } from "./ChartLoadingSkeleton";
 import { ConnectionQualityIndicator } from "./ConnectionQualityIndicator";
 import { ChartAnnotationPanel } from "./ChartAnnotationPanel";
 import { VolumeProfilePanel } from "./VolumeProfilePanel";
+import { FibonacciPanel } from "./FibonacciPanel";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1764,6 +1765,10 @@ export const ProChartKit = ({
           symbol={symbol}
           enabled={showVolumeProfile}
           onEnabledChange={setShowVolumeProfile}
+        />
+        <FibonacciPanel
+          chart={chartRef.current}
+          symbol={symbol}
         />
         <ChartSettings 
           chart={chartRef.current}
