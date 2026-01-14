@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
-import { BarChart3, TrendingUp, Download, FileText, BarChart2 } from "lucide-react";
+import { BarChart3, TrendingUp, Download, FileText, BarChart2, ChevronDown, ChevronUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
 import { OpenPositions } from "@/components/OpenPositions";
@@ -21,6 +21,7 @@ import { PerformanceStreakTracker } from "@/components/analytics/PerformanceStre
 import { DrawdownChart } from "@/components/analytics/DrawdownChart";
 import { TimeOfDayHeatmap } from "@/components/analytics/TimeOfDayHeatmap";
 import { PositionSizeCalculator } from "@/components/analytics/PositionSizeCalculator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -68,6 +69,8 @@ const PaperTrading = () => {
   const [expirationDates, setExpirationDates] = useState<any[]>([]);
   const [strikePrices, setStrikePrices] = useState<any[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [isRecentTradesOpen, setIsRecentTradesOpen] = useState(true);
+  const [isOpenPositionsOpen, setIsOpenPositionsOpen] = useState(true);
 
   useEffect(() => {
     loadAccount();
@@ -1020,14 +1023,25 @@ const PaperTrading = () => {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Trades</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {trades.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No trades yet. Start trading!</p>
-            ) : (
+        <Collapsible open={isRecentTradesOpen} onOpenChange={setIsRecentTradesOpen}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                <CardTitle className="flex items-center justify-between">
+                  <span>Recent Trades</span>
+                  {isRecentTradesOpen ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent>
+                {trades.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">No trades yet. Start trading!</p>
+                ) : (
               <div className="space-y-2">
                 {trades.map(trade => {
                   // Check if this trade is part of an open position
@@ -1151,24 +1165,37 @@ const PaperTrading = () => {
                 })}
               </div>
             )}
-            </CardContent>
+              </CardContent>
+            </CollapsibleContent>
           </Card>
+        </Collapsible>
         </div>
 
         {/* Open Positions Section */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Open Positions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {openPositions.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground mb-2">No open positions</p>
-                <p className="text-xs text-muted-foreground">
-                  Buy a contract to open a position. You'll see it here with a "Close Position" button.
-                </p>
-              </div>
-            ) : (
+        <Collapsible open={isOpenPositionsOpen} onOpenChange={setIsOpenPositionsOpen}>
+          <Card className="mb-6">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                <CardTitle className="flex items-center justify-between">
+                  <span>Open Positions</span>
+                  {isOpenPositionsOpen ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent>
+                {openPositions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-2">No open positions</p>
+                    <p className="text-xs text-muted-foreground">
+                      Buy a contract to open a position. You'll see it here with a "Close Position" button.
+                    </p>
+                  </div>
+                ) : (
               <div className="space-y-3">
                 {openPositions.map((position, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-muted rounded-lg border">
@@ -1259,8 +1286,10 @@ const PaperTrading = () => {
                  ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         {/* Live Price Display */}
         <div className="mb-6">
