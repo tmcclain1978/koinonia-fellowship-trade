@@ -72,6 +72,25 @@ serve(async (req) => {
 
     console.log('Alpaca order placed successfully:', orderData.id);
 
+    // Auto-create trading journal entry
+    const journalContent = `${credentials.alpaca_paper_mode ? '[PAPER] ' : '[LIVE] '}${action.toUpperCase()} ${quantity} ${symbol} via Alpaca. Order ID: ${orderData.id}. Status: ${orderData.status}`;
+    
+    const { error: journalError } = await supabaseClient
+      .from('trading_journal')
+      .insert({
+        user_id: user.id,
+        entry_type: 'trade',
+        symbol,
+        content: journalContent,
+        entry_date: new Date().toISOString().split('T')[0],
+      });
+
+    if (journalError) {
+      console.error('Error logging to trading journal:', journalError);
+    } else {
+      console.log('Auto-logged Alpaca trade to journal:', symbol, action);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -79,6 +98,7 @@ serve(async (req) => {
         status: orderData.status,
         broker: 'alpaca',
         paperMode: credentials.alpaca_paper_mode,
+        journalLogged: !journalError,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

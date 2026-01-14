@@ -118,6 +118,27 @@ serve(async (req) => {
       console.error("Error logging trade:", logError);
     }
 
+    // Auto-create trading journal entry for successful trades
+    if (tradeResult.success) {
+      const journalContent = `${isPaperTrading ? '[PAPER] ' : '[LIVE] '}${action.toUpperCase()} ${quantity} ${symbol} @ $${tradeResult.executedPrice || price} via ${brokerType}. Order ID: ${tradeResult.orderId || 'N/A'}`;
+      
+      const { error: journalError } = await supabase
+        .from("trading_journal")
+        .insert({
+          user_id: userId,
+          entry_type: 'trade',
+          symbol,
+          content: journalContent,
+          entry_date: new Date().toISOString().split('T')[0],
+        });
+
+      if (journalError) {
+        console.error("Error logging to trading journal:", journalError);
+      } else {
+        console.log("Auto-logged trade to journal:", symbol, action);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: tradeResult.success,
@@ -127,6 +148,7 @@ serve(async (req) => {
         pdtWarning: tradeResult.pdtWarning,
         isPaperTrading,
         broker: brokerType,
+        journalLogged: tradeResult.success,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
