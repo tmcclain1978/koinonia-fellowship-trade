@@ -136,12 +136,31 @@ serve(async (req) => {
       .from('bot_performance_log')
       .insert(performanceLog);
 
+    // Auto-create trading journal entry
+    const journalContent = action === 'buy' 
+      ? `Opened position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. ${notes || ''}`
+      : `Closed position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. P&L: ${profitLoss !== null ? (profitLoss >= 0 ? '+' : '') + '$' + profitLoss.toFixed(2) : 'N/A'}. ${notes || ''}`;
+    
+    await supabase
+      .from('trading_journal')
+      .insert({
+        user_id: user.id,
+        entry_type: 'trade',
+        symbol,
+        trade_id: trade.id,
+        content: journalContent,
+        entry_date: new Date().toISOString().split('T')[0],
+      });
+
+    console.log('Auto-logged paper trade to journal:', symbol, action);
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         trade,
         newBalance,
-        profitLoss
+        profitLoss,
+        journalLogged: true
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
