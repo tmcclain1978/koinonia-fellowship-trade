@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, TrendingUp, Activity, BarChart2, Wallet, Search, LineChart, LayoutGrid } from "lucide-react";
+import { CalendarIcon, TrendingUp, Activity, BarChart2, Wallet, Search, LineChart, LayoutGrid, Shield, Clock } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -28,7 +28,13 @@ import { ConditionalExitBuilder } from "@/components/options/ConditionalExitBuil
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 import { RealtimePnLTracker } from "@/components/RealtimePnLTracker";
 import { AIPredictionTracker } from "@/components/charts/AIPredictionTracker";
-
+// Professional Trading Components
+import { BracketOrderBuilder } from "@/components/trading/BracketOrderBuilder";
+import { TimeAndSales } from "@/components/trading/TimeAndSales";
+import { DailyLossGuardProvider, DailyLossGuardSettings, DailyLossGuardStatus } from "@/components/risk/DailyLossGuard";
+import { PortfolioGreeks } from "@/components/risk/PortfolioGreeks";
+import { StreakTracker } from "@/components/analytics/StreakTracker";
+import { useChartHotkeys } from "@/hooks/useChartHotkeys";
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
   const [tradingMode, setTradingMode] = useState<string>("paper");
@@ -318,8 +324,36 @@ const Trading = () => {
     }
   };
 
+  // Chart hotkeys integration
+  const chartHotkeys = useChartHotkeys({
+    onIntervalChange: handleIntervalChange,
+    onZoomIn: () => console.log('Zoom in triggered'),
+    onZoomOut: () => console.log('Zoom out triggered'),
+    onFitToData: () => console.log('Fit to data triggered'),
+    onBuy: () => {
+      toast({
+        title: "Quick Buy",
+        description: `Buy order for ${symbol} (use Order Entry for full order)`,
+      });
+    },
+    onSell: () => {
+      toast({
+        title: "Quick Sell",
+        description: `Sell order for ${symbol} (use Order Entry for full order)`,
+      });
+    },
+    onFlatten: () => {
+      toast({
+        title: "Flatten Position",
+        description: `Flatten all positions for ${symbol}`,
+        variant: "destructive",
+      });
+    },
+    enabled: true,
+  });
+
   return (
-    <>
+    <DailyLossGuardProvider>
       <Navigation />
       <div className="min-h-screen bg-background pt-16">
         <div className="container mx-auto px-6 py-8">
@@ -456,10 +490,10 @@ const Trading = () => {
 
           {/* Tab Navigation */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6 mb-4">
+            <TabsList className="grid w-full grid-cols-8 mb-4">
               <TabsTrigger value="orders" className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
-                <span className="hidden sm:inline">Order Entry</span>
+                <span className="hidden sm:inline">Orders</span>
               </TabsTrigger>
               <TabsTrigger value="options" className="flex items-center gap-2">
                 <BarChart2 className="w-4 h-4" />
@@ -469,9 +503,17 @@ const Trading = () => {
                 <Wallet className="w-4 h-4" />
                 <span className="hidden sm:inline">Positions</span>
               </TabsTrigger>
+              <TabsTrigger value="risk" className="flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                <span className="hidden sm:inline">Risk</span>
+              </TabsTrigger>
               <TabsTrigger value="analysis" className="flex items-center gap-2">
                 <LineChart className="w-4 h-4" />
                 <span className="hidden sm:inline">Analysis</span>
+              </TabsTrigger>
+              <TabsTrigger value="tape" className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                <span className="hidden sm:inline">Tape</span>
               </TabsTrigger>
               <TabsTrigger value="screeners" className="flex items-center gap-2">
                 <Search className="w-4 h-4" />
@@ -486,187 +528,16 @@ const Trading = () => {
             {/* Order Entry Tab */}
             <TabsContent value="orders" className="space-y-6">
               <div className="grid lg:grid-cols-2 gap-6">
-                {/* Order Builder */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Order Builder</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Account & Symbol */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>Account ID</Label>
-                        <Input
-                          value={accountId}
-                          onChange={(e) => setAccountId(e.target.value)}
-                          placeholder="Enter account ID"
-                        />
-                      </div>
-                      <div>
-                        <Label>Quantity</Label>
-                        <Input
-                          type="number"
-                          value={quantity}
-                          onChange={(e) => setQuantity(e.target.value)}
-                          placeholder="1"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Order Structure */}
-                    <div>
-                      <Label>Order Structure</Label>
-                      <select 
-                        value={orderStructure}
-                        onChange={(e) => setOrderStructure(e.target.value)}
-                        className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
-                      >
-                        <option value="single">Single Leg</option>
-                        <option value="multi-leg">Multi-Leg</option>
-                        <option value="vertical">Vertical Spread</option>
-                        <option value="covered">Covered Stock</option>
-                        <option value="iron-condor">Iron Condor</option>
-                      </select>
-                    </div>
-
-                    {/* Entry Type */}
-                    <div>
-                      <Label>Entry Type</Label>
-                      <select 
-                        value={entryType}
-                        onChange={(e) => setEntryType(e.target.value)}
-                        className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
-                      >
-                        <option value="MARKET">Market</option>
-                        <option value="LIMIT">Limit</option>
-                        <option value="STOP">Stop</option>
-                        <option value="STOPLIMIT">Stop Limit</option>
-                        <option value="TRAILSTOP">Trailing Stop</option>
-                      </select>
-                    </div>
-
-                    {/* Conditional Price Fields */}
-                    {(entryType === "LIMIT" || entryType === "STOPLIMIT") && (
-                      <div>
-                        <Label>Limit Price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={limitPrice}
-                          onChange={(e) => setLimitPrice(e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                    )}
-
-                    {(entryType === "STOP" || entryType === "STOPLIMIT") && (
-                      <div>
-                        <Label>Stop Price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={stopPrice}
-                          onChange={(e) => setStopPrice(e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                    )}
-
-                    {entryType === "TRAILSTOP" && (
-                      <div>
-                        <Label>Trail Amount ($)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={trailAmount}
-                          onChange={(e) => setTrailAmount(e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                    )}
-
-                    {/* Single Leg Options */}
-                    {orderStructure === "single" && (
-                      <>
-                        <div>
-                          <Label>Order Type</Label>
-                          <select 
-                            value={orderType}
-                            onChange={(e) => setOrderType(e.target.value)}
-                            className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
-                          >
-                            <option value="CALL">Call</option>
-                            <option value="PUT">Put</option>
-                            <option value="STOCK">Stock</option>
-                          </select>
-                        </div>
-
-                        {orderType !== "STOCK" && (
-                          <>
-                            <div>
-                              <Label>Expiration Date</Label>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    className={cn("w-full justify-start text-left", !expirationDate && "text-muted-foreground")}
-                                  >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {expirationDate ? format(expirationDate, "PPP") : "Pick a date"}
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="start">
-                                  <Calendar
-                                    mode="single"
-                                    selected={expirationDate}
-                                    onSelect={setExpirationDate}
-                                    disabled={(date) => date < new Date()}
-                                    initialFocus
-                                  />
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-
-                            <div>
-                              <Label>Strike Price</Label>
-                              {strikePrices.length > 0 ? (
-                                <select
-                                  value={strikePrice}
-                                  onChange={(e) => {
-                                    setStrikePrice(e.target.value);
-                                    const selected = strikePrices.find(s => s.strike.toString() === e.target.value);
-                                    if (selected) setLimitPrice(selected.ask.toFixed(2));
-                                  }}
-                                  className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
-                                >
-                                  <option value="">Select Strike</option>
-                                  {strikePrices.map((strike) => (
-                                    <option key={strike.strike} value={strike.strike}>
-                                      ${strike.strike} - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={strikePrice}
-                                  onChange={(e) => setStrikePrice(e.target.value)}
-                                  placeholder="0.00"
-                                />
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </>
-                    )}
-
-                    <Button onClick={placeOrder} variant="default" size="lg" className="w-full">
-                      <TrendingUp className="w-5 h-5 mr-2" />
-                      Place Order
-                    </Button>
-                  </CardContent>
-                </Card>
+                {/* Bracket Order Builder */}
+                <BracketOrderBuilder
+                  symbol={symbol}
+                  onOrderPlaced={(orders) => {
+                    toast({
+                      title: "Bracket Order Created",
+                      description: `Entry: ${orders.entryOrderId} | SL: ${orders.stopLossOrderId} | TP: ${orders.takeProfitOrderId}`,
+                    });
+                  }}
+                />
 
                 {/* Schwab Order Entry */}
                 <SchwabOrderEntry 
@@ -748,9 +619,23 @@ const Trading = () => {
               <SchwabPortfolio />
             </TabsContent>
 
+            {/* Risk Management Tab */}
+            <TabsContent value="risk" className="space-y-6">
+              <div className="grid lg:grid-cols-2 gap-6">
+                <DailyLossGuardSettings />
+                <DailyLossGuardStatus />
+              </div>
+              <PortfolioGreeks />
+            </TabsContent>
+
+            {/* Time & Sales Tape Tab */}
+            <TabsContent value="tape" className="space-y-6">
+              <TimeAndSales symbol={symbol} />
+            </TabsContent>
+
             {/* Analysis Tab */}
             <TabsContent value="analysis" className="space-y-6">
-              <div className="grid lg:grid-cols-2 gap-6">
+              <div className="grid lg:grid-cols-3 gap-6">
                 <KoinoniaIndicator 
                   symbol={symbol}
                   onSignalGenerated={handleKoinoniaSignal}
@@ -760,6 +645,8 @@ const Trading = () => {
                   userId={user?.id}
                   symbol={symbol}
                 />
+                
+                <StreakTracker userId={user?.id} />
               </div>
               
               <OptionPnLChart symbol={symbol} currentPrice={256} />
@@ -783,7 +670,7 @@ const Trading = () => {
           </Tabs>
         </div>
       </div>
-    </>
+    </DailyLossGuardProvider>
   );
 };
 
