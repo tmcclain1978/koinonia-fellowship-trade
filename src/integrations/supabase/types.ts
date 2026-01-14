@@ -691,6 +691,48 @@ export type Database = {
         }
         Relationships: []
       }
+      chart_annotations: {
+        Row: {
+          annotation_type: string
+          chart_timestamp: number | null
+          color: string
+          created_at: string
+          id: string
+          is_shared: boolean | null
+          price: number
+          symbol: string
+          text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          annotation_type?: string
+          chart_timestamp?: number | null
+          color?: string
+          created_at?: string
+          id?: string
+          is_shared?: boolean | null
+          price: number
+          symbol: string
+          text: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          annotation_type?: string
+          chart_timestamp?: number | null
+          color?: string
+          created_at?: string
+          id?: string
+          is_shared?: boolean | null
+          price?: number
+          symbol?: string
+          text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       contact_submissions: {
         Row: {
           created_at: string | null

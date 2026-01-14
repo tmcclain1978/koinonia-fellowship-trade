@@ -1,4 +1,5 @@
 import { Chart, LineType } from "klinecharts";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface ChartAnnotation {
   id: string;
@@ -9,6 +10,8 @@ export interface ChartAnnotation {
   createdAt: string;
   color: string;
   type: 'note' | 'support' | 'resistance' | 'target' | 'stop';
+  isShared?: boolean;
+  userId?: string;
 }
 
 export interface AnnotationStorage {
@@ -18,7 +21,7 @@ export interface AnnotationStorage {
 
 const STORAGE_KEY = 'chart-annotations';
 
-// Get all annotations from localStorage
+// Get all annotations from localStorage (fallback)
 export function getStoredAnnotations(): AnnotationStorage {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -31,17 +34,134 @@ export function getStoredAnnotations(): AnnotationStorage {
   return { annotations: [], lastUpdated: new Date().toISOString() };
 }
 
-// Get annotations for a specific symbol
+// Get annotations for a specific symbol from localStorage
 export function getAnnotationsForSymbol(symbol: string): ChartAnnotation[] {
   const storage = getStoredAnnotations();
   return storage.annotations.filter(a => a.symbol.toUpperCase() === symbol.toUpperCase());
 }
 
-// Save annotation
+// Fetch annotations from database
+export async function fetchAnnotationsFromDB(symbol: string, userId: string): Promise<ChartAnnotation[]> {
+  try {
+    const { data, error } = await supabase
+      .from('chart_annotations')
+      .select('*')
+      .or(`user_id.eq.${userId},is_shared.eq.true`)
+      .eq('symbol', symbol.toUpperCase());
+
+    if (error) {
+      console.error('Error fetching annotations:', error);
+      return [];
+    }
+
+    return (data || []).map(row => ({
+      id: row.id,
+      symbol: row.symbol,
+      price: typeof row.price === 'string' ? parseFloat(row.price) : Number(row.price),
+      text: row.text,
+      timestamp: row.chart_timestamp ? Number(row.chart_timestamp) : Date.now(),
+      createdAt: row.created_at,
+      color: row.color,
+      type: row.annotation_type as ChartAnnotation['type'],
+      isShared: row.is_shared,
+      userId: row.user_id,
+    }));
+  } catch (e) {
+    console.error('Failed to fetch annotations from database:', e);
+    return [];
+  }
+}
+
+// Save annotation to database
+export async function saveAnnotationToDB(annotation: ChartAnnotation, userId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('chart_annotations')
+      .upsert({
+        id: annotation.id,
+        user_id: userId,
+        symbol: annotation.symbol.toUpperCase(),
+        price: annotation.price,
+        text: annotation.text,
+        annotation_type: annotation.type,
+        color: annotation.color,
+        chart_timestamp: annotation.timestamp,
+        is_shared: annotation.isShared || false,
+      });
+
+    if (error) {
+      console.error('Error saving annotation:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('Failed to save annotation to database:', e);
+    return false;
+  }
+}
+
+// Delete annotation from database
+export async function deleteAnnotationFromDB(annotationId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('chart_annotations')
+      .delete()
+      .eq('id', annotationId);
+
+    if (error) {
+      console.error('Error deleting annotation:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('Failed to delete annotation from database:', e);
+    return false;
+  }
+}
+
+// Delete all annotations for a symbol from database
+export async function deleteAllAnnotationsForSymbolFromDB(symbol: string, userId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('chart_annotations')
+      .delete()
+      .eq('symbol', symbol.toUpperCase())
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error deleting annotations:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('Failed to delete annotations from database:', e);
+    return false;
+  }
+}
+
+// Toggle annotation sharing
+export async function toggleAnnotationSharing(annotationId: string, isShared: boolean): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('chart_annotations')
+      .update({ is_shared: isShared })
+      .eq('id', annotationId);
+
+    if (error) {
+      console.error('Error toggling annotation sharing:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('Failed to toggle annotation sharing:', e);
+    return false;
+  }
+}
+
+// Save annotation to localStorage (fallback)
 export function saveAnnotation(annotation: ChartAnnotation): void {
   const storage = getStoredAnnotations();
   
-  // Check if annotation already exists (update) or is new (add)
   const existingIndex = storage.annotations.findIndex(a => a.id === annotation.id);
   
   if (existingIndex >= 0) {
@@ -59,7 +179,7 @@ export function saveAnnotation(annotation: ChartAnnotation): void {
   }
 }
 
-// Delete annotation
+// Delete annotation from localStorage
 export function deleteAnnotation(annotationId: string): void {
   const storage = getStoredAnnotations();
   storage.annotations = storage.annotations.filter(a => a.id !== annotationId);
@@ -72,7 +192,7 @@ export function deleteAnnotation(annotationId: string): void {
   }
 }
 
-// Delete all annotations for a symbol
+// Delete all annotations for a symbol from localStorage
 export function deleteAllAnnotationsForSymbol(symbol: string): void {
   const storage = getStoredAnnotations();
   storage.annotations = storage.annotations.filter(
@@ -107,14 +227,15 @@ export function getAnnotationColor(type: ChartAnnotation['type']): string {
 // Apply annotations to chart as overlays
 export function applyAnnotationsToChart(
   chart: Chart | null,
-  symbol: string
+  symbol: string,
+  annotations?: ChartAnnotation[]
 ): string[] {
   if (!chart) return [];
   
-  const annotations = getAnnotationsForSymbol(symbol);
+  const annots = annotations || getAnnotationsForSymbol(symbol);
   const overlayIds: string[] = [];
   
-  annotations.forEach(annotation => {
+  annots.forEach(annotation => {
     try {
       const overlayId = chart.createOverlay({
         name: 'horizontalStraightLine',
@@ -127,7 +248,7 @@ export function applyAnnotationsToChart(
             style: annotation.type === 'note' ? LineType.Dashed : LineType.Solid,
           },
         },
-        extendData: `${annotation.type.toUpperCase()}: ${annotation.text} @ $${annotation.price.toFixed(2)}`,
+        extendData: `${annotation.type.toUpperCase()}: ${annotation.text} @ $${annotation.price.toFixed(2)}${annotation.isShared ? ' (Shared)' : ''}`,
       });
       
       if (overlayId) {
@@ -142,15 +263,12 @@ export function applyAnnotationsToChart(
 }
 
 // Remove annotation overlays from chart
-export function clearAnnotationOverlays(chart: Chart | null): void {
+export function clearAnnotationOverlays(chart: Chart | null, annotations?: ChartAnnotation[]): void {
   if (!chart) return;
   
   try {
-    // Get all overlays and remove ones that start with 'annotation_'
-    // Since klinecharts doesn't expose overlay IDs directly, we remove all horizontal lines
-    // and re-apply non-annotation overlays
-    const annotations = getStoredAnnotations().annotations;
-    annotations.forEach(ann => {
+    const annots = annotations || getStoredAnnotations().annotations;
+    annots.forEach(ann => {
       chart.removeOverlay({ id: `annotation_${ann.id}` });
     });
   } catch (e) {
@@ -164,7 +282,8 @@ export function createAnnotationAtPrice(
   price: number,
   text: string,
   type: ChartAnnotation['type'] = 'note',
-  timestamp?: number
+  timestamp?: number,
+  isShared?: boolean
 ): ChartAnnotation {
   const annotation: ChartAnnotation = {
     id: generateAnnotationId(),
@@ -175,6 +294,7 @@ export function createAnnotationAtPrice(
     createdAt: new Date().toISOString(),
     color: getAnnotationColor(type),
     type,
+    isShared: isShared || false,
   };
   
   saveAnnotation(annotation);
