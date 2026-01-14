@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrls, symbol, entryType, content } = await req.json();
+    const { imageUrls, symbol, entryType, content, customFocus } = await req.json();
 
     if (!imageUrls || imageUrls.length === 0) {
       return new Response(
@@ -46,12 +46,17 @@ When analyzing chart screenshots, provide:
 Be specific about price levels when visible. Reference specific candlestick patterns if applicable.
 Format your response with clear sections using markdown headers.`;
 
-    const userPrompt = `Analyze ${imageUrls.length > 1 ? 'these chart screenshots' : 'this chart screenshot'}${symbol ? ` for ${symbol}` : ''}.
+    let userPrompt = `Analyze ${imageUrls.length > 1 ? 'these chart screenshots' : 'this chart screenshot'}${symbol ? ` for ${symbol}` : ''}.
 
 ${content ? `Trader's notes: "${content}"` : ''}
-${entryType ? `Entry type: ${entryType}` : ''}
+${entryType ? `Entry type: ${entryType}` : ''}`;
 
-Provide a comprehensive technical analysis with actionable insights.`;
+    // Add custom focus if provided
+    if (customFocus && customFocus.trim()) {
+      userPrompt += `\n\n**Specific Focus**: ${customFocus.trim()}`;
+    }
+
+    userPrompt += `\n\nProvide a comprehensive technical analysis with actionable insights.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },

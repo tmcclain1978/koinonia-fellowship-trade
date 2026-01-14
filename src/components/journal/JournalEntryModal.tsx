@@ -70,9 +70,11 @@ const JournalEntryModal = ({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [analyzingChartId, setAnalyzingChartId] = useState<string | null>(null);
   const [chartAnalysisResults, setChartAnalysisResults] = useState<Record<string, string>>({});
+  const [analysisFocus, setAnalysisFocus] = useState<Record<string, string>>({});
+  const [showFocusInput, setShowFocusInput] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
-  const analyzeChartImages = async (entry: JournalEntry) => {
+  const analyzeChartImages = async (entry: JournalEntry, customFocus?: string) => {
     if (!entry.image_urls || entry.image_urls.length === 0) {
       toast({
         title: "No images to analyze",
@@ -90,7 +92,8 @@ const JournalEntryModal = ({
           imageUrls: entry.image_urls,
           symbol: entry.symbol,
           entryType: entry.entry_type,
-          content: entry.content
+          content: entry.content,
+          customFocus: customFocus || analysisFocus[entry.id] || ''
         }
       });
 
@@ -531,33 +534,78 @@ const JournalEntryModal = ({
                           ))}
                         </div>
                         
-                        {/* Analyze Chart Button */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => analyzeChartImages(entry)}
-                          disabled={analyzingChartId === entry.id}
-                          className="gap-2"
-                        >
-                          {analyzingChartId === entry.id ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Analyzing Charts...
-                            </>
-                          ) : (
-                            <>
-                              <ScanSearch className="w-4 h-4" />
-                              Analyze Chart Patterns
-                            </>
-                          )}
-                        </Button>
+                        {/* Analyze Chart Controls */}
+                        <div className="space-y-2">
+                          {/* Focus Input Toggle */}
+                          {showFocusInput[entry.id] ? (
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="e.g., Focus on support levels, Look for reversal patterns..."
+                                value={analysisFocus[entry.id] || ''}
+                                onChange={(e) => setAnalysisFocus(prev => ({ ...prev, [entry.id]: e.target.value }))}
+                                className="flex-1 text-sm"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setShowFocusInput(prev => ({ ...prev, [entry.id]: false }));
+                                  setAnalysisFocus(prev => ({ ...prev, [entry.id]: '' }));
+                                }}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : null}
+                          
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => analyzeChartImages(entry)}
+                              disabled={analyzingChartId === entry.id}
+                              className="gap-2"
+                            >
+                              {analyzingChartId === entry.id ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Analyzing...
+                                </>
+                              ) : (chartAnalysisResults[entry.id] || entry.chart_analysis) ? (
+                                <>
+                                  <ScanSearch className="w-4 h-4" />
+                                  Re-analyze Charts
+                                </>
+                              ) : (
+                                <>
+                                  <ScanSearch className="w-4 h-4" />
+                                  Analyze Chart Patterns
+                                </>
+                              )}
+                            </Button>
+                            
+                            {!showFocusInput[entry.id] && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowFocusInput(prev => ({ ...prev, [entry.id]: true }))}
+                                className="gap-1 text-muted-foreground"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Add Focus
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                         
                         {/* Chart Analysis Results */}
                         {(chartAnalysisResults[entry.id] || entry.chart_analysis) && (
                           <div className="mt-3 p-4 bg-accent/10 rounded-lg border border-accent/20">
-                            <div className="flex items-center gap-2 text-accent-foreground mb-3">
-                              <ScanSearch className="w-4 h-4" />
-                              <span className="font-semibold text-sm">Chart Pattern Analysis</span>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2 text-accent-foreground">
+                                <ScanSearch className="w-4 h-4" />
+                                <span className="font-semibold text-sm">Chart Pattern Analysis</span>
+                              </div>
                             </div>
                             <div className="prose prose-sm dark:prose-invert max-w-none">
                               <FormattedAIInsight analysis={chartAnalysisResults[entry.id] || entry.chart_analysis || ''} />
