@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { BookOpen, Sparkles, TrendingUp, Lightbulb } from "lucide-react";
+import { BookOpen, Calendar } from "lucide-react";
 import Navigation from "@/components/Navigation";
-import FormattedAIInsight from "@/components/FormattedAIInsight";
+import JournalCalendar from "@/components/journal/JournalCalendar";
+import JournalEntryModal from "@/components/journal/JournalEntryModal";
 
 interface JournalEntry {
   id: string;
@@ -30,6 +31,11 @@ const TradingJournal = () => {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState<string | null>(null);
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedEntries, setSelectedEntries] = useState<JournalEntry[]>([]);
   
   const [newEntry, setNewEntry] = useState({
     entry_type: 'trade',
@@ -128,6 +134,16 @@ const TradingJournal = () => {
       });
 
       loadEntries();
+      
+      // Update modal entries if open
+      if (isModalOpen && selectedEntries.length > 0) {
+        const updatedEntries = selectedEntries.map(entry => 
+          entry.id === journalId 
+            ? { ...entry, ai_analysis: data.analysis, ai_suggestions: data.suggestions }
+            : entry
+        );
+        setSelectedEntries(updatedEntries);
+      }
     } catch (error: any) {
       toast({
         title: "Analysis failed",
@@ -148,6 +164,19 @@ const TradingJournal = () => {
     }));
   };
 
+  const handleSelectDate = (date: Date, dayEntries: JournalEntry[]) => {
+    setSelectedDate(date);
+    setSelectedEntries(dayEntries);
+    setIsModalOpen(true);
+  };
+
+  const totalEntries = entries.length;
+  const entriesThisMonth = entries.filter(e => {
+    const entryDate = new Date(e.entry_date);
+    const now = new Date();
+    return entryDate.getMonth() === now.getMonth() && entryDate.getFullYear() === now.getFullYear();
+  }).length;
+
   return (
     <>
       <Navigation />
@@ -159,6 +188,38 @@ const TradingJournal = () => {
               <h1 className="text-3xl font-bold text-foreground">Trading Journal</h1>
               <p className="text-muted-foreground">Track your trades and get AI-powered insights</p>
             </div>
+          </div>
+
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-primary">{totalEntries}</p>
+                <p className="text-sm text-muted-foreground">Total Entries</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-success">{entriesThisMonth}</p>
+                <p className="text-sm text-muted-foreground">This Month</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-warning">
+                  {entries.filter(e => e.entry_type === 'trade').length}
+                </p>
+                <p className="text-sm text-muted-foreground">Trade Entries</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-2xl font-bold text-accent">
+                  {entries.filter(e => e.ai_analysis).length}
+                </p>
+                <p className="text-sm text-muted-foreground">AI Analyzed</p>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
@@ -231,90 +292,33 @@ const TradingJournal = () => {
               </CardContent>
             </Card>
 
-            {/* Recent Entries */}
+            {/* Calendar View */}
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold">Recent Entries</h2>
-              {entries.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 text-center text-muted-foreground">
-                    No journal entries yet. Start by creating your first entry!
-                  </CardContent>
-                </Card>
-              ) : (
-                entries.map(entry => (
-                  <Card key={entry.id}>
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-base">
-                            {entry.symbol && <span className="text-primary">{entry.symbol}</span>}
-                            <span className="text-muted-foreground ml-2 capitalize">{entry.entry_type}</span>
-                          </CardTitle>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(entry.entry_date).toLocaleDateString()}
-                          </p>
-                        </div>
-                        {!entry.ai_analysis && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleAnalyze(entry.id)}
-                            disabled={analyzing === entry.id}
-                          >
-                            <Sparkles className="w-4 h-4 mr-2" />
-                            {analyzing === entry.id ? 'Analyzing...' : 'Analyze'}
-                          </Button>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <p className="text-sm">{entry.content}</p>
-                      
-                      {entry.emotions && entry.emotions.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {entry.emotions.map(emotion => (
-                            <span key={emotion} className="text-xs px-2 py-1 bg-muted rounded-full">
-                              {emotion}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {entry.ai_analysis && (
-                        <div className="mt-4 p-4 bg-accent/10 rounded-lg space-y-4">
-                          <div className="flex items-center gap-2 text-accent">
-                            <Lightbulb className="w-4 h-4" />
-                            <span className="font-semibold text-sm">AI Insights</span>
-                          </div>
-                          
-                          <FormattedAIInsight analysis={entry.ai_analysis} />
-                          
-                          {entry.ai_suggestions && entry.ai_suggestions.length > 0 && (
-                            <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                              <p className="text-sm font-semibold flex items-center gap-2 text-primary mb-2">
-                                <TrendingUp className="w-4 h-4" />
-                                Actionable Suggestions
-                              </p>
-                              <ul className="space-y-2">
-                                {entry.ai_suggestions.map((suggestion, idx) => (
-                                  <li key={idx} className="text-sm flex items-start gap-2">
-                                    <span className="text-primary font-bold">{idx + 1}.</span>
-                                    <span>{suggestion}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))
-              )}
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-primary" />
+                <h2 className="text-xl font-semibold">Journal Calendar</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Click on any highlighted date to view your journal entries for that day.
+              </p>
+              <JournalCalendar 
+                entries={entries} 
+                onSelectDate={handleSelectDate}
+              />
             </div>
           </div>
         </div>
       </div>
+
+      {/* Journal Entry Modal */}
+      <JournalEntryModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        entries={selectedEntries}
+        selectedDate={selectedDate}
+        onAnalyze={handleAnalyze}
+        analyzingId={analyzing}
+      />
     </>
   );
 };
