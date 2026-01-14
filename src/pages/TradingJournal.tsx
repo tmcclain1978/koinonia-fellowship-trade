@@ -32,6 +32,7 @@ interface JournalEntry {
   ai_analysis: string | null;
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
+  chart_analysis: string | null;
 }
 
 const TradingJournal = () => {

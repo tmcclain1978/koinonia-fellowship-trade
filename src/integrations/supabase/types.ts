@@ -1526,6 +1526,7 @@ export type Database = {
           ai_analysis: string | null
           ai_suggestions: string[] | null
           analyzed_at: string | null
+          chart_analysis: string | null
           content: string
           created_at: string
           emotions: string[] | null
@@ -1543,6 +1544,7 @@ export type Database = {
           ai_analysis?: string | null
           ai_suggestions?: string[] | null
           analyzed_at?: string | null
+          chart_analysis?: string | null
           content: string
           created_at?: string
           emotions?: string[] | null
@@ -1560,6 +1562,7 @@ export type Database = {
           ai_analysis?: string | null
           ai_suggestions?: string[] | null
           analyzed_at?: string | null
+          chart_analysis?: string | null
           content?: string
           created_at?: string
           emotions?: string[] | null
