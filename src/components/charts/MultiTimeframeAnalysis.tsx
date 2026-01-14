@@ -378,6 +378,8 @@ export function MultiTimeframeAnalysis({
                   height={getChartHeight()}
                   userId={userId}
                   enableStreaming={tf.interval === '1' || tf.interval === '5'}
+                  chartId={`mtf-${symbol}-${tf.id}`}
+                  enableCrosshairSync={syncCrosshair}
                 />
               </div>
             ))}

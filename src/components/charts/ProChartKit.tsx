@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { init, dispose, Chart, KLineData, CandleType, LineType } from "klinecharts";
+import { init, dispose, Chart, KLineData, CandleType, LineType, ActionType, Crosshair } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2, Focus } from "lucide-react";
@@ -34,6 +34,7 @@ import { applyAnnotationsToChart } from "@/utils/chartAnnotations";
 import { applyVolumeProfileToChart, calculateVolumeProfile, clearVolumeProfileOverlays } from "@/utils/volumeProfile";
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
+import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
 
 interface ProChartKitProps {
   symbol: string;
@@ -48,6 +49,9 @@ interface ProChartKitProps {
   stopLoss?: number;
   enableStreaming?: boolean;
   onPriceUpdate?: (price: number) => void;
+  // Crosshair sync props
+  chartId?: string;
+  enableCrosshairSync?: boolean;
 }
 
 export const ProChartKit = ({
@@ -63,11 +67,17 @@ export const ProChartKit = ({
   stopLoss,
   enableStreaming = true,
   onPriceUpdate,
+  chartId,
+  enableCrosshairSync = false,
 }: ProChartKitProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
   const [loading, setLoading] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false); // Brief loading state for smooth transitions
+  
+  // Generate a unique chart ID if not provided
+  const effectiveChartId = chartId || `chart-${symbol}-${interval}-${Math.random().toString(36).substr(2, 9)}`;
+  const chartIdRef = useRef(effectiveChartId);
   
   // Load persisted settings from localStorage
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>(() => {
@@ -242,6 +252,44 @@ export const ProChartKit = ({
     interval,
     enabled: true,
   });
+
+  // Crosshair sync - handle incoming crosshair changes from other charts
+  const handleExternalCrosshairChange = useCallback((data: CrosshairData) => {
+    if (!chartRef.current || !data.timestamp) return;
+    
+    // Find the nearest data point to the timestamp
+    const dataList = chartRef.current.getDataList();
+    if (dataList.length === 0) return;
+    
+    // Find the candle closest to the timestamp
+    let closestIndex = -1;
+    let closestDiff = Infinity;
+    
+    for (let i = 0; i < dataList.length; i++) {
+      const diff = Math.abs(dataList[i].timestamp - data.timestamp);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestIndex = i;
+      }
+    }
+    
+    if (closestIndex >= 0) {
+      // Execute crosshair action to move crosshair to this data point
+      chartRef.current.executeAction(ActionType.OnCrosshairChange, {
+        dataIndex: closestIndex,
+        kLineData: dataList[closestIndex],
+      });
+    }
+  }, []);
+  
+  // Setup crosshair sync hook
+  const { broadcastCrosshair, clearCrosshair } = useChartCrosshairSync(
+    chartIdRef.current,
+    {
+      enabled: enableCrosshairSync,
+      onCrosshairChange: handleExternalCrosshairChange,
+    }
+  );
 
   // Helper to get interval duration in milliseconds
   const getIntervalMs = useCallback((intervalStr: string): number => {
@@ -608,6 +656,16 @@ export const ProChartKit = ({
         // Clear any existing data before fetching new data (prevents stale data showing)
         chart.clearData();
         
+        // Subscribe to crosshair changes for sync
+        if (enableCrosshairSync) {
+          chart.subscribeAction(ActionType.OnCrosshairChange, (data: unknown) => {
+            const crosshairData = data as Crosshair;
+            if (crosshairData?.kLineData?.timestamp) {
+              broadcastCrosshair(crosshairData.kLineData.timestamp, crosshairData.kLineData.close);
+            }
+          });
+        }
+        
         // Debounced fetch to prevent rapid API calls during quick interval switching
         if (fetchDebounceRef.current) {
           clearTimeout(fetchDebounceRef.current);
@@ -642,11 +700,15 @@ export const ProChartKit = ({
         rafIdRef.current = null;
       }
       if (chartRef.current) {
+        // Unsubscribe from crosshair changes before disposing
+        if (enableCrosshairSync) {
+          chartRef.current.unsubscribeAction(ActionType.OnCrosshairChange);
+        }
         dispose(containerRef.current!);
         chartRef.current = null;
       }
     };
-  }, [symbol, interval, theme, resetAllTrackingRefs]);
+  }, [symbol, interval, theme, resetAllTrackingRefs, enableCrosshairSync, broadcastCrosshair]);
 
   // Handle candle type changes dynamically - also reapply after chart re-init (interval/symbol change)
   useEffect(() => {
