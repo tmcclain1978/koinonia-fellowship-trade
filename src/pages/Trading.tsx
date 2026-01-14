@@ -34,6 +34,7 @@ import { TimeAndSales } from "@/components/trading/TimeAndSales";
 import { DailyLossGuardProvider, DailyLossGuardSettings, DailyLossGuardStatus } from "@/components/risk/DailyLossGuard";
 import { PortfolioGreeks } from "@/components/risk/PortfolioGreeks";
 import { StreakTracker } from "@/components/analytics/StreakTracker";
+import { TradeReplay } from "@/components/analytics/TradeReplay";
 import { useChartHotkeys } from "@/hooks/useChartHotkeys";
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
@@ -650,6 +651,8 @@ const Trading = () => {
               </div>
               
               <OptionPnLChart symbol={symbol} currentPrice={256} />
+              
+              <TradeReplay userId={user?.id} />
             </TabsContent>
 
             {/* Screeners Tab */}
