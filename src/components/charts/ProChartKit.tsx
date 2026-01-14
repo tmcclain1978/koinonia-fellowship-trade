@@ -13,6 +13,9 @@ import { CandleTypeSelector, CandleTypeOption } from "./CandleTypeSelector";
 import { ChartReplayControls } from "./ChartReplayControls";
 import { HistoricalDatePicker } from "./HistoricalDatePicker";
 import { AIChartAnalysis } from "./AIChartAnalysis";
+import { ChartErrorBoundary } from "./ChartErrorBoundary";
+import { ChartLoadingSkeleton } from "./ChartLoadingSkeleton";
+import { ConnectionQualityIndicator } from "./ConnectionQualityIndicator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +24,7 @@ import { ChevronDown, ChevronUp, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
 import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
+import { useChartTransition } from "@/hooks/useChartTransition";
 import { applyAIOverlays, clearAIOverlays, type ChartAnalysis, type OverlayVisibility } from "@/utils/chartAnalysisOverlays";
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
@@ -223,34 +227,84 @@ export const ProChartKit = ({
 
   // Track last processed price to avoid redundant updates
   const lastProcessedPriceRef = useRef<number | null>(null);
-  const pendingUpdateRef = useRef<KLineData | null>(null);
+  const pendingUpdatesRef = useRef<KLineData[]>([]); // Batch multiple updates
   const rafIdRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef<number>(0);
-  const UPDATE_THROTTLE_MS = 100; // Throttle to 10fps max for smooth visuals
+  const UPDATE_THROTTLE_MS = 50; // Faster updates (20fps) for smoother visuals
+  const devicePixelRatioRef = useRef<number>(window.devicePixelRatio || 1);
 
-  // Throttled chart update using requestAnimationFrame for smooth rendering
+  // Use chart transition hook for atomic state management
+  const { 
+    isTransitioning: isTransitioningState,
+    transitionProgress,
+    saveChartState,
+    getChartState,
+    prefetchInterval,
+    getPrefetchedData,
+  } = useChartTransition({
+    symbol,
+    interval,
+    onTransitionStart: () => {
+      console.log('[ProChartKit] Transition started');
+    },
+    onTransitionEnd: () => {
+      console.log('[ProChartKit] Transition ended');
+    },
+  });
+
+  // Enhanced RAF batching - collects all updates in a frame and applies only the final state
   const scheduleChartUpdate = useCallback((candle: KLineData, isNewCandle: boolean) => {
     const now = Date.now();
     
-    // Skip update if too soon (unless it's a new candle which we always want)
-    if (!isNewCandle && now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) {
+    // For new candles, always process immediately
+    if (isNewCandle) {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      pendingUpdatesRef.current = [];
+      if (chartRef.current) {
+        chartRef.current.updateData(candle);
+      }
+      lastUpdateTimeRef.current = now;
       return;
     }
-    lastUpdateTimeRef.current = now;
     
-    pendingUpdateRef.current = candle;
+    // Throttle updates for same-candle modifications
+    if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) {
+      // Queue update for next frame
+      pendingUpdatesRef.current.push(candle);
+      
+      // Schedule RAF if not already scheduled
+      if (!rafIdRef.current) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null;
+          
+          // Only apply the LAST pending update (skip intermediate states)
+          const lastUpdate = pendingUpdatesRef.current[pendingUpdatesRef.current.length - 1];
+          pendingUpdatesRef.current = [];
+          
+          if (lastUpdate && chartRef.current) {
+            chartRef.current.updateData(lastUpdate);
+            lastUpdateTimeRef.current = Date.now();
+          }
+        });
+      }
+      return;
+    }
+    
+    // Immediate update if throttle window passed
+    lastUpdateTimeRef.current = now;
+    pendingUpdatesRef.current = [];
     
     if (rafIdRef.current) {
       cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
     }
     
-    rafIdRef.current = requestAnimationFrame(() => {
-      rafIdRef.current = null;
-      if (pendingUpdateRef.current && chartRef.current) {
-        chartRef.current.updateData(pendingUpdateRef.current);
-        pendingUpdateRef.current = null;
-      }
-    });
+    if (chartRef.current) {
+      chartRef.current.updateData(candle);
+    }
   }, []);
 
   // Handle Schwab streaming price updates for chart
@@ -380,56 +434,14 @@ export const ProChartKit = ({
 
       try {
         console.log("🚀 Initializing chart...");
+        
+        // Get current device pixel ratio for crisp rendering on high-DPI displays
+        const dpr = window.devicePixelRatio || 1;
+        devicePixelRatioRef.current = dpr;
+        
         const chart = init(containerRef.current, {
-          styles: {
-            grid: {
-              show: true,
-              horizontal: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
-              vertical: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" }
-            },
-            candle: {
-              type: candleType as CandleType,
-              bar: {
-                upColor: "#26a69a",
-                downColor: "#ef5350",
-                // Transparent borders for smooth TradingView-style appearance
-                upBorderColor: "transparent",
-                downBorderColor: "transparent",
-                upWickColor: "#26a69a",
-                downWickColor: "#ef5350",
-                // NoChange colors for flat candles
-                noChangeColor: "#888888",
-                noChangeBorderColor: "transparent",
-                noChangeWickColor: "#888888"
-              },
-              tooltip: {
-                text: {
-                  size: 12,
-                  color: theme === "dark" ? "#ffffff" : "#000000"
-                }
-              }
-            },
-            xAxis: {
-              axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
-            },
-            yAxis: {
-              axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
-            },
-            separator: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
-            crosshair: {
-              horizontal: {
-                line: { color: theme === "dark" ? "#888888" : "#666666" }
-              },
-              vertical: {
-                line: { color: theme === "dark" ? "#888888" : "#666666" }
-              }
-            }
-          },
-  customApi: {
+          // Add devicePixelRatio for crisp rendering on retina displays
+          customApi: {
             formatDate: (timestamp: number, format: string) => {
               const date = new Date(timestamp);
               
@@ -480,7 +492,55 @@ export const ProChartKit = ({
               };
               return date.toLocaleString('en-US', fullDateOptions) + ' ET';
             }
-          }
+          },
+          styles: {
+            grid: {
+              show: true,
+              horizontal: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
+              vertical: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" }
+            },
+            candle: {
+              type: candleType as CandleType,
+              bar: {
+                upColor: "#26a69a",
+                downColor: "#ef5350",
+                // Transparent borders for smooth TradingView-style appearance
+                upBorderColor: "transparent",
+                downBorderColor: "transparent",
+                upWickColor: "#26a69a",
+                downWickColor: "#ef5350",
+                // NoChange colors for flat candles
+                noChangeColor: "#888888",
+                noChangeBorderColor: "transparent",
+                noChangeWickColor: "#888888"
+              },
+              tooltip: {
+                text: {
+                  size: 12,
+                  color: theme === "dark" ? "#ffffff" : "#000000"
+                }
+              }
+            },
+            xAxis: {
+              axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+              tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+              tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
+            },
+            yAxis: {
+              axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+              tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
+              tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
+            },
+            separator: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
+            crosshair: {
+              horizontal: {
+                line: { color: theme === "dark" ? "#888888" : "#666666" }
+              },
+              vertical: {
+                line: { color: theme === "dark" ? "#888888" : "#666666" }
+              }
+            }
+          },
         });
 
         console.log("✅ Chart initialized successfully");
@@ -1743,9 +1803,16 @@ export const ProChartKit = ({
       />
 
       <Card className="relative p-0 overflow-hidden">
-        {(loading || loadingHistorical) && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-20">
-            <Loader2 className="w-8 h-8 animate-spin" />
+        {/* Enhanced loading state with skeleton */}
+        {(loading || loadingHistorical || isTransitioning) && (
+          <div className="absolute inset-0 z-20">
+            <ChartLoadingSkeleton 
+              height={height} 
+              variant={isTransitioning ? "bars" : "skeleton"}
+              showProgress={isTransitioning}
+              progress={transitionProgress}
+              message={isTransitioning ? "Switching timeframe..." : "Loading chart data..."}
+            />
           </div>
         )}
         <div 
