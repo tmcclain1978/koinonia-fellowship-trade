@@ -7,10 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Sparkles, TrendingUp, Lightbulb, Calendar, Tag, Heart, Edit2, Trash2, X, Save, MoreVertical, Plus } from "lucide-react";
+import { Sparkles, TrendingUp, Lightbulb, Calendar, Tag, Heart, Edit2, Trash2, X, Save, MoreVertical, Plus, ImageIcon, ZoomIn } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import FormattedAIInsight from "@/components/FormattedAIInsight";
+import JournalImageUpload from "@/components/journal/JournalImageUpload";
+import { Dialog as ImageDialog, DialogContent as ImageDialogContent, DialogTrigger as ImageDialogTrigger } from "@/components/ui/dialog";
 
 interface JournalEntry {
   id: string;
@@ -20,6 +22,7 @@ interface JournalEntry {
   content: string;
   emotions: string[] | null;
   tags: string[] | null;
+  image_urls: string[] | null;
   ai_analysis: string | null;
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
@@ -57,7 +60,8 @@ const JournalEntryModal = ({
     content: string;
     emotions: string[];
     tags: string[];
-  }>({ symbol: '', entry_type: '', content: '', emotions: [], tags: [] });
+    image_urls: string[];
+  }>({ symbol: '', entry_type: '', content: '', emotions: [], tags: [], image_urls: [] });
   const [newTagInput, setNewTagInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -69,14 +73,15 @@ const JournalEntryModal = ({
       entry_type: entry.entry_type,
       content: entry.content,
       emotions: entry.emotions || [],
-      tags: entry.tags || []
+      tags: entry.tags || [],
+      image_urls: entry.image_urls || []
     });
     setNewTagInput("");
   };
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditForm({ symbol: '', entry_type: '', content: '', emotions: [], tags: [] });
+    setEditForm({ symbol: '', entry_type: '', content: '', emotions: [], tags: [], image_urls: [] });
     setNewTagInput("");
   };
 
@@ -89,7 +94,8 @@ const JournalEntryModal = ({
         entry_type: editForm.entry_type,
         content: editForm.content,
         emotions: editForm.emotions.length > 0 ? editForm.emotions : null,
-        tags: editForm.tags.length > 0 ? editForm.tags : null
+        tags: editForm.tags.length > 0 ? editForm.tags : null,
+        image_urls: editForm.image_urls.length > 0 ? editForm.image_urls : null
       });
       setEditingId(null);
     } finally {
@@ -417,6 +423,58 @@ const JournalEntryModal = ({
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground italic">No emotions recorded</p>
+                    )
+                  )}
+                </div>
+
+                {/* Screenshots/Images */}
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                    <ImageIcon className="w-3 h-3" />
+                    Screenshots
+                  </h4>
+                  {editingId === entry.id ? (
+                    <JournalImageUpload
+                      images={editForm.image_urls}
+                      onImagesChange={(urls) => setEditForm({ ...editForm, image_urls: urls })}
+                    />
+                  ) : (
+                    entry.image_urls && entry.image_urls.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {entry.image_urls.map((url, index) => (
+                          <div 
+                            key={url} 
+                            className="relative group aspect-video rounded-lg overflow-hidden border border-border bg-muted"
+                          >
+                            <img
+                              src={url}
+                              alt={`Chart screenshot ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            
+                            {/* Zoom overlay */}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <ImageDialog>
+                                <ImageDialogTrigger asChild>
+                                  <Button size="icon" variant="secondary" className="h-8 w-8">
+                                    <ZoomIn className="w-4 h-4" />
+                                  </Button>
+                                </ImageDialogTrigger>
+                                <ImageDialogContent className="max-w-4xl p-0 overflow-hidden">
+                                  <img
+                                    src={url}
+                                    alt={`Chart screenshot ${index + 1}`}
+                                    className="w-full h-auto"
+                                  />
+                                </ImageDialogContent>
+                              </ImageDialog>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No screenshots attached</p>
                     )
                   )}
                 </div>
