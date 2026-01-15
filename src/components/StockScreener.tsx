@@ -26,10 +26,13 @@ import {
   Loader2,
   Bookmark,
   Radio,
-  Clock
+  Clock,
+  Star,
+  StarOff
 } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
+import { useWatchlist } from "./WatchlistPanel";
 
 interface ScreenerCondition {
   id: string;
@@ -205,6 +208,7 @@ export const StockScreener = () => {
   const [newPresetDescription, setNewPresetDescription] = useState("");
   const [useLiveData, setUseLiveData] = useState(true);
   const [lastScanTime, setLastScanTime] = useState<string | null>(null);
+  const { addToWatchlist, removeFromWatchlist, isInWatchlist, refresh: refreshWatchlist } = useWatchlist();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -676,24 +680,47 @@ export const StockScreener = () => {
                           </div>
                         </div>
                         
-                        <div className="text-right">
-                          <div className={`font-bold text-lg ${result.change_percent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {result.change_percent >= 0 ? '+' : ''}{result.change_percent?.toFixed(2) || '0.00'}%
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Vol: {result.volume ? (result.volume / 1000000).toFixed(1) + 'M' : 'N/A'}
-                          </div>
-                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Watchlist Toggle Button */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (isInWatchlist(result.symbol)) {
+                                removeFromWatchlist(result.symbol).then(() => refreshWatchlist());
+                              } else {
+                                addToWatchlist(result.symbol).then(() => refreshWatchlist());
+                              }
+                            }}
+                            className={`h-8 w-8 ${isInWatchlist(result.symbol) ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
+                            title={isInWatchlist(result.symbol) ? 'Remove from watchlist' : 'Add to watchlist'}
+                          >
+                            {isInWatchlist(result.symbol) ? (
+                              <Star className="w-4 h-4 fill-current" />
+                            ) : (
+                              <StarOff className="w-4 h-4" />
+                            )}
+                          </Button>
 
-                        <Badge 
-                          variant={result.match_score >= 100 ? "default" : result.match_score >= 75 ? "secondary" : "outline"}
-                          className={`ml-3 ${
-                            result.match_score >= 100 ? "bg-green-500 text-white" : 
-                            result.match_score >= 75 ? "bg-primary/20" : ""
-                          }`}
-                        >
-                          {result.match_score}% match
-                        </Badge>
+                          <div className="text-right">
+                            <div className={`font-bold text-lg ${result.change_percent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {result.change_percent >= 0 ? '+' : ''}{result.change_percent?.toFixed(2) || '0.00'}%
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Vol: {result.volume ? (result.volume / 1000000).toFixed(1) + 'M' : 'N/A'}
+                            </div>
+                          </div>
+
+                          <Badge 
+                            variant={result.match_score >= 100 ? "default" : result.match_score >= 75 ? "secondary" : "outline"}
+                            className={`ml-3 ${
+                              result.match_score >= 100 ? "bg-green-500 text-white" : 
+                              result.match_score >= 75 ? "bg-primary/20" : ""
+                            }`}
+                          >
+                            {result.match_score}% match
+                          </Badge>
+                        </div>
                       </div>
 
                       {/* Matched Conditions */}

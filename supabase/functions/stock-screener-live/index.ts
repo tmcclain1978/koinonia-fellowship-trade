@@ -219,7 +219,71 @@ serve(async (req) => {
       );
     }
 
-    const { conditions, customSymbols } = await req.json();
+    const { conditions, customSymbols, quotesOnly } = await req.json();
+    
+    // For watchlist - just fetch quotes without screening
+    if (quotesOnly) {
+      const symbols = customSymbols || [];
+      console.log(`[Stock Screener] Fetching quotes for ${symbols.length} symbols`);
+      
+      const results: ScreenerResult[] = [];
+      
+      for (const symbol of symbols) {
+        try {
+          const snapshotUrl = `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${polygonApiKey}`;
+          const snapshotRes = await fetch(snapshotUrl);
+          
+          if (!snapshotRes.ok) continue;
+          
+          const snapshot = await snapshotRes.json();
+          const ticker = snapshot.ticker;
+          
+          if (!ticker?.day) continue;
+
+          const currentPrice = ticker.day?.c || ticker.prevDay?.c || 0;
+          const prevClose = ticker.prevDay?.c || currentPrice;
+          const change = currentPrice - prevClose;
+          const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+
+          results.push({
+            symbol,
+            price: currentPrice,
+            change_percent: changePercent,
+            volume: ticker.day?.v || 0,
+            match_score: 100,
+            matched_conditions: [],
+            data: {
+              symbol,
+              price: currentPrice,
+              open: ticker.day?.o || currentPrice,
+              high: ticker.day?.h || currentPrice,
+              low: ticker.day?.l || currentPrice,
+              close: currentPrice,
+              prevClose,
+              change,
+              changePercent,
+              volume: ticker.day?.v || 0,
+              avgVolume: ticker.prevDay?.v || 0,
+              relativeVolume: 1,
+              high52w: ticker.max?.high || currentPrice * 1.2,
+              low52w: ticker.min?.low || currentPrice * 0.8,
+              marketCap: ticker.market_cap || 0,
+            },
+          });
+        } catch (e) {
+          console.error(`[Stock Screener] Error fetching quote for ${symbol}:`, e);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          results,
+          totalScreened: symbols.length,
+          timestamp: new Date().toISOString()
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     if (!conditions || !Array.isArray(conditions) || conditions.length === 0) {
       return new Response(
