@@ -56,22 +56,44 @@ interface ScreenerResult {
 }
 
 const CONDITION_TYPES = [
-  { id: "price_above", label: "Price Above", category: "Price" },
-  { id: "price_below", label: "Price Below", category: "Price" },
-  { id: "price_change_above", label: "% Change Above", category: "Price" },
-  { id: "price_change_below", label: "% Change Below", category: "Price" },
-  { id: "volume_above", label: "Volume Above", category: "Volume" },
-  { id: "volume_spike", label: "Volume Spike (x avg)", category: "Volume" },
-  { id: "rsi_above", label: "RSI Above", category: "Technical" },
-  { id: "rsi_below", label: "RSI Below", category: "Technical" },
-  { id: "sma_above", label: "Price > SMA", category: "Technical" },
-  { id: "sma_below", label: "Price < SMA", category: "Technical" },
-  { id: "macd_positive", label: "MACD Positive", category: "Technical" },
-  { id: "macd_negative", label: "MACD Negative", category: "Technical" },
-  { id: "52w_high_near", label: "Near 52W High (%)", category: "Range" },
-  { id: "52w_low_near", label: "Near 52W Low (%)", category: "Range" },
-  { id: "gap_up", label: "Gap Up (%)", category: "Pattern" },
-  { id: "gap_down", label: "Gap Down (%)", category: "Pattern" },
+  // Price conditions
+  { id: "price_above", label: "Price Above", category: "Price", unit: "$" },
+  { id: "price_below", label: "Price Below", category: "Price", unit: "$" },
+  { id: "price_change_above", label: "% Change Above", category: "Price", unit: "%" },
+  { id: "price_change_below", label: "% Change Below", category: "Price", unit: "%" },
+  
+  // Volume conditions
+  { id: "volume_above", label: "Volume Above", category: "Volume", unit: "" },
+  { id: "volume_spike", label: "Volume Spike (x avg)", category: "Volume", unit: "x" },
+  { id: "relative_volume", label: "Relative Volume >", category: "Volume", unit: "x" },
+  
+  // Technical indicators
+  { id: "rsi_above", label: "RSI Above", category: "Technical", unit: "" },
+  { id: "rsi_below", label: "RSI Below", category: "Technical", unit: "" },
+  { id: "sma_above", label: "Price > SMA", category: "Technical", unit: "period" },
+  { id: "sma_below", label: "Price < SMA", category: "Technical", unit: "period" },
+  { id: "ema_crossover", label: "EMA Crossover", category: "Technical", unit: "" },
+  { id: "macd_positive", label: "MACD Positive", category: "Technical", unit: "" },
+  { id: "macd_negative", label: "MACD Negative", category: "Technical", unit: "" },
+  { id: "macd_crossover", label: "MACD Bullish Cross", category: "Technical", unit: "" },
+  { id: "bb_squeeze", label: "BB Squeeze", category: "Technical", unit: "%" },
+  
+  // Range conditions
+  { id: "52w_high_near", label: "Near 52W High (%)", category: "Range", unit: "%" },
+  { id: "52w_low_near", label: "Near 52W Low (%)", category: "Range", unit: "%" },
+  { id: "atr_percent", label: "ATR % of Price >", category: "Range", unit: "%" },
+  
+  // Pattern conditions
+  { id: "gap_up", label: "Gap Up (%)", category: "Pattern", unit: "%" },
+  { id: "gap_down", label: "Gap Down (%)", category: "Pattern", unit: "%" },
+  { id: "new_high", label: "New 20-Day High", category: "Pattern", unit: "" },
+  { id: "new_low", label: "New 20-Day Low", category: "Pattern", unit: "" },
+  { id: "inside_bar", label: "Inside Bar Pattern", category: "Pattern", unit: "" },
+  
+  // Fundamental (optional)
+  { id: "market_cap_above", label: "Market Cap Above", category: "Fundamental", unit: "B" },
+  { id: "market_cap_below", label: "Market Cap Below", category: "Fundamental", unit: "B" },
+  { id: "float_below", label: "Float Below", category: "Fundamental", unit: "M" },
 ];
 
 const DEFAULT_PRESETS: Partial<ScreenerPreset>[] = [
@@ -105,6 +127,39 @@ const DEFAULT_PRESETS: Partial<ScreenerPreset>[] = [
     conditions: [
       { id: "1", type: "gap_up", operator: ">", value: 3 },
       { id: "2", type: "volume_above", operator: ">", value: 500000 },
+    ]
+  },
+  {
+    name: "MACD Momentum",
+    description: "Bullish MACD crossover with rising volume",
+    conditions: [
+      { id: "1", type: "macd_crossover", operator: ">", value: 0 },
+      { id: "2", type: "relative_volume", operator: ">", value: 1.2 },
+    ]
+  },
+  {
+    name: "Low Float Runner",
+    description: "Low float stocks with high relative volume",
+    conditions: [
+      { id: "1", type: "float_below", operator: "<", value: 20 },
+      { id: "2", type: "relative_volume", operator: ">", value: 2 },
+      { id: "3", type: "price_change_above", operator: ">", value: 5 },
+    ]
+  },
+  {
+    name: "BB Squeeze Breakout",
+    description: "Bollinger Band squeeze with volatility expansion",
+    conditions: [
+      { id: "1", type: "bb_squeeze", operator: "<", value: 5 },
+      { id: "2", type: "volume_spike", operator: ">", value: 1.5 },
+    ]
+  },
+  {
+    name: "High ATR Movers",
+    description: "Volatile stocks with high ATR percentage",
+    conditions: [
+      { id: "1", type: "atr_percent", operator: ">", value: 3 },
+      { id: "2", type: "price_above", operator: ">", value: 5 },
     ]
   },
 ];
@@ -160,6 +215,14 @@ export const StockScreener = () => {
       value: 0
     };
     setConditions([...conditions, newCondition]);
+  };
+
+  const getConditionUnit = (type: string) => {
+    return CONDITION_TYPES.find(c => c.id === type)?.unit || "";
+  };
+
+  const getConditionCategory = (type: string) => {
+    return CONDITION_TYPES.find(c => c.id === type)?.category || "Other";
   };
 
   const updateCondition = (id: string, field: keyof ScreenerCondition, value: any) => {
@@ -327,6 +390,10 @@ export const StockScreener = () => {
                         {idx + 1}
                       </Badge>
                       
+                      <Badge variant="secondary" className="shrink-0 text-xs">
+                        {getConditionCategory(condition.type)}
+                      </Badge>
+                      
                       <Select
                         value={condition.type}
                         onValueChange={(value) => updateCondition(condition.id, "type", value)}
@@ -335,20 +402,38 @@ export const StockScreener = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {CONDITION_TYPES.map(type => (
-                            <SelectItem key={type.id} value={type.id}>
-                              {type.label}
-                            </SelectItem>
+                          {Object.entries(
+                            CONDITION_TYPES.reduce((acc, type) => {
+                              if (!acc[type.category]) acc[type.category] = [];
+                              acc[type.category].push(type);
+                              return acc;
+                            }, {} as Record<string, typeof CONDITION_TYPES>)
+                          ).map(([category, types]) => (
+                            <div key={category}>
+                              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{category}</div>
+                              {types.map(type => (
+                                <SelectItem key={type.id} value={type.id}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </div>
                           ))}
                         </SelectContent>
                       </Select>
 
-                      <Input
-                        type="number"
-                        value={condition.value}
-                        onChange={(e) => updateCondition(condition.id, "value", parseFloat(e.target.value) || 0)}
-                        className="w-24"
-                      />
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={condition.value}
+                          onChange={(e) => updateCondition(condition.id, "value", parseFloat(e.target.value) || 0)}
+                          className="w-20"
+                        />
+                        {getConditionUnit(condition.type) && (
+                          <span className="text-xs text-muted-foreground w-6">
+                            {getConditionUnit(condition.type)}
+                          </span>
+                        )}
+                      </div>
 
                       <Button
                         variant="ghost"
