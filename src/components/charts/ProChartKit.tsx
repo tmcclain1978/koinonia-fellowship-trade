@@ -614,14 +614,52 @@ export const ProChartKit = ({
               }
             },
             xAxis: {
-              axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
+              show: true,
+              size: 'auto',
+              axisLine: { 
+                show: true,
+                color: theme === "dark" ? "#444444" : "#cccccc",
+                size: 1
+              },
+              tickLine: { 
+                show: true,
+                color: theme === "dark" ? "#444444" : "#cccccc",
+                size: 1,
+                length: 3
+              },
+              tickText: { 
+                show: true,
+                color: theme === "dark" ? "#aaaaaa" : "#666666",
+                size: 11,
+                family: 'Arial, sans-serif',
+                weight: 'normal',
+                marginStart: 4,
+                marginEnd: 4
+              }
             },
             yAxis: {
-              axisLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickLine: { color: theme === "dark" ? "#444444" : "#cccccc" },
-              tickText: { color: theme === "dark" ? "#aaaaaa" : "#666666" }
+              show: true,
+              size: 'auto',
+              axisLine: { 
+                show: true,
+                color: theme === "dark" ? "#444444" : "#cccccc",
+                size: 1
+              },
+              tickLine: { 
+                show: true,
+                color: theme === "dark" ? "#444444" : "#cccccc",
+                size: 1,
+                length: 3
+              },
+              tickText: { 
+                show: true,
+                color: theme === "dark" ? "#aaaaaa" : "#666666",
+                size: 11,
+                family: 'Arial, sans-serif',
+                weight: 'normal',
+                marginStart: 4,
+                marginEnd: 4
+              }
             },
             separator: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
             crosshair: {
