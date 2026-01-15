@@ -395,7 +395,7 @@ const PaperTrading = () => {
           </Card>
 
           {/* Main Chart */}
-          <Card className="mb-2 h-[1200px] overflow-hidden">
+          <Card className="mb-0 h-[1200px] overflow-hidden">
             <CardContent className="p-0 h-full">
               <ProChartKit 
                 symbol={symbol}
