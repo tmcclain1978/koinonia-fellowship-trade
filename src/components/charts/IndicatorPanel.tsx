@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -311,31 +311,49 @@ export const IndicatorPanel = ({
   const [activeCategory, setActiveCategory] = useState("All");
   const [editingIndicator, setEditingIndicator] = useState<string | null>(null);
 
+  // Keep an immediate, up-to-date reference so rapid clicks don't lose selections
+  const selectedRef = useRef<string[]>(selectedIndicators);
+  const settingsRef = useRef<IndicatorSettingsMap>(indicatorSettings);
+
+  useEffect(() => {
+    selectedRef.current = selectedIndicators;
+  }, [selectedIndicators]);
+
+  useEffect(() => {
+    settingsRef.current = indicatorSettings;
+  }, [indicatorSettings]);
+
   const handleToggle = (indicatorId: string) => {
-    const isSelected = selectedIndicators.includes(indicatorId);
-    
+    const currentSelected = selectedRef.current;
+    const currentSettings = settingsRef.current;
+    const isSelected = currentSelected.includes(indicatorId);
+
     if (isSelected) {
       // Remove indicator
-      const newSelection = selectedIndicators.filter(id => id !== indicatorId);
+      const newSelection = currentSelected.filter((id) => id !== indicatorId);
+      selectedRef.current = newSelection;
       onIndicatorChange(newSelection);
-      
+
       // Remove settings
-      if (onSettingsChange && indicatorSettings[indicatorId]) {
-        const newSettings = { ...indicatorSettings };
+      if (onSettingsChange && currentSettings[indicatorId]) {
+        const newSettings = { ...currentSettings };
         delete newSettings[indicatorId];
+        settingsRef.current = newSettings;
         onSettingsChange(newSettings);
       }
     } else {
       // Add indicator
-      const newSelection = [...selectedIndicators, indicatorId];
+      const newSelection = [...currentSelected, indicatorId];
+      selectedRef.current = newSelection;
       onIndicatorChange(newSelection);
-      
+
       // Add default settings
       if (onSettingsChange) {
         const newSettings = {
-          ...indicatorSettings,
+          ...currentSettings,
           [indicatorId]: getDefaultIndicatorSettings(indicatorId, newSelection.length - 1),
         };
+        settingsRef.current = newSettings;
         onSettingsChange(newSettings);
       }
     }
