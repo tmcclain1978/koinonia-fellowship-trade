@@ -249,7 +249,85 @@ export const ProChartKit = ({
     }
   });
   
+  // Signal line styles - solid, dashed, dotted
+  type SignalLineStyle = 'solid' | 'dashed' | 'dotted';
+  
+  const [signalEntryStyle, setSignalEntryStyle] = useState<SignalLineStyle>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-entry-style');
+      return (saved as SignalLineStyle) || 'solid';
+    } catch {
+      return 'solid';
+    }
+  });
+  
+  const [signalStopLossStyle, setSignalStopLossStyle] = useState<SignalLineStyle>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-stoploss-style');
+      return (saved as SignalLineStyle) || 'dashed';
+    } catch {
+      return 'dashed';
+    }
+  });
+  
+  const [signalTargetStyle, setSignalTargetStyle] = useState<SignalLineStyle>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-target-style');
+      return (saved as SignalLineStyle) || 'dashed';
+    } catch {
+      return 'dashed';
+    }
+  });
+  
+  // Signal line thickness
+  const [signalEntryThickness, setSignalEntryThickness] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-entry-thickness');
+      return saved ? parseInt(saved, 10) : 2;
+    } catch {
+      return 2;
+    }
+  });
+  
+  const [signalStopLossThickness, setSignalStopLossThickness] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-stoploss-thickness');
+      return saved ? parseInt(saved, 10) : 2;
+    } catch {
+      return 2;
+    }
+  });
+  
+  const [signalTargetThickness, setSignalTargetThickness] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-target-thickness');
+      return saved ? parseInt(saved, 10) : 1;
+    } catch {
+      return 1;
+    }
+  });
+  
+  // Show price labels on signal lines
+  const [showSignalPriceLabels, setShowSignalPriceLabels] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-price-labels');
+      return saved ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+  
   const [showSignalColorControls, setShowSignalColorControls] = useState(false);
+  
+  // Helper to convert style string to LineType
+  const getLineType = (style: SignalLineStyle): LineType => {
+    switch (style) {
+      case 'solid': return LineType.Solid;
+      case 'dashed': return LineType.Dashed;
+      case 'dotted': return LineType.Dashed; // klinecharts doesn't have dotted, use dashed
+      default: return LineType.Solid;
+    }
+  };
   
   // Volume profile state
   const [showVolumeProfile, setShowVolumeProfile] = useState<boolean>(() => {
@@ -335,6 +413,21 @@ export const ProChartKit = ({
       console.warn('Failed to save signal colors to localStorage:', e);
     }
   }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color]);
+  
+  // Persist signal styles, thickness, and price labels to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-signal-entry-style', signalEntryStyle);
+      localStorage.setItem('prochartkit-signal-stoploss-style', signalStopLossStyle);
+      localStorage.setItem('prochartkit-signal-target-style', signalTargetStyle);
+      localStorage.setItem('prochartkit-signal-entry-thickness', String(signalEntryThickness));
+      localStorage.setItem('prochartkit-signal-stoploss-thickness', String(signalStopLossThickness));
+      localStorage.setItem('prochartkit-signal-target-thickness', String(signalTargetThickness));
+      localStorage.setItem('prochartkit-signal-price-labels', JSON.stringify(showSignalPriceLabels));
+    } catch (e) {
+      console.warn('Failed to save signal settings to localStorage:', e);
+    }
+  }, [signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels]);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -1426,7 +1519,7 @@ export const ProChartKit = ({
     setAiOverlayVisibility(prev => ({ ...prev, [overlay]: !prev[overlay] }));
   }, []);
 
-  // Add signal overlays to chart with customizable colors
+  // Add signal overlays to chart with customizable colors, styles, and price labels
   const addSignalOverlays = useCallback((signal: any) => {
     if (!chartRef.current) return;
 
@@ -1435,7 +1528,7 @@ export const ProChartKit = ({
     // Remove existing overlays first
     chart.removeOverlay();
 
-    // Entry point overlay - using customizable color (default: orange)
+    // Entry point overlay - using customizable color, style, thickness (default: orange, solid, 2)
     if (signal.signal?.entry_price) {
       chart.createOverlay({
         name: "horizontalStraightLine",
@@ -1443,15 +1536,36 @@ export const ProChartKit = ({
         styles: {
           line: {
             color: signalEntryColor,
-            size: 2,
-            style: LineType.Solid
+            size: signalEntryThickness,
+            style: getLineType(signalEntryStyle)
           }
         },
-        extendData: `Entry: $${signal.signal.entry_price.toFixed(2)}`
+        extendData: showSignalPriceLabels ? `Entry: $${signal.signal.entry_price.toFixed(2)}` : ''
       });
+      
+      // Add price label annotation at the right edge
+      if (showSignalPriceLabels) {
+        chart.createOverlay({
+          name: "simpleTag",
+          points: [{ value: signal.signal.entry_price }],
+          styles: {
+            text: {
+              color: '#ffffff',
+              backgroundColor: signalEntryColor,
+              size: 11,
+              paddingLeft: 4,
+              paddingRight: 4,
+              paddingTop: 2,
+              paddingBottom: 2,
+              borderRadius: 2
+            }
+          },
+          extendData: `$${signal.signal.entry_price.toFixed(2)}`
+        });
+      }
     }
 
-    // Stop loss overlay - using customizable color (default: blue)
+    // Stop loss overlay - using customizable color, style, thickness (default: blue, dashed, 2)
     if (signal.signal?.stop_loss) {
       chart.createOverlay({
         name: "horizontalStraightLine",
@@ -1459,15 +1573,36 @@ export const ProChartKit = ({
         styles: {
           line: {
             color: signalStopLossColor,
-            size: 2,
-            style: LineType.Dashed
+            size: signalStopLossThickness,
+            style: getLineType(signalStopLossStyle)
           }
         },
-        extendData: `Stop: $${signal.signal.stop_loss.toFixed(2)}`
+        extendData: showSignalPriceLabels ? `Stop: $${signal.signal.stop_loss.toFixed(2)}` : ''
       });
+      
+      // Add price label
+      if (showSignalPriceLabels) {
+        chart.createOverlay({
+          name: "simpleTag",
+          points: [{ value: signal.signal.stop_loss }],
+          styles: {
+            text: {
+              color: '#ffffff',
+              backgroundColor: signalStopLossColor,
+              size: 11,
+              paddingLeft: 4,
+              paddingRight: 4,
+              paddingTop: 2,
+              paddingBottom: 2,
+              borderRadius: 2
+            }
+          },
+          extendData: `$${signal.signal.stop_loss.toFixed(2)}`
+        });
+      }
     }
 
-    // Target overlays - using customizable colors (default: purples)
+    // Target overlays - using customizable colors, style, thickness (default: purples, dashed, 1)
     const targetColors = [signalTarget1Color, signalTarget2Color, '#6366f1'];
     signal.signal?.targets?.forEach((target: number, index: number) => {
       chart.createOverlay({
@@ -1476,16 +1611,37 @@ export const ProChartKit = ({
         styles: {
           line: {
             color: targetColors[index % targetColors.length],
-            size: 1,
-            style: LineType.Dashed
+            size: signalTargetThickness,
+            style: getLineType(signalTargetStyle)
           }
         },
-        extendData: `Target ${index + 1}: $${target.toFixed(2)}`
+        extendData: showSignalPriceLabels ? `Target ${index + 1}: $${target.toFixed(2)}` : ''
       });
+      
+      // Add price label
+      if (showSignalPriceLabels) {
+        chart.createOverlay({
+          name: "simpleTag",
+          points: [{ value: target }],
+          styles: {
+            text: {
+              color: '#ffffff',
+              backgroundColor: targetColors[index % targetColors.length],
+              size: 11,
+              paddingLeft: 4,
+              paddingRight: 4,
+              paddingTop: 2,
+              paddingBottom: 2,
+              borderRadius: 2
+            }
+          },
+          extendData: `$${target.toFixed(2)}`
+        });
+      }
     });
-  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color]);
+  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, getLineType]);
 
-  // Add entry/exit/stop overlays from props - uses customizable colors
+  // Add entry/exit/stop overlays from props - uses customizable colors, styles, thickness
   useEffect(() => {
     if (!chartRef.current) return;
     
@@ -1500,10 +1656,21 @@ export const ProChartKit = ({
           name: "horizontalStraightLine",
           points: [{ value: entryPrice }],
           styles: {
-            line: { color: signalEntryColor, size: 2, style: LineType.Solid }
+            line: { color: signalEntryColor, size: signalEntryThickness, style: getLineType(signalEntryStyle) }
           },
-          extendData: `Entry: $${entryPrice.toFixed(2)}`
+          extendData: showSignalPriceLabels ? `Entry: $${entryPrice.toFixed(2)}` : ''
         });
+        
+        if (showSignalPriceLabels) {
+          chart.createOverlay({
+            name: "simpleTag",
+            points: [{ value: entryPrice }],
+            styles: {
+              text: { color: '#ffffff', backgroundColor: signalEntryColor, size: 11, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 }
+            },
+            extendData: `$${entryPrice.toFixed(2)}`
+          });
+        }
       }
       
       if (exitPrice) {
@@ -1511,10 +1678,21 @@ export const ProChartKit = ({
           name: "horizontalStraightLine",
           points: [{ value: exitPrice }],
           styles: {
-            line: { color: signalTarget1Color, size: 2, style: LineType.Dashed }
+            line: { color: signalTarget1Color, size: signalTargetThickness, style: getLineType(signalTargetStyle) }
           },
-          extendData: `Exit: $${exitPrice.toFixed(2)}`
+          extendData: showSignalPriceLabels ? `Exit: $${exitPrice.toFixed(2)}` : ''
         });
+        
+        if (showSignalPriceLabels) {
+          chart.createOverlay({
+            name: "simpleTag",
+            points: [{ value: exitPrice }],
+            styles: {
+              text: { color: '#ffffff', backgroundColor: signalTarget1Color, size: 11, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 }
+            },
+            extendData: `$${exitPrice.toFixed(2)}`
+          });
+        }
       }
       
       if (stopLoss) {
@@ -1522,20 +1700,31 @@ export const ProChartKit = ({
           name: "horizontalStraightLine",
           points: [{ value: stopLoss }],
           styles: {
-            line: { color: signalStopLossColor, size: 2, style: LineType.Dashed }
+            line: { color: signalStopLossColor, size: signalStopLossThickness, style: getLineType(signalStopLossStyle) }
           },
-          extendData: `Stop: $${stopLoss.toFixed(2)}`
+          extendData: showSignalPriceLabels ? `Stop: $${stopLoss.toFixed(2)}` : ''
         });
+        
+        if (showSignalPriceLabels) {
+          chart.createOverlay({
+            name: "simpleTag",
+            points: [{ value: stopLoss }],
+            styles: {
+              text: { color: '#ffffff', backgroundColor: signalStopLossColor, size: 11, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 }
+            },
+            extendData: `$${stopLoss.toFixed(2)}`
+          });
+        }
       }
     }
-  }, [entryPrice, exitPrice, stopLoss, koinoniaSignal, signalEntryColor, signalStopLossColor, signalTarget1Color]);
+  }, [entryPrice, exitPrice, stopLoss, koinoniaSignal, signalEntryColor, signalStopLossColor, signalTarget1Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, getLineType]);
   
-  // Re-apply signal overlays when colors change (if Koinonia signal is active)
+  // Re-apply signal overlays when settings change (if Koinonia signal is active)
   useEffect(() => {
     if (koinoniaSignal && chartRef.current) {
       addSignalOverlays(koinoniaSignal);
     }
-  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, koinoniaSignal, addSignalOverlays]);
+  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, koinoniaSignal, addSignalOverlays]);
   // Map interval format - handles all Trading page formats
   const mapInterval = (interval: string): string => {
     const map: Record<string, string> = {
@@ -2104,7 +2293,7 @@ export const ProChartKit = ({
           onRefresh={fetchAndLoadData}
         />
 
-        {/* Signal Line Colors */}
+        {/* Signal Line Settings */}
         <Popover open={showSignalColorControls} onOpenChange={setShowSignalColorControls}>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
@@ -2112,86 +2301,176 @@ export const ProChartKit = ({
               <span className="text-xs">Signals</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-4" align="start">
+          <PopoverContent className="w-80 p-4 max-h-[500px] overflow-y-auto" align="start">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Signal Line Colors</span>
+                <span className="text-sm font-medium">Signal Line Settings</span>
               </div>
               
-              {/* Entry Color */}
+              {/* Price Labels Toggle */}
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-4 h-4 rounded border" 
-                    style={{ backgroundColor: signalEntryColor }}
-                  />
-                  <span className="text-sm">Entry</span>
-                </div>
-                <input
-                  type="color"
-                  value={signalEntryColor}
-                  onChange={(e) => setSignalEntryColor(e.target.value)}
-                  className="w-16 h-8 rounded cursor-pointer border-0"
-                  title="Entry line color"
-                />
-              </div>
-              
-              {/* Stop Loss Color */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-4 h-4 rounded border" 
-                    style={{ backgroundColor: signalStopLossColor }}
-                  />
-                  <span className="text-sm">Stop Loss</span>
-                </div>
-                <input
-                  type="color"
-                  value={signalStopLossColor}
-                  onChange={(e) => setSignalStopLossColor(e.target.value)}
-                  className="w-16 h-8 rounded cursor-pointer border-0"
-                  title="Stop loss line color"
-                />
-              </div>
-              
-              {/* Target 1 Color */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-4 h-4 rounded border" 
-                    style={{ backgroundColor: signalTarget1Color }}
-                  />
-                  <span className="text-sm">Target 1</span>
-                </div>
-                <input
-                  type="color"
-                  value={signalTarget1Color}
-                  onChange={(e) => setSignalTarget1Color(e.target.value)}
-                  className="w-16 h-8 rounded cursor-pointer border-0"
-                  title="Target 1 line color"
-                />
-              </div>
-              
-              {/* Target 2 Color */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-4 h-4 rounded border" 
-                    style={{ backgroundColor: signalTarget2Color }}
-                  />
-                  <span className="text-sm">Target 2+</span>
-                </div>
-                <input
-                  type="color"
-                  value={signalTarget2Color}
-                  onChange={(e) => setSignalTarget2Color(e.target.value)}
-                  className="w-16 h-8 rounded cursor-pointer border-0"
-                  title="Target 2+ line color"
+                <span className="text-sm">Show Price Labels</span>
+                <Switch
+                  checked={showSignalPriceLabels}
+                  onCheckedChange={setShowSignalPriceLabels}
                 />
               </div>
               
               {/* Separator */}
-              <div className="border-t border-border my-2" />
+              <div className="border-t border-border" />
+              
+              {/* Entry Settings */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded border" 
+                    style={{ backgroundColor: signalEntryColor }}
+                  />
+                  <span className="text-sm font-medium">Entry Line</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Color</span>
+                    <input
+                      type="color"
+                      value={signalEntryColor}
+                      onChange={(e) => setSignalEntryColor(e.target.value)}
+                      className="w-full h-8 rounded cursor-pointer border-0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Style</span>
+                    <select
+                      value={signalEntryStyle}
+                      onChange={(e) => setSignalEntryStyle(e.target.value as 'solid' | 'dashed' | 'dotted')}
+                      className="w-full h-8 px-2 text-xs rounded border bg-background"
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Width</span>
+                    <select
+                      value={signalEntryThickness}
+                      onChange={(e) => setSignalEntryThickness(Number(e.target.value))}
+                      className="w-full h-8 px-2 text-xs rounded border bg-background"
+                    >
+                      {[1, 2, 3, 4, 5].map(w => (
+                        <option key={w} value={w}>{w}px</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Stop Loss Settings */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded border" 
+                    style={{ backgroundColor: signalStopLossColor }}
+                  />
+                  <span className="text-sm font-medium">Stop Loss Line</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Color</span>
+                    <input
+                      type="color"
+                      value={signalStopLossColor}
+                      onChange={(e) => setSignalStopLossColor(e.target.value)}
+                      className="w-full h-8 rounded cursor-pointer border-0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Style</span>
+                    <select
+                      value={signalStopLossStyle}
+                      onChange={(e) => setSignalStopLossStyle(e.target.value as 'solid' | 'dashed' | 'dotted')}
+                      className="w-full h-8 px-2 text-xs rounded border bg-background"
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Width</span>
+                    <select
+                      value={signalStopLossThickness}
+                      onChange={(e) => setSignalStopLossThickness(Number(e.target.value))}
+                      className="w-full h-8 px-2 text-xs rounded border bg-background"
+                    >
+                      {[1, 2, 3, 4, 5].map(w => (
+                        <option key={w} value={w}>{w}px</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Target Lines Settings */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded border" 
+                    style={{ backgroundColor: signalTarget1Color }}
+                  />
+                  <span className="text-sm font-medium">Target Lines</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Target 1</span>
+                    <input
+                      type="color"
+                      value={signalTarget1Color}
+                      onChange={(e) => setSignalTarget1Color(e.target.value)}
+                      className="w-full h-8 rounded cursor-pointer border-0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Target 2+</span>
+                    <input
+                      type="color"
+                      value={signalTarget2Color}
+                      onChange={(e) => setSignalTarget2Color(e.target.value)}
+                      className="w-full h-8 rounded cursor-pointer border-0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Style</span>
+                    <select
+                      value={signalTargetStyle}
+                      onChange={(e) => setSignalTargetStyle(e.target.value as 'solid' | 'dashed' | 'dotted')}
+                      className="w-full h-8 px-2 text-xs rounded border bg-background"
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2" />
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Width</span>
+                    <select
+                      value={signalTargetThickness}
+                      onChange={(e) => setSignalTargetThickness(Number(e.target.value))}
+                      className="w-full h-8 px-2 text-xs rounded border bg-background"
+                    >
+                      {[1, 2, 3, 4, 5].map(w => (
+                        <option key={w} value={w}>{w}px</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Separator */}
+              <div className="border-t border-border" />
               
               {/* Quick Presets */}
               <div className="space-y-2">
@@ -2202,10 +2481,16 @@ export const ProChartKit = ({
                     size="sm"
                     className="text-xs"
                     onClick={() => {
-                      setSignalEntryColor('#f97316'); // orange
-                      setSignalStopLossColor('#3b82f6'); // blue
-                      setSignalTarget1Color('#a855f7'); // purple
-                      setSignalTarget2Color('#8b5cf6'); // light purple
+                      setSignalEntryColor('#f97316');
+                      setSignalStopLossColor('#3b82f6');
+                      setSignalTarget1Color('#a855f7');
+                      setSignalTarget2Color('#8b5cf6');
+                      setSignalEntryStyle('solid');
+                      setSignalStopLossStyle('dashed');
+                      setSignalTargetStyle('dashed');
+                      setSignalEntryThickness(2);
+                      setSignalStopLossThickness(2);
+                      setSignalTargetThickness(1);
                     }}
                   >
                     Default
@@ -2215,10 +2500,10 @@ export const ProChartKit = ({
                     size="sm"
                     className="text-xs"
                     onClick={() => {
-                      setSignalEntryColor('#22c55e'); // green
-                      setSignalStopLossColor('#ef4444'); // red
-                      setSignalTarget1Color('#3b82f6'); // blue
-                      setSignalTarget2Color('#06b6d4'); // cyan
+                      setSignalEntryColor('#22c55e');
+                      setSignalStopLossColor('#ef4444');
+                      setSignalTarget1Color('#3b82f6');
+                      setSignalTarget2Color('#06b6d4');
                     }}
                   >
                     Classic
@@ -2228,10 +2513,10 @@ export const ProChartKit = ({
                     size="sm"
                     className="text-xs"
                     onClick={() => {
-                      setSignalEntryColor('#facc15'); // yellow
-                      setSignalStopLossColor('#ef4444'); // red
-                      setSignalTarget1Color('#06b6d4'); // cyan
-                      setSignalTarget2Color('#10b981'); // emerald
+                      setSignalEntryColor('#facc15');
+                      setSignalStopLossColor('#ef4444');
+                      setSignalTarget1Color('#06b6d4');
+                      setSignalTarget2Color('#10b981');
                     }}
                   >
                     High Contrast
@@ -2241,10 +2526,10 @@ export const ProChartKit = ({
                     size="sm"
                     className="text-xs"
                     onClick={() => {
-                      setSignalEntryColor('#3b82f6'); // blue
-                      setSignalStopLossColor('#f97316'); // orange
-                      setSignalTarget1Color('#22c55e'); // green
-                      setSignalTarget2Color('#14b8a6'); // teal
+                      setSignalEntryColor('#3b82f6');
+                      setSignalStopLossColor('#f97316');
+                      setSignalTarget1Color('#22c55e');
+                      setSignalTarget2Color('#14b8a6');
                     }}
                   >
                     Colorblind
@@ -2253,7 +2538,7 @@ export const ProChartKit = ({
               </div>
               
               <p className="text-xs text-muted-foreground">
-                Colors apply to Koinonia AI signals and trade entry/exit overlays.
+                Settings apply to Koinonia AI signals and trade overlays.
               </p>
             </div>
           </PopoverContent>
