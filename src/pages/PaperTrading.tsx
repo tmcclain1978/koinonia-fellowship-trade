@@ -3,12 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
-import { BarChart3, TrendingUp, Download, FileText, BarChart2, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BarChart2, TrendingUp, ChevronDown, ChevronUp, Wallet, LineChart, Activity, Search, Shield } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
 import { QuickJournalButton } from "@/components/journal/QuickJournalButton";
@@ -24,208 +23,42 @@ import { TimeOfDayHeatmap } from "@/components/analytics/TimeOfDayHeatmap";
 import { PositionSizeCalculator } from "@/components/analytics/PositionSizeCalculator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ConditionalExitBuilder } from "@/components/options/ConditionalExitBuilder";
+import { SchwabOptionsChain } from "@/components/options/SchwabOptionsChain";
+import { PaperOptionsOrderEntry } from "@/components/options/PaperOptionsOrderEntry";
+import { OptionPnLChart } from "@/components/options/OptionPnLChart";
+import { RealtimePnLTracker } from "@/components/RealtimePnLTracker";
+import { StockScreener } from "@/components/StockScreener";
+import { WatchlistPanel } from "@/components/WatchlistPanel";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  const [timeframe, setTimeframe] = useState("1d");
-  const [chartType, setChartType] = useState("candles");
-  const [overlays, setOverlays] = useState({
-    ema20: false,
-    ema50: false,
-    vwap: false,
-    bbands: false,
+  const [symbol, setSymbol] = useState(() => {
+    return localStorage.getItem('trading_symbol') || "AAPL";
   });
-  
-  const [formData, setFormData] = useState(() => {
-    const savedSymbol = localStorage.getItem('trading_symbol') || "AAPL";
-    return {
-      symbol: savedSymbol,
-      side: "CALL",
-      expiration: "",
-      strike: "",
-      quantity: "1",
-      price: "",
-      orderType: "LIMIT",
-      duration: "DAY",
-      limitPrice: "",
-      stopPrice: "",
-      trailAmount: "",
-      trailType: "DOLLAR",
-    };
-  });
-  
   const [account, setAccount] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [previewData, setPreviewData] = useState<any>(null);
-  const [selectedPosition, setSelectedPosition] = useState<any>(null);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
   const [signalArrows, setSignalArrows] = useState<any[]>([]);
-  const [chartIndicators, setChartIndicators] = useState<string[]>([
-    "MASimple@tv-basicstudies",
-    "RSI@tv-basicstudies",
-    "VWAP@tv-basicstudies",
-    "Volume@tv-basicstudies"
-  ]);
-  const [optionsData, setOptionsData] = useState<any[]>([]);
-  const [expirationDates, setExpirationDates] = useState<any[]>([]);
-  const [strikePrices, setStrikePrices] = useState<any[]>([]);
-  const [loadingOptions, setLoadingOptions] = useState(false);
   const [isRecentTradesOpen, setIsRecentTradesOpen] = useState(true);
+  const [chartInterval, setChartInterval] = useState("D");
+  const [activeTab, setActiveTab] = useState("options");
+  const [selectedOptionForOrder, setSelectedOptionForOrder] = useState<any>(null);
 
   useEffect(() => {
     loadAccount();
     loadTrades();
   }, []);
 
-  // Fetch options when symbol changes and persist to localStorage
+  // Persist symbol to localStorage
   useEffect(() => {
-    if (formData.symbol && formData.symbol.length >= 1) {
-      fetchOptionsChain();
-      localStorage.setItem('trading_symbol', formData.symbol);
+    if (symbol && symbol.length >= 1) {
+      localStorage.setItem('trading_symbol', symbol);
     }
-  }, [formData.symbol]);
-
-  const fetchOptionsChain = async () => {
-    if (!formData.symbol) return;
-    
-    setLoadingOptions(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('fetch-schwab-options', {
-        body: { symbol: formData.symbol }
-      });
-
-      if (error) throw error;
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
-
-      if (data?.options) {
-        console.log("📊 Options Data Received:", {
-          source: data.source,
-          totalOptions: data.options.length,
-          uniqueExpirations: [...new Set(data.options.map((o: any) => o.expiration))],
-          uniqueStrikes: [...new Set(data.options.map((o: any) => o.strike))].length,
-        });
-        
-        setOptionsData(data.options);
-        
-        // Show data source to user
-        const dataSource = data.source === 'schwab' ? 'Live Schwab Data' : 'Mock Data';
-        toast({
-          title: `Options Loaded: ${dataSource}`,
-          description: data.source === 'schwab' 
-            ? `Loaded ${data.options.length} real options from Schwab`
-            : 'Complete Schwab OAuth in Settings for live data',
-        });
-        
-        // Extract all unique expiration dates and sort by date
-        const uniqueExpirations = Array.from(
-          new Set(data.options.map((opt: any) => opt.expiration))
-        ).map((exp: any) => {
-          const date = new Date(exp);
-          const daysOut = Math.ceil((date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-          return {
-            date,
-            formattedDate: exp,
-            daysOut,
-            dayOfWeek: date.getDay(),
-            dayName: dayNames[date.getDay()],
-            type: date.getDay() === 5 ? "Weekly" : "Monthly",
-          };
-        })
-        .filter(exp => exp.daysOut > 0) // Only future expirations
-        .sort((a, b) => a.date.getTime() - b.date.getTime());
-        
-        console.log("📅 Expiration Dates:", uniqueExpirations.map(e => `${e.formattedDate} (${e.daysOut}d, ${e.dayName})`));
-        setExpirationDates(uniqueExpirations);
-        
-        // Auto-select the nearest expiration (preferably Friday within 2 weeks)
-        const nearestFriday = uniqueExpirations.find(e => e.dayOfWeek === 5 && e.daysOut <= 14);
-        const autoSelectExpiration = nearestFriday || uniqueExpirations[0];
-        
-        if (autoSelectExpiration && !formData.expiration) {
-          setFormData(prev => ({ ...prev, expiration: autoSelectExpiration.formattedDate }));
-          console.log("🎯 Auto-selected expiration:", autoSelectExpiration.formattedDate);
-        }
-      }
-    } catch (error: any) {
-      console.error('Error fetching options:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch options data",
-        variant: "destructive"
-      });
-    } finally {
-      setLoadingOptions(false);
-    }
-  };
-
-  // Filter strikes when expiration or side changes
-  useEffect(() => {
-    if (!optionsData.length || !formData.expiration || !formData.side) {
-      console.log("❌ Cannot filter strikes:", {
-        hasOptions: optionsData.length > 0,
-        expiration: formData.expiration,
-        side: formData.side
-      });
-      setStrikePrices([]);
-      return;
-    }
-
-    // Filter options by expiration and side
-    const filtered = optionsData.filter(
-      (opt: any) => opt.expiration === formData.expiration && opt.type === formData.side
-    );
-
-    console.log("🎯 Filtering Strikes:", {
-      expiration: formData.expiration,
-      side: formData.side,
-      totalOptions: optionsData.length,
-      matchingOptions: filtered.length,
-      sampleStrikes: filtered.slice(0, 5).map(o => `${o.strike} ($${o.bid}-$${o.ask})`),
-      raw255Data: filtered.find(o => o.strike === 255)
-    });
-
-    if (filtered.length === 0) {
-      setStrikePrices([]);
-      return;
-    }
-
-    // Get current price from ATM options
-    const strikes = filtered.map(o => o.strike).sort((a, b) => a - b);
-    const midStrike = strikes[Math.floor(strikes.length / 2)];
-    
-    // Show strikes within reasonable range (20% of current price)
-    const lowerBound = midStrike * 0.8;
-    const upperBound = midStrike * 1.2;
-
-    const finalStrikes = filtered
-      .filter((opt: any) => opt.strike >= lowerBound && opt.strike <= upperBound)
-      .map((opt: any) => ({
-        strike: opt.strike,
-        delta: opt.delta || 0,
-        probITM: opt.delta ? `${(Math.abs(opt.delta) * 100).toFixed(1)}%` : 'N/A',
-        bid: opt.bid || 0,
-        ask: opt.ask || 0,
-        type: opt.type,
-      }))
-      .sort((a: any, b: any) => a.strike - b.strike);
-
-    console.log("✅ Final Strikes:", {
-      count: finalStrikes.length,
-      range: `${lowerBound.toFixed(0)} - ${upperBound.toFixed(0)}`,
-      strikes: finalStrikes.map(s => s.strike),
-      sample255Strike: finalStrikes.find(s => s.strike === 255)
-    });
-
-    setStrikePrices(finalStrikes);
-  }, [optionsData, formData.expiration, formData.side]);
+  }, [symbol]);
 
   const loadAccount = async () => {
     try {
@@ -388,13 +221,6 @@ const PaperTrading = () => {
           })
       );
 
-      console.log("📊 Open Positions Calculation:", {
-        totalTrades: allTrades?.length || 0,
-        positionMapSize: positionMap.size,
-        openPositionsCount: openPos.length,
-        positions: openPos
-      });
-
       setOpenPositions(openPos);
     } catch (error: any) {
       console.error('Error loading positions:', error);
@@ -411,77 +237,6 @@ const PaperTrading = () => {
 
     return () => clearInterval(interval);
   }, [openPositions.length]);
-
-  const [chartInterval, setChartInterval] = useState("D");
-
-  const handlePreview = () => {
-    const preview = {
-      symbol: formData.symbol,
-      side: formData.side,
-      expiration: formData.expiration,
-      strike: formData.strike,
-      quantity: formData.quantity,
-      orderType: formData.orderType,
-      duration: formData.duration,
-      estimatedCost: (parseFloat(formData.price || "0") * parseFloat(formData.quantity) * 100).toFixed(2),
-      commission: "0.65",
-      timestamp: new Date().toISOString(),
-    };
-    setPreviewData(preview);
-    toast({
-      title: "Preview Generated",
-      description: `${formData.side} ${formData.quantity} ${formData.symbol} contracts`,
-    });
-  };
-
-  const handleExecuteTrade = async (action: 'buy' | 'sell') => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
-        body: {
-          symbol: formData.symbol,
-          action,
-          quantity: formData.quantity,
-          price: formData.price,
-          strike: formData.strike,
-          side: formData.side,
-          expiration: formData.expiration,
-        }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: `Trade ${action.toUpperCase()} Executed`,
-        description: `${formData.quantity} contracts of ${formData.symbol}`,
-      });
-
-      loadAccount();
-      loadTrades();
-      setFormData({
-        symbol: "AAPL",
-        side: "CALL",
-        expiration: "",
-        strike: "",
-        quantity: "1",
-        price: "",
-        orderType: "LIMIT",
-        duration: "DAY",
-        limitPrice: "",
-        stopPrice: "",
-        trailAmount: "",
-        trailType: "DOLLAR",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Trade failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleResetAccount = async () => {
     if (!confirm('Are you sure you want to reset your paper trading account? This will restore your balance to $100,000 and cannot be undone.')) {
@@ -502,7 +257,7 @@ const PaperTrading = () => {
 
       toast({
         title: "Account Reset",
-        description: "Your balance has been restored to $100,000",
+        description: "Your paper trading account has been reset to $100,000",
       });
 
       loadAccount();
@@ -518,78 +273,23 @@ const PaperTrading = () => {
   };
 
   const calculateStats = () => {
-    const profitable = trades.filter(t => t.profit_loss && t.profit_loss > 0).length;
-    const totalPL = trades.reduce((sum, t) => sum + (Number(t.profit_loss) || 0), 0);
+    const closedTrades = trades.filter(t => t.profit_loss !== null);
+    const wins = closedTrades.filter(t => Number(t.profit_loss) > 0);
     return {
       totalTrades: trades.length,
-      winRate: trades.length > 0 ? ((profitable / trades.length) * 100).toFixed(1) : '0',
-      totalPL: totalPL.toFixed(2),
+      winRate: closedTrades.length > 0 ? ((wins.length / closedTrades.length) * 100).toFixed(1) : '0.0',
+      totalPL: trades.reduce((sum, t) => sum + (Number(t.profit_loss) || 0), 0).toFixed(2),
     };
   };
 
   const handleKoinoniaSignal = (signal: any) => {
     const arrows = [
-      { price: signal.entryPrice, type: 'entry' as const },
-      ...signal.exitPrices.map((price: number) => ({ price, type: 'exit' as const }))
+      { price: signal.entryPrice, type: 'entry' as const, timestamp: signal.entryTimestamp },
+      ...signal.exitPrices.map((exit: any) => ({ 
+        price: exit.price, type: 'exit' as const, timestamp: exit.timestamp
+      }))
     ];
     setSignalArrows(arrows);
-    
-    // Set entry price and stop loss on the form
-    if (signal.entryPrice) {
-      setFormData(prev => ({ ...prev, limitPrice: signal.entryPrice.toFixed(2) }));
-    }
-    if (signal.stopLoss) {
-      setFormData(prev => ({ ...prev, stopPrice: signal.stopLoss.toFixed(2) }));
-    }
-  };
-
-  const handleClosePosition = async (position: any) => {
-    if (!confirm(`Close ${position.quantity} contracts (${position.quantity * 100} shares) of ${position.symbol}?`)) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Get current market price for closing
-      const currentPrice = position.currentPrice;
-      
-      // Parse position details to get strike and expiration
-      const details = position.details?.split(' ') || [];
-      const side = details[0] || 'CALL';
-      const strike = details[1] || '';
-      const expiration = details[2] || '';
-      
-      // Execute the sell trade directly
-      const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
-        body: {
-          symbol: position.symbol,
-          action: 'sell',
-          quantity: position.quantity,
-          price: currentPrice,
-          strike: strike,
-          side: side,
-          expiration: expiration,
-        }
-      });
-
-      if (error) throw error;
-      
-      toast({
-        title: "Position Closed",
-        description: `Closed ${position.quantity} contracts (${position.quantity * 100} shares) of ${position.symbol}`,
-      });
-      
-      await loadAccount();
-      await loadTrades();
-    } catch (error: any) {
-      toast({
-        title: "Error closing position",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
   };
 
   return (
@@ -597,112 +297,114 @@ const PaperTrading = () => {
       <Navigation />
       <div className="min-h-screen bg-background pt-16">
         <div className="container mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Paper Trading Platform</h1>
-              <p className="text-muted-foreground">
-                Test your trading strategies with simulated options trading
-              </p>
+          {/* Header Bar */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">Paper Trading</h1>
+                <p className="text-muted-foreground text-sm">
+                  Test strategies with $100k in virtual funds
+                </p>
+              </div>
+              <QuickJournalButton symbol={symbol} defaultEntryType="during_trade" />
             </div>
-            <QuickJournalButton symbol={formData.symbol} defaultEntryType="during_trade" />
-          </div>
-          {account && (
-            <div className="flex gap-3 items-center">
-              <Card className="p-4">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Account Balance</p>
-                  <p className="text-2xl font-bold text-primary">
-                    ${Number(account.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Starting: ${Number(account.starting_balance).toLocaleString()}
-                  </p>
-                </div>
-              </Card>
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary/10 text-primary">
+                📝 Paper Mode
+              </span>
+              
+              {account && (
+                <Card className="p-3">
+                  <div className="text-center min-w-[150px]">
+                    <p className="text-xs text-muted-foreground">Account Balance</p>
+                    <p className="text-lg font-bold text-primary">
+                      ${Number(account.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Starting: ${Number(account.starting_balance).toLocaleString()}
+                    </p>
+                  </div>
+                </Card>
+              )}
+              
               <Button
                 variant="outline"
+                size="sm"
                 onClick={handleResetAccount}
                 disabled={loading}
               >
                 Reset Account
               </Button>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Indicators & Chart Intervals */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Indicators & Chart Intervals</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="default"
-                size="lg"
-                onClick={() => toast({
-                  title: "Using Indicators",
-                  description: "Click the chart toolbar buttons to add technical indicators, drawing tools, and change chart settings.",
-                })}
-              >
-                <BarChart2 className="w-4 h-4 mr-2" />
-                How to Add Indicators
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                Use the toolbar on the chart to add indicators, drawing tools, and customize your view
-              </p>
-            </div>
-            
-            <div>
-              <Label className="mb-2 block">Chart Interval</Label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: "1 Min", value: "1" },
-                  { label: "5 Min", value: "5" },
-                  { label: "15 Min", value: "15" },
-                  { label: "1 Hour", value: "60" },
-                  { label: "Daily", value: "D" },
-                  { label: "Weekly", value: "W" },
-                ].map((interval) => (
-                  <Button
-                    key={interval.value}
-                    variant={chartInterval === interval.value ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setChartInterval(interval.value)}
-                  >
-                    {interval.label}
-                  </Button>
-                ))}
+          {/* Live Price Display */}
+          <div className="mb-4">
+            <LivePriceDisplay 
+              initialSymbols={[symbol, 'SPY', 'QQQ']}
+              onPriceUpdate={(sym, price) => {
+                if (sym === symbol) console.log(`Live price for ${sym}: $${price}`);
+              }}
+            />
+          </div>
+
+          {/* Chart Controls & Symbol Input */}
+          <Card className="mb-4">
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">Symbol:</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={symbol}
+                      onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                      placeholder="AAPL"
+                      className="w-24"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      disabled={loading || !symbol}
+                    >
+                      {loading ? <Activity className="h-4 w-4 animate-spin" /> : <TrendingUp className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "1m", value: "1" },
+                    { label: "5m", value: "5" },
+                    { label: "15m", value: "15" },
+                    { label: "30m", value: "30" },
+                    { label: "1H", value: "60" },
+                    { label: "D", value: "D" },
+                    { label: "W", value: "W" },
+                  ].map((interval) => (
+                    <Button
+                      key={interval.value}
+                      variant={chartInterval === interval.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setChartInterval(interval.value)}
+                    >
+                      {interval.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Koinonia Indicator Section */}
-        <div className="mb-6">
-          <KoinoniaIndicator 
-            symbol={formData.symbol}
-            onSignalGenerated={handleKoinoniaSignal}
-          />
-        </div>
-
-        {/* Chart - Half Width */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          <Card className="h-full overflow-hidden">
-            <CardHeader>
-              <CardTitle>Advanced Chart - {formData.symbol}</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-hidden">
+          {/* Main Chart */}
+          <Card className="mb-6 h-[500px] overflow-hidden">
+            <CardContent className="p-0 h-full">
               <ProChartKit 
-                symbol={formData.symbol}
-                height={600}
+                symbol={symbol}
+                height={500}
                 interval={chartInterval}
                 theme="dark"
                 showKoinoniaSignals={true}
                 userId={user?.id}
                 onSignalGenerated={(signal) => {
-                  console.log("Koinonia signal generated:", signal);
                   if (signal?.signal) {
                     const arrows = [];
                     if (signal.signal.entry_price) {
@@ -714,562 +416,338 @@ const PaperTrading = () => {
                       });
                     }
                     setSignalArrows(arrows);
-                    if (signal.signal.stop_loss) {
-                      setFormData(prev => ({ ...prev, stopPrice: signal.signal.stop_loss.toString() }));
-                    }
                   }
                 }}
               />
             </CardContent>
           </Card>
-          <div className="space-y-6">
-            {/* Order Panel */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  Paper Trade — Options
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Symbol</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={formData.symbol}
-                          onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={fetchOptionsChain}
-                          disabled={loadingOptions || !formData.symbol}
-                        >
-                          {loadingOptions ? (
-                            <BarChart3 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <TrendingUp className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                    <div>
-                      <Label>Side</Label>
-                      <Select value={formData.side} onValueChange={(v) => setFormData({ ...formData, side: v })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="CALL">CALL</SelectItem>
-                          <SelectItem value="PUT">PUT</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Expiration</Label>
-                      {expirationDates.length > 0 ? (
-                        <Select 
-                          value={formData.expiration} 
-                          onValueChange={(v) => setFormData({ ...formData, expiration: v })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select expiration" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {expirationDates.map((exp) => (
-                              <SelectItem key={exp.formattedDate} value={exp.formattedDate}>
-                                {new Date(exp.formattedDate).toLocaleDateString('en-US', { 
-                                  weekday: 'short', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })} • {exp.daysOut}d • {exp.type}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          type="date"
-                          value={formData.expiration}
-                          onChange={(e) => setFormData({ ...formData, expiration: e.target.value })}
-                        />
-                      )}
-                    </div>
-                    <div>
-                      <Label>Strike</Label>
-                      {strikePrices.length > 0 ? (
-                        <Select 
-                          value={formData.strike} 
-                          onValueChange={(v) => {
-                            // Always update price when strike changes
-                            const selectedStrike = strikePrices.find(s => s.strike.toString() === v);
-                            if (selectedStrike) {
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                strike: v, 
-                                price: selectedStrike.ask.toFixed(2) 
-                              }));
-                            } else {
-                              setFormData({ ...formData, strike: v });
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select strike" />
-                          </SelectTrigger>
-                          <SelectContent>
-                      {strikePrices
-                                .filter(s => !formData.side || s.type === formData.side)
-                                .map((strike) => (
-                              <SelectItem key={`${strike.strike}-${strike.type}`} value={strike.strike.toString()}>
-                                ${strike.strike} ({strike.type}) - Bid: ${strike.bid.toFixed(2)} / Ask: ${strike.ask.toFixed(2)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={formData.strike}
-                          onChange={(e) => setFormData({ ...formData, strike: e.target.value })}
-                        />
-                      )}
-                    </div>
-                  </div>
+          {/* Tab Navigation - Same style as Trading page */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-6 mb-4">
+              <TabsTrigger value="options" className="flex items-center gap-2">
+                <BarChart2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Options</span>
+              </TabsTrigger>
+              <TabsTrigger value="positions" className="flex items-center gap-2">
+                <Wallet className="w-4 h-4" />
+                <span className="hidden sm:inline">Positions</span>
+              </TabsTrigger>
+              <TabsTrigger value="analysis" className="flex items-center gap-2">
+                <LineChart className="w-4 h-4" />
+                <span className="hidden sm:inline">Analysis</span>
+              </TabsTrigger>
+              <TabsTrigger value="risk" className="flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                <span className="hidden sm:inline">Risk</span>
+              </TabsTrigger>
+              <TabsTrigger value="screeners" className="flex items-center gap-2">
+                <Search className="w-4 h-4" />
+                <span className="hidden sm:inline">Screeners</span>
+              </TabsTrigger>
+              <TabsTrigger value="trades" className="flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                <span className="hidden sm:inline">Trades</span>
+              </TabsTrigger>
+            </TabsList>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Quantity (Contracts)</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.quantity}
-                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        1 contract = 100 shares
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Price (Premium per contract)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.price}
-                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                        placeholder="Auto-filled from market"
-                        required
-                        className="font-mono"
-                      />
-                      {formData.price && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Total: ${(parseFloat(formData.price) * parseFloat(formData.quantity) * 100).toFixed(2)}
-                        </p>
-                      )}
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                        💡 This is the option premium (not strike price). Auto-filled when you select a strike.
-                      </p>
-                    </div>
-                  </div>
+            {/* Options Tab - Same layout as Trading page */}
+            <TabsContent value="options" className="space-y-6">
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* Options Chain */}
+                <SchwabOptionsChain
+                  symbol={symbol}
+                  onSymbolChange={setSymbol}
+                  onOptionSelect={(option) => {
+                    setSelectedOptionForOrder(option);
+                    toast({
+                      title: "Option Selected",
+                      description: `${option.action} ${option.contract.type} $${option.contract.strike}`,
+                    });
+                  }}
+                />
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Entry Type</Label>
-                      <Select value={formData.orderType} onValueChange={(v) => setFormData({ ...formData, orderType: v })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="MARKET">Market</SelectItem>
-                          <SelectItem value="LIMIT">Limit</SelectItem>
-                          <SelectItem value="MOC">Market on Close (MOC)</SelectItem>
-                          <SelectItem value="LOC">Limit on Close (LOC)</SelectItem>
-                          <SelectItem value="STOP">Stop</SelectItem>
-                          <SelectItem value="STOPLIMIT">Stop Limit</SelectItem>
-                          <SelectItem value="TRAILSTOP">Trailing Stop</SelectItem>
-                          <SelectItem value="WLK_LMT">Walk Limit</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Duration</Label>
-                      <Select value={formData.duration} onValueChange={(v) => setFormData({ ...formData, duration: v })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DAY">DAY</SelectItem>
-                          <SelectItem value="GTC">GTC</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                {/* Paper Options Order Entry & Exit Strategy */}
+                <div className="space-y-6">
+                  <PaperOptionsOrderEntry
+                    symbol={symbol}
+                    selectedOption={selectedOptionForOrder}
+                    onOrderPlaced={(orderId) => {
+                      toast({
+                        title: "Paper Trade Placed",
+                        description: `Order ${orderId} has been executed`,
+                      });
+                      setSelectedOptionForOrder(null);
+                    }}
+                    onTradeExecuted={() => {
+                      loadAccount();
+                      loadTrades();
+                    }}
+                  />
 
-                  {/* Conditional Price Fields */}
-                  {(formData.orderType === "LIMIT" || formData.orderType === "LOC" || formData.orderType === "STOPLIMIT") && (
-                    <div>
-                      <Label>Limit Price</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.limitPrice}
-                        onChange={(e) => setFormData({ ...formData, limitPrice: e.target.value })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  )}
-
-                  {(formData.orderType === "STOP" || formData.orderType === "STOPLIMIT") && (
-                    <div>
-                      <Label>Stop Price</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.stopPrice}
-                        onChange={(e) => setFormData({ ...formData, stopPrice: e.target.value })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  )}
-
-                  {formData.orderType === "TRAILSTOP" && (
-                    <div className="space-y-3">
-                      <div>
-                        <Label>Trail Type</Label>
-                        <Select 
-                          value={formData.trailType} 
-                          onValueChange={(v) => setFormData({ ...formData, trailType: v, trailAmount: "" })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="DOLLAR">Dollar Amount ($)</SelectItem>
-                            <SelectItem value="PERCENT">Percentage (%)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label>
-                          Trail Amount {formData.trailType === "DOLLAR" ? "($)" : "(%)"}
-                        </Label>
-                        <Input
-                          type="number"
-                          step={formData.trailType === "DOLLAR" ? "0.01" : "0.1"}
-                          min="0"
-                          value={formData.trailAmount}
-                          onChange={(e) => setFormData({ ...formData, trailAmount: e.target.value })}
-                          placeholder={formData.trailType === "DOLLAR" ? "0.00" : "0.0"}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formData.trailType === "DOLLAR" 
-                            ? "Dollar amount to trail behind the market price" 
-                            : "Percentage to trail behind the market price"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={() => handleExecuteTrade('buy')} 
-                      size="sm" 
-                      variant="default"
-                      disabled={loading || !formData.price || !formData.symbol || !formData.strike}
-                      className="flex-1"
-                    >
-                      <TrendingUp className="w-4 h-4 mr-2" />
-                      {loading ? 'Processing...' : 'BUY'}
-                    </Button>
-                    <Button 
-                      onClick={() => handleExecuteTrade('sell')} 
-                      size="sm" 
-                      variant="destructive"
-                      disabled={loading || !formData.price || !formData.symbol || !formData.strike}
-                      className="flex-1"
-                    >
-                      <TrendingUp className="w-4 h-4 mr-2" />
-                      {loading ? 'Processing...' : 'SELL'}
-                    </Button>
-                  </div>
-
-                  {previewData && (
-                    <div>
-                      <h3 className="font-semibold text-sm mb-2">Preview Result</h3>
-                      <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-32">
-                        {JSON.stringify(previewData, null, 2)}
-                      </pre>
-                    </div>
-                  )}
+                  <ConditionalExitBuilder
+                    onStrategyChange={(strategy) => {
+                      console.log('Exit strategy updated:', strategy);
+                    }}
+                    positionValue={1000}
+                  />
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Conditional Exit Strategy Builder */}
-            <ConditionalExitBuilder
-              onStrategyChange={(strategy) => {
-                console.log('Paper trading exit strategy updated:', strategy);
-              }}
-              positionValue={formData.price && formData.quantity 
-                ? parseFloat(formData.price) * parseFloat(formData.quantity) * 100 
-                : 1000
-              }
-            />
-          </div>
-        </div>
-
-        {/* Recent Trades & Stats */}
-        <div className="grid md:grid-cols-3 gap-6 mb-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Total Trades</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{calculateStats().totalTrades}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Win Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-primary">{calculateStats().winRate}%</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Total P/L</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className={`text-2xl font-bold ${Number(calculateStats().totalPL) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                ${calculateStats().totalPL}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Collapsible open={isRecentTradesOpen} onOpenChange={setIsRecentTradesOpen}>
-          <Card>
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardTitle className="flex items-center justify-between">
-                  <span>Recent Trades</span>
-                  {isRecentTradesOpen ? (
-                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                  )}
-                </CardTitle>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent>
-                {trades.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No trades yet. Start trading!</p>
-                ) : (
-              <div className="space-y-2">
-                {trades.map(trade => {
-                  // Check if this trade is part of an open position
-                  const tradeDetails = trade.notes?.split(' ') || [];
-                  const side = tradeDetails[0] || 'CALL';
-                  const strike = parseFloat(tradeDetails[1] || '0');
-                  
-                  const matchingPosition = openPositions.find(
-                    pos => pos.symbol === trade.symbol && 
-                    pos.side === side && 
-                    pos.strike === strike
-                  );
-                  
-                  // Calculate current P&L for this trade
-                  let currentPL = 0;
-                  let currentPrice = Number(trade.price);
-                  
-                  if (matchingPosition && trade.action === 'buy') {
-                    // Trade is part of open position - show unrealized P&L
-                    currentPrice = matchingPosition.currentPrice;
-                    currentPL = (currentPrice - Number(trade.price)) * Number(trade.quantity) * 100;
-                  } else if (trade.profit_loss) {
-                    // Trade is closed - show realized P&L
-                    currentPL = Number(trade.profit_loss);
-                  }
-                  
-                  const isOpen = matchingPosition && trade.action === 'buy';
-                  
-                  return (
-                    <div 
-                      key={trade.id} 
-                      className="flex items-center justify-between p-3 bg-muted rounded-lg border"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold">{trade.symbol}</p>
-                          {isOpen && (
-                            <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-500 rounded-full">
-                              Open
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{trade.notes}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {new Date(trade.executed_at).toLocaleString()}
-                        </p>
-                        <div className="flex items-center gap-3 mt-2 text-sm">
-                          <span className="font-semibold capitalize">{trade.action}</span>
-                          <span>{trade.quantity} contracts @ ${Number(trade.price).toFixed(2)}</span>
-                        </div>
-                        {isOpen && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Current: ${currentPrice.toFixed(2)} per contract
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          {currentPL !== 0 && (
-                            <>
-                              <p className="text-xs text-muted-foreground">
-                                {isOpen ? 'Unrealized P&L' : 'Realized P&L'}
-                              </p>
-                              <p className={`text-lg font-bold ${currentPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {currentPL >= 0 ? '+' : ''}${currentPL.toFixed(2)}
-                              </p>
-                              <p className={`text-xs ${currentPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {((currentPL / (Number(trade.price) * Number(trade.quantity) * 100)) * 100).toFixed(2)}%
-                              </p>
-                            </>
-                          )}
-                        </div>
-                        {isOpen && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={async () => {
-                              if (!confirm(`Close ${trade.quantity} contracts of ${trade.symbol}?`)) return;
-                              
-                              setLoading(true);
-                              try {
-                                const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
-                                  body: {
-                                    symbol: trade.symbol,
-                                    action: 'sell',
-                                    quantity: Number(trade.quantity),
-                                    price: Number(currentPrice).toFixed(2),
-                                    strike: strike.toString(),
-                                    side: side,
-                                    expiration: tradeDetails[2] || '',
-                                  }
-                                });
-
-                                if (error) throw error;
-                                
-                                toast({
-                                  title: "Trade Closed",
-                                  description: `Closed ${trade.quantity} contracts with P&L: ${currentPL >= 0 ? '+' : ''}$${currentPL.toFixed(2)}`,
-                                });
-
-                                await loadAccount();
-                                await loadTrades();
-                              } catch (error: any) {
-                                toast({
-                                  title: "Error closing trade",
-                                  description: error.message,
-                                  variant: "destructive",
-                                });
-                              } finally {
-                                setLoading(false);
-                              }
-                            }}
-                            disabled={loading}
-                          >
-                            Close Trade
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
-            )}
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
-        </div>
+            </TabsContent>
 
-        {/* Open Positions Section with Scale-Out */}
-        <div className="mb-6">
-          <OpenPositions 
-            positions={openPositions}
-            onPositionClick={(position) => {
-              setFormData({
-                ...formData,
-                symbol: position.symbol,
-                quantity: position.quantity.toString(),
-                price: position.currentPrice.toFixed(2),
-              });
-              setSelectedPosition(position);
-            }}
-            onPositionClosed={() => {
-              loadAccount();
-              loadTrades();
-            }}
-          />
-        </div>
-
-        {/* Live Price Display */}
-        <div className="mb-6">
-          <LivePriceDisplay 
-            initialSymbols={[formData.symbol, 'SPY', 'QQQ']}
-          />
-        </div>
-
-        {/* Streaming Positions Tracker */}
-        {openPositions.length > 0 && (
-          <div className="mb-6">
-            <StreamingPositionsTracker 
-              positions={openPositions.map(pos => ({
-                symbol: pos.symbol,
-                quantity: pos.quantity,
-                entryPrice: pos.entryPrice,
-                side: 'long' as const,
-                type: (pos.side === 'CALL' || pos.side === 'PUT') ? 'option' as const : 'stock' as const,
-                optionDetails: (pos.side === 'CALL' || pos.side === 'PUT') ? {
+            {/* Positions Tab */}
+            <TabsContent value="positions" className="space-y-6">
+              <RealtimePnLTracker
+                positions={openPositions.map(pos => ({
+                  symbol: pos.symbol,
+                  quantity: pos.quantity,
+                  entryPrice: pos.entryPrice,
+                  side: pos.side === 'CALL' || pos.side === 'long' ? 'long' : 'short',
+                  type: pos.strike ? 'option' : 'stock',
                   strike: pos.strike,
                   expiration: pos.expiration,
-                  optionType: pos.side.toLowerCase() as 'call' | 'put',
-                } : undefined,
-              }))}
-            />
-          </div>
-        )}
+                  optionType: pos.side === 'CALL' || pos.side === 'PUT' ? pos.side : undefined,
+                }))}
+                onPositionUpdate={(position) => console.log('Position P&L updated:', position)}
+              />
 
-        {/* Positions & Risk Module */}
-        <div className="mb-6">
-          <PositionsRiskModule />
+              <OpenPositions 
+                positions={openPositions}
+                onPositionClick={(position) => {
+                  setSymbol(position.symbol);
+                }}
+                onPositionClosed={() => {
+                  loadAccount();
+                  loadTrades();
+                }}
+              />
+
+              {openPositions.length > 0 && (
+                <StreamingPositionsTracker 
+                  positions={openPositions.map(pos => ({
+                    symbol: pos.symbol,
+                    quantity: pos.quantity,
+                    entryPrice: pos.entryPrice,
+                    side: 'long' as const,
+                    type: (pos.side === 'CALL' || pos.side === 'PUT') ? 'option' as const : 'stock' as const,
+                    optionDetails: (pos.side === 'CALL' || pos.side === 'PUT') ? {
+                      strike: pos.strike,
+                      expiration: pos.expiration,
+                      optionType: pos.side.toLowerCase() as 'call' | 'put',
+                    } : undefined,
+                  }))}
+                />
+              )}
+            </TabsContent>
+
+            {/* Analysis Tab */}
+            <TabsContent value="analysis" className="space-y-6">
+              <KoinoniaIndicator 
+                symbol={symbol}
+                onSignalGenerated={handleKoinoniaSignal}
+              />
+
+              <OptionPnLChart symbol={symbol} currentPrice={256} />
+
+              <div className="grid lg:grid-cols-2 gap-6">
+                <PerformanceStreakTracker />
+                <DrawdownChart />
+              </div>
+
+              <div className="grid lg:grid-cols-2 gap-6">
+                <TimeOfDayHeatmap />
+                <PositionSizeCalculator />
+              </div>
+            </TabsContent>
+
+            {/* Risk Tab */}
+            <TabsContent value="risk" className="space-y-6">
+              <PositionsRiskModule />
+              <PaperTradingAnalytics />
+            </TabsContent>
+
+            {/* Screeners Tab */}
+            <TabsContent value="screeners" className="space-y-6">
+              <div className="grid lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <StockScreener />
+                </div>
+                <WatchlistPanel 
+                  onSelectSymbol={(sym) => setSymbol(sym)} 
+                />
+              </div>
+            </TabsContent>
+
+            {/* Recent Trades Tab */}
+            <TabsContent value="trades" className="space-y-6">
+              {/* Stats Cards */}
+              <div className="grid md:grid-cols-3 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Total Trades</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold">{calculateStats().totalTrades}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Win Rate</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-primary">{calculateStats().winRate}%</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Total P/L</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className={`text-2xl font-bold ${Number(calculateStats().totalPL) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      ${calculateStats().totalPL}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Recent Trades List */}
+              <Collapsible open={isRecentTradesOpen} onOpenChange={setIsRecentTradesOpen}>
+                <Card>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                      <CardTitle className="flex items-center justify-between">
+                        <span>Recent Trades</span>
+                        {isRecentTradesOpen ? (
+                          <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      {trades.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">No trades yet. Start trading!</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {trades.map(trade => {
+                            const tradeDetails = trade.notes?.split(' ') || [];
+                            const side = tradeDetails[0] || 'CALL';
+                            const strike = parseFloat(tradeDetails[1] || '0');
+                            
+                            const matchingPosition = openPositions.find(
+                              pos => pos.symbol === trade.symbol && 
+                              pos.side === side && 
+                              pos.strike === strike
+                            );
+                            
+                            let currentPL = 0;
+                            let currentPrice = Number(trade.price);
+                            
+                            if (matchingPosition && trade.action === 'buy') {
+                              currentPrice = matchingPosition.currentPrice;
+                              currentPL = (currentPrice - Number(trade.price)) * Number(trade.quantity) * 100;
+                            } else if (trade.profit_loss) {
+                              currentPL = Number(trade.profit_loss);
+                            }
+                            
+                            const isOpen = matchingPosition && trade.action === 'buy';
+                            
+                            return (
+                              <div 
+                                key={trade.id} 
+                                className="flex items-center justify-between p-3 bg-muted rounded-lg border"
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-semibold">{trade.symbol}</p>
+                                    {isOpen && (
+                                      <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-500 rounded-full">
+                                        Open
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{trade.notes}</p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {new Date(trade.executed_at).toLocaleString()}
+                                  </p>
+                                  <div className="flex items-center gap-3 mt-2 text-sm">
+                                    <span className="font-semibold capitalize">{trade.action}</span>
+                                    <span>{trade.quantity} contracts @ ${Number(trade.price).toFixed(2)}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <div className="text-right">
+                                    {currentPL !== 0 && (
+                                      <>
+                                        <p className="text-xs text-muted-foreground">
+                                          {isOpen ? 'Unrealized P&L' : 'Realized P&L'}
+                                        </p>
+                                        <p className={`text-lg font-bold ${currentPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                          {currentPL >= 0 ? '+' : ''}${currentPL.toFixed(2)}
+                                        </p>
+                                      </>
+                                    )}
+                                  </div>
+                                  {isOpen && (
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={async () => {
+                                        if (!confirm(`Close ${trade.quantity} contracts of ${trade.symbol}?`)) return;
+                                        
+                                        setLoading(true);
+                                        try {
+                                          const { error } = await supabase.functions.invoke('execute-paper-trade', {
+                                            body: {
+                                              symbol: trade.symbol,
+                                              action: 'sell',
+                                              quantity: Number(trade.quantity),
+                                              price: Number(currentPrice).toFixed(2),
+                                              strike: strike.toString(),
+                                              side: side,
+                                              expiration: tradeDetails[2] || '',
+                                            }
+                                          });
+
+                                          if (error) throw error;
+                                          
+                                          toast({
+                                            title: "Trade Closed",
+                                            description: `Closed ${trade.quantity} contracts with P&L: ${currentPL >= 0 ? '+' : ''}$${currentPL.toFixed(2)}`,
+                                          });
+
+                                          await loadAccount();
+                                          await loadTrades();
+                                        } catch (error: any) {
+                                          toast({
+                                            title: "Error closing trade",
+                                            description: error.message,
+                                            variant: "destructive",
+                                          });
+                                        } finally {
+                                          setLoading(false);
+                                        }
+                                      }}
+                                      disabled={loading}
+                                    >
+                                      Close Trade
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            </TabsContent>
+          </Tabs>
         </div>
-
-        {/* Performance Analytics Section */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          <PerformanceStreakTracker />
-          <DrawdownChart />
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          <TimeOfDayHeatmap />
-          <PositionSizeCalculator />
-        </div>
-
-        {/* Paper Trading Analytics */}
-        <div className="mb-6">
-          <PaperTradingAnalytics />
-        </div>
-
       </div>
     </>
   );
