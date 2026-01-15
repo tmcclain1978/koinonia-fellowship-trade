@@ -72,7 +72,6 @@ const PaperTrading = () => {
   const [strikePrices, setStrikePrices] = useState<any[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [isRecentTradesOpen, setIsRecentTradesOpen] = useState(true);
-  const [isOpenPositionsOpen, setIsOpenPositionsOpen] = useState(true);
 
   useEffect(() => {
     loadAccount();
@@ -1187,125 +1186,25 @@ const PaperTrading = () => {
         </Collapsible>
         </div>
 
-        {/* Open Positions Section */}
-        <Collapsible open={isOpenPositionsOpen} onOpenChange={setIsOpenPositionsOpen}>
-          <Card className="mb-6">
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardTitle className="flex items-center justify-between">
-                  <span>Open Positions</span>
-                  {isOpenPositionsOpen ? (
-                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                  )}
-                </CardTitle>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent>
-                {openPositions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground mb-2">No open positions</p>
-                    <p className="text-xs text-muted-foreground">
-                      Buy a contract to open a position. You'll see it here with a "Close Position" button.
-                    </p>
-                  </div>
-                ) : (
-              <div className="space-y-3">
-                {openPositions.map((position, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-muted rounded-lg border">
-                    <div className="flex-1">
-                      <p className="font-semibold text-lg">{position.symbol}</p>
-                      <p className="text-sm text-muted-foreground">{position.details}</p>
-                      <p className="text-sm mt-1">
-                        Quantity: <span className="font-semibold">{position.quantity}</span> contracts ({position.quantity * 100} shares)
-                      </p>
-                      <p className="text-sm">
-                        Entry: <span className="font-semibold">${position.entryPrice.toFixed(2)}</span> per contract
-                      </p>
-                      <p className="text-sm">
-                        Current: <span className="font-semibold">${position.currentPrice.toFixed(2)}</span> per contract
-                      </p>
-                      <p className={`text-sm font-semibold ${position.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        Unrealized P&L: {position.unrealizedPL >= 0 ? '+' : ''}${position.unrealizedPL.toFixed(2)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Total Cost: ${position.totalCost.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            symbol: position.symbol,
-                            quantity: position.quantity.toString(),
-                            price: position.currentPrice.toFixed(2),
-                          });
-                          setSelectedPosition(position);
-                        }}
-                      >
-                        Load to Form
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={async () => {
-                          if (!confirm(`Close ${position.quantity} contracts?`)) return;
-                          
-                          // Parse position details to get expiration
-                          const details = position.details?.split(' ') || [];
-                          const expiration = details[2] || '';
-                          
-                          setLoading(true);
-                          try {
-                            const { data, error } = await supabase.functions.invoke('execute-paper-trade', {
-                              body: {
-                                symbol: position.symbol,
-                                action: 'sell',
-                                quantity: position.quantity,
-                                price: position.currentPrice.toFixed(2),
-                                strike: position.strike?.toString() || '',
-                                side: position.side || 'CALL',
-                                expiration: expiration,
-                              }
-                            });
-
-                            if (error) throw error;
-                            
-                            toast({
-                              title: "Position Closed",
-                              description: `Closed ${position.quantity} contracts of ${position.symbol}`,
-                            });
-
-                            await loadAccount();
-                            await loadTrades();
-                          } catch (error: any) {
-                            toast({
-                              title: "Error closing position",
-                              description: error.message,
-                              variant: "destructive",
-                            });
-                          } finally {
-                            setLoading(false);
-                          }
-                        }}
-                        disabled={loading}
-                      >
-                        Close Position
-                      </Button>
-                    </div>
-                   </div>
-                 ))}
-              </div>
-            )}
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+        {/* Open Positions Section with Scale-Out */}
+        <div className="mb-6">
+          <OpenPositions 
+            positions={openPositions}
+            onPositionClick={(position) => {
+              setFormData({
+                ...formData,
+                symbol: position.symbol,
+                quantity: position.quantity.toString(),
+                price: position.currentPrice.toFixed(2),
+              });
+              setSelectedPosition(position);
+            }}
+            onPositionClosed={() => {
+              loadAccount();
+              loadTrades();
+            }}
+          />
+        </div>
 
         {/* Live Price Display */}
         <div className="mb-6">

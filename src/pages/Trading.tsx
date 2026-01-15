@@ -621,6 +621,10 @@ const Trading = () => {
                   setSelectedPosition(position);
                   setSymbol(position.symbol);
                 }}
+                onPositionClosed={() => {
+                  // Refresh positions after closing
+                  console.log('Position closed, refreshing...');
+                }}
               />
 
               <SchwabPortfolio />
