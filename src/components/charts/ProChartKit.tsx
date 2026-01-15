@@ -1532,112 +1532,68 @@ export const ProChartKit = ({
     if (signal.signal?.entry_price) {
       chart.createOverlay({
         name: "horizontalStraightLine",
+        id: 'signal_entry',
         points: [{ value: signal.signal.entry_price }],
+        needDefaultYAxisFigure: showSignalPriceLabels,
         styles: {
           line: {
             color: signalEntryColor,
             size: signalEntryThickness,
             style: getLineType(signalEntryStyle)
+          },
+          text: {
+            color: '#ffffff',
+            backgroundColor: signalEntryColor
           }
         },
-        extendData: showSignalPriceLabels ? `Entry: $${signal.signal.entry_price.toFixed(2)}` : ''
+        extendData: showSignalPriceLabels ? `Entry: $${signal.signal.entry_price.toFixed(2)}` : undefined
       });
-      
-      // Add price label annotation at the right edge
-      if (showSignalPriceLabels) {
-        chart.createOverlay({
-          name: "simpleTag",
-          points: [{ value: signal.signal.entry_price }],
-          styles: {
-            text: {
-              color: '#ffffff',
-              backgroundColor: signalEntryColor,
-              size: 11,
-              paddingLeft: 4,
-              paddingRight: 4,
-              paddingTop: 2,
-              paddingBottom: 2,
-              borderRadius: 2
-            }
-          },
-          extendData: `$${signal.signal.entry_price.toFixed(2)}`
-        });
-      }
     }
 
     // Stop loss overlay - using customizable color, style, thickness (default: blue, dashed, 2)
     if (signal.signal?.stop_loss) {
       chart.createOverlay({
         name: "horizontalStraightLine",
+        id: 'signal_stoploss',
         points: [{ value: signal.signal.stop_loss }],
+        needDefaultYAxisFigure: showSignalPriceLabels,
         styles: {
           line: {
             color: signalStopLossColor,
             size: signalStopLossThickness,
             style: getLineType(signalStopLossStyle)
+          },
+          text: {
+            color: '#ffffff',
+            backgroundColor: signalStopLossColor
           }
         },
-        extendData: showSignalPriceLabels ? `Stop: $${signal.signal.stop_loss.toFixed(2)}` : ''
+        extendData: showSignalPriceLabels ? `Stop: $${signal.signal.stop_loss.toFixed(2)}` : undefined
       });
-      
-      // Add price label
-      if (showSignalPriceLabels) {
-        chart.createOverlay({
-          name: "simpleTag",
-          points: [{ value: signal.signal.stop_loss }],
-          styles: {
-            text: {
-              color: '#ffffff',
-              backgroundColor: signalStopLossColor,
-              size: 11,
-              paddingLeft: 4,
-              paddingRight: 4,
-              paddingTop: 2,
-              paddingBottom: 2,
-              borderRadius: 2
-            }
-          },
-          extendData: `$${signal.signal.stop_loss.toFixed(2)}`
-        });
-      }
     }
 
     // Target overlays - using customizable colors, style, thickness (default: purples, dashed, 1)
     const targetColors = [signalTarget1Color, signalTarget2Color, '#6366f1'];
     signal.signal?.targets?.forEach((target: number, index: number) => {
+      const targetColor = targetColors[index % targetColors.length];
       chart.createOverlay({
         name: "horizontalStraightLine",
+        id: `signal_target_${index}`,
         points: [{ value: target }],
+        needDefaultYAxisFigure: showSignalPriceLabels,
         styles: {
           line: {
-            color: targetColors[index % targetColors.length],
+            color: targetColor,
             size: signalTargetThickness,
             style: getLineType(signalTargetStyle)
+          },
+          text: {
+            color: '#ffffff',
+            backgroundColor: targetColor
           }
         },
-        extendData: showSignalPriceLabels ? `Target ${index + 1}: $${target.toFixed(2)}` : ''
+        extendData: showSignalPriceLabels ? `T${index + 1}: $${target.toFixed(2)}` : undefined
       });
-      
-      // Add price label
-      if (showSignalPriceLabels) {
-        chart.createOverlay({
-          name: "simpleTag",
-          points: [{ value: target }],
-          styles: {
-            text: {
-              color: '#ffffff',
-              backgroundColor: targetColors[index % targetColors.length],
-              size: 11,
-              paddingLeft: 4,
-              paddingRight: 4,
-              paddingTop: 2,
-              paddingBottom: 2,
-              borderRadius: 2
-            }
-          },
-          extendData: `$${target.toFixed(2)}`
-        });
-      }
     });
   }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, getLineType]);
 
@@ -1654,67 +1610,43 @@ export const ProChartKit = ({
       if (entryPrice) {
         chart.createOverlay({
           name: "horizontalStraightLine",
+          id: 'prop_entry',
           points: [{ value: entryPrice }],
+          needDefaultYAxisFigure: showSignalPriceLabels,
           styles: {
-            line: { color: signalEntryColor, size: signalEntryThickness, style: getLineType(signalEntryStyle) }
+            line: { color: signalEntryColor, size: signalEntryThickness, style: getLineType(signalEntryStyle) },
+            text: { color: '#ffffff', backgroundColor: signalEntryColor }
           },
-          extendData: showSignalPriceLabels ? `Entry: $${entryPrice.toFixed(2)}` : ''
+          extendData: showSignalPriceLabels ? `Entry: $${entryPrice.toFixed(2)}` : undefined
         });
-        
-        if (showSignalPriceLabels) {
-          chart.createOverlay({
-            name: "simpleTag",
-            points: [{ value: entryPrice }],
-            styles: {
-              text: { color: '#ffffff', backgroundColor: signalEntryColor, size: 11, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 }
-            },
-            extendData: `$${entryPrice.toFixed(2)}`
-          });
-        }
       }
       
       if (exitPrice) {
         chart.createOverlay({
           name: "horizontalStraightLine",
+          id: 'prop_exit',
           points: [{ value: exitPrice }],
+          needDefaultYAxisFigure: showSignalPriceLabels,
           styles: {
-            line: { color: signalTarget1Color, size: signalTargetThickness, style: getLineType(signalTargetStyle) }
+            line: { color: signalTarget1Color, size: signalTargetThickness, style: getLineType(signalTargetStyle) },
+            text: { color: '#ffffff', backgroundColor: signalTarget1Color }
           },
-          extendData: showSignalPriceLabels ? `Exit: $${exitPrice.toFixed(2)}` : ''
+          extendData: showSignalPriceLabels ? `Exit: $${exitPrice.toFixed(2)}` : undefined
         });
-        
-        if (showSignalPriceLabels) {
-          chart.createOverlay({
-            name: "simpleTag",
-            points: [{ value: exitPrice }],
-            styles: {
-              text: { color: '#ffffff', backgroundColor: signalTarget1Color, size: 11, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 }
-            },
-            extendData: `$${exitPrice.toFixed(2)}`
-          });
-        }
       }
       
       if (stopLoss) {
         chart.createOverlay({
           name: "horizontalStraightLine",
+          id: 'prop_stoploss',
           points: [{ value: stopLoss }],
+          needDefaultYAxisFigure: showSignalPriceLabels,
           styles: {
-            line: { color: signalStopLossColor, size: signalStopLossThickness, style: getLineType(signalStopLossStyle) }
+            line: { color: signalStopLossColor, size: signalStopLossThickness, style: getLineType(signalStopLossStyle) },
+            text: { color: '#ffffff', backgroundColor: signalStopLossColor }
           },
-          extendData: showSignalPriceLabels ? `Stop: $${stopLoss.toFixed(2)}` : ''
+          extendData: showSignalPriceLabels ? `Stop: $${stopLoss.toFixed(2)}` : undefined
         });
-        
-        if (showSignalPriceLabels) {
-          chart.createOverlay({
-            name: "simpleTag",
-            points: [{ value: stopLoss }],
-            styles: {
-              text: { color: '#ffffff', backgroundColor: signalStopLossColor, size: 11, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, borderRadius: 2 }
-            },
-            extendData: `$${stopLoss.toFixed(2)}`
-          });
-        }
       }
     }
   }, [entryPrice, exitPrice, stopLoss, koinoniaSignal, signalEntryColor, signalStopLossColor, signalTarget1Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, getLineType]);
