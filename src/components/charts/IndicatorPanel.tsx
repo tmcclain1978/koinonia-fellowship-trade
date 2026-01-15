@@ -369,45 +369,83 @@ export const IndicatorPanel = ({
   };
 
   const handleClearAll = () => {
+    // Keep refs in sync so the next click doesn't “resurrect” old selections
+    selectedRef.current = [];
+    settingsRef.current = {};
+
     onIndicatorChange([]);
     if (onSettingsChange) {
       onSettingsChange({});
     }
+    setEditingIndicator(null);
   };
 
-  // Apply a preset set of indicators
+  // Apply a preset set of indicators (toggle: click again to remove the preset indicators)
   const applyPreset = (presetKey: keyof typeof INDICATOR_PRESETS) => {
     const preset = INDICATOR_PRESETS[presetKey];
-    const newIndicators = [...new Set([...selectedIndicators, ...preset.indicators])];
-    onIndicatorChange(newIndicators);
-    
-    // Add default settings for new indicators
+    const presetIds = preset.indicators;
+
+    const currentSelected = selectedRef.current;
+    const currentSettings = settingsRef.current;
+
+    const hasAllPresetIndicators = presetIds.every((id) => currentSelected.includes(id));
+
+    // If everything from the preset is already selected, treat this as “unselect preset”
+    if (hasAllPresetIndicators) {
+      const newSelection = currentSelected.filter((id) => !presetIds.includes(id));
+      selectedRef.current = newSelection;
+      onIndicatorChange(newSelection);
+
+      if (onSettingsChange) {
+        const newSettings = { ...currentSettings };
+        presetIds.forEach((id) => {
+          delete newSettings[id];
+        });
+        settingsRef.current = newSettings;
+        onSettingsChange(newSettings);
+      }
+      return;
+    }
+
+    // Otherwise, add preset indicators (non-destructive)
+    const newSelection = [...new Set([...currentSelected, ...presetIds])];
+    selectedRef.current = newSelection;
+    onIndicatorChange(newSelection);
+
+    // Add default settings for newly added indicators
     if (onSettingsChange) {
-      const newSettings = { ...indicatorSettings };
-      preset.indicators.forEach((id, index) => {
+      const newSettings = { ...currentSettings };
+      presetIds.forEach((id) => {
         if (!newSettings[id]) {
-          newSettings[id] = getDefaultIndicatorSettings(id, Object.keys(newSettings).length);
+          newSettings[id] = getDefaultIndicatorSettings(id, newSelection.indexOf(id));
         }
       });
+      settingsRef.current = newSettings;
       onSettingsChange(newSettings);
     }
   };
 
   // Select all indicators in a category
   const selectAllInCategory = (category: string) => {
+    const currentSelected = selectedRef.current;
+    const currentSettings = settingsRef.current;
+
     const categoryIndicators = AVAILABLE_INDICATORS
-      .filter(ind => ind.category === category)
-      .map(ind => ind.id);
-    const newIndicators = [...new Set([...selectedIndicators, ...categoryIndicators])];
+      .filter((ind) => ind.category === category)
+      .map((ind) => ind.id);
+
+    const newIndicators = [...new Set([...currentSelected, ...categoryIndicators])];
+    selectedRef.current = newIndicators;
     onIndicatorChange(newIndicators);
-    
+
     if (onSettingsChange) {
-      const newSettings = { ...indicatorSettings };
-      categoryIndicators.forEach((id, index) => {
+      const newSettings = { ...currentSettings };
+      categoryIndicators.forEach((id) => {
         if (!newSettings[id]) {
-          newSettings[id] = getDefaultIndicatorSettings(id, Object.keys(newSettings).length);
+          newSettings[id] = getDefaultIndicatorSettings(id, newIndicators.indexOf(id));
         }
       });
+      settingsRef.current = newSettings;
       onSettingsChange(newSettings);
     }
   };
