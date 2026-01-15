@@ -1521,16 +1521,37 @@ export const ProChartKit = ({
 
   // Add signal overlays to chart with customizable colors, styles, and price labels
   const addSignalOverlays = useCallback((signal: any) => {
-    if (!chartRef.current) return;
-
-    const chart = chartRef.current;
+    if (!chartRef.current) {
+      console.log("📊 addSignalOverlays: Chart not ready");
+      return;
+    }
     
-    // Remove existing overlays first
-    chart.removeOverlay();
+    const chart = chartRef.current;
+    const dataList = chart.getDataList();
+    
+    if (!dataList || dataList.length === 0) {
+      console.log("📊 addSignalOverlays: No data in chart yet");
+      return;
+    }
+    
+    console.log("📊 addSignalOverlays: Adding overlays for signal", signal?.signal);
+    
+    // Remove existing signal overlays by specific IDs (preserve other overlays like drawings)
+    try {
+      chart.removeOverlay({ id: 'signal_entry' });
+      chart.removeOverlay({ id: 'signal_stoploss' });
+      // Remove all target overlays (there could be multiple)
+      for (let i = 0; i < 10; i++) {
+        chart.removeOverlay({ id: `signal_target_${i}` });
+      }
+    } catch (e) {
+      // Ignore errors if overlays don't exist
+    }
 
     // Entry point overlay - using customizable color, style, thickness (default: orange, solid, 2)
     if (signal.signal?.entry_price) {
-      chart.createOverlay({
+      console.log("📊 Adding entry overlay at price:", signal.signal.entry_price);
+      const result = chart.createOverlay({
         name: "horizontalStraightLine",
         id: 'signal_entry',
         points: [{ value: signal.signal.entry_price }],
@@ -1548,10 +1569,12 @@ export const ProChartKit = ({
         },
         extendData: showSignalPriceLabels ? `Entry: $${signal.signal.entry_price.toFixed(2)}` : undefined
       });
+      console.log("📊 Entry overlay created:", result);
     }
 
     // Stop loss overlay - using customizable color, style, thickness (default: blue, dashed, 2)
     if (signal.signal?.stop_loss) {
+      console.log("📊 Adding stop loss overlay at price:", signal.signal.stop_loss);
       chart.createOverlay({
         name: "horizontalStraightLine",
         id: 'signal_stoploss',
@@ -1576,6 +1599,7 @@ export const ProChartKit = ({
     const targetColors = [signalTarget1Color, signalTarget2Color, '#6366f1'];
     signal.signal?.targets?.forEach((target: number, index: number) => {
       const targetColor = targetColors[index % targetColors.length];
+      console.log("📊 Adding target overlay at price:", target);
       chart.createOverlay({
         name: "horizontalStraightLine",
         id: `signal_target_${index}`,
@@ -1605,7 +1629,14 @@ export const ProChartKit = ({
     
     // Only add if we have prop-based values and no Koinonia signal
     if (!koinoniaSignal && (entryPrice || exitPrice || stopLoss)) {
-      chart.removeOverlay();
+      // Remove only prop-based overlays by specific IDs (preserve other overlays)
+      try {
+        chart.removeOverlay({ id: 'prop_entry' });
+        chart.removeOverlay({ id: 'prop_exit' });
+        chart.removeOverlay({ id: 'prop_stoploss' });
+      } catch (e) {
+        // Ignore errors if overlays don't exist
+      }
       
       if (entryPrice) {
         chart.createOverlay({
@@ -1651,12 +1682,17 @@ export const ProChartKit = ({
     }
   }, [entryPrice, exitPrice, stopLoss, koinoniaSignal, signalEntryColor, signalStopLossColor, signalTarget1Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, getLineType]);
   
-  // Re-apply signal overlays when settings change (if Koinonia signal is active)
+  // Re-apply signal overlays when settings change or when loading completes (if Koinonia signal is active)
   useEffect(() => {
-    if (koinoniaSignal && chartRef.current) {
-      addSignalOverlays(koinoniaSignal);
+    if (koinoniaSignal && chartRef.current && !loading) {
+      // Small delay to ensure chart is fully ready after data load
+      const timer = setTimeout(() => {
+        console.log("📊 Re-applying signal overlays after settings change or load complete");
+        addSignalOverlays(koinoniaSignal);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, koinoniaSignal, addSignalOverlays]);
+  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, koinoniaSignal, addSignalOverlays, loading]);
   // Map interval format - handles all Trading page formats
   const mapInterval = (interval: string): string => {
     const map: Record<string, string> = {
