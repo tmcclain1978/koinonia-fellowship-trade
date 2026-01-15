@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.analyze-chart-image]
 verify_jwt = false
+
+[functions.stock-screener-live]
+verify_jwt = false
