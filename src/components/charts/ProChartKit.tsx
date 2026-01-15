@@ -698,7 +698,7 @@ export const ProChartKit = ({
             },
             yAxis: {
               show: true,
-              size: 'auto',
+              size: 60, // Fixed width for easier interaction - drag here to scale prices vertically
               axisLine: { 
                 show: true,
                 color: theme === "dark" ? "#444444" : "#cccccc",
@@ -708,16 +708,16 @@ export const ProChartKit = ({
                 show: true,
                 color: theme === "dark" ? "#444444" : "#cccccc",
                 size: 1,
-                length: 3
+                length: 4
               },
               tickText: { 
                 show: true,
-                color: theme === "dark" ? "#aaaaaa" : "#666666",
+                color: theme === "dark" ? "#cccccc" : "#555555", // Slightly brighter for visibility
                 size: 11,
                 family: 'Arial, sans-serif',
                 weight: 'normal',
-                marginStart: 4,
-                marginEnd: 4
+                marginStart: 6,
+                marginEnd: 6
               }
             },
             separator: { color: theme === "dark" ? "#1a1a1a" : "#e5e5e5" },
@@ -743,8 +743,10 @@ export const ProChartKit = ({
         chart.setZoomEnabled(true);
         
         // Enable Y-axis scroll zoom and set initial scale gaps
+        // dragEnabled allows resizing pane height, scrollZoomEnabled allows vertical price scaling
         chart.setPaneOptions({
           id: 'candle_pane',
+          dragEnabled: true,
           axis: {
             scrollZoomEnabled: true,
             gap: {
@@ -1978,9 +1980,13 @@ export const ProChartKit = ({
                 Reset All to Default
               </Button>
               
-              <p className="text-xs text-muted-foreground">
-                Adjust scale, precision, and time format for your chart display.
-              </p>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p><strong>Navigation:</strong></p>
+                <p>• Drag chart left/right to pan horizontally</p>
+                <p>• Drag on Y-axis (right side) to scale prices vertically</p>
+                <p>• Mouse wheel on chart to zoom in/out</p>
+                <p>• Mouse wheel on Y-axis to scale prices</p>
+              </div>
             </div>
           </PopoverContent>
         </Popover>
