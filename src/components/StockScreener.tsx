@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { 
   Search, 
   Filter, 
@@ -24,7 +24,9 @@ import {
   Plus,
   X,
   Loader2,
-  Bookmark
+  Bookmark,
+  Radio,
+  Clock
 } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
@@ -46,6 +48,16 @@ interface ScreenerPreset {
   results_count: number | null;
 }
 
+interface ScreenerResultData {
+  rsi?: number;
+  relativeVolume?: number;
+  high52w?: number;
+  low52w?: number;
+  atrPercent?: number;
+  sma20?: number;
+  sma50?: number;
+}
+
 interface ScreenerResult {
   symbol: string;
   price: number;
@@ -53,6 +65,7 @@ interface ScreenerResult {
   volume: number;
   match_score: number;
   matched_conditions: string[];
+  data?: ScreenerResultData;
 }
 
 const CONDITION_TYPES = [
@@ -164,13 +177,19 @@ const DEFAULT_PRESETS: Partial<ScreenerPreset>[] = [
   },
 ];
 
-// Mock results for demonstration
+// Fallback mock results for when API is unavailable
 const MOCK_RESULTS: ScreenerResult[] = [
   { symbol: "NVDA", price: 875.32, change_percent: 5.2, volume: 45000000, match_score: 95, matched_conditions: ["Volume Spike", "% Change Above"] },
   { symbol: "TSLA", price: 245.67, change_percent: 3.8, volume: 32000000, match_score: 88, matched_conditions: ["Volume Spike"] },
   { symbol: "AMD", price: 178.45, change_percent: 4.1, volume: 28000000, match_score: 82, matched_conditions: ["% Change Above", "RSI Momentum"] },
   { symbol: "META", price: 512.34, change_percent: 2.9, volume: 18000000, match_score: 75, matched_conditions: ["Near 52W High"] },
   { symbol: "AMZN", price: 182.56, change_percent: 2.1, volume: 22000000, match_score: 70, matched_conditions: ["Volume Above Average"] },
+];
+
+// Popular stock universe for screening
+const STOCK_UNIVERSE = [
+  "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+  "AMD", "NFLX", "JPM", "V", "MA", "BAC", "XOM", "DIS", "COST", "HD", "CRM"
 ];
 
 export const StockScreener = () => {
@@ -184,6 +203,8 @@ export const StockScreener = () => {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetDescription, setNewPresetDescription] = useState("");
+  const [useLiveData, setUseLiveData] = useState(true);
+  const [lastScanTime, setLastScanTime] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -301,18 +322,55 @@ export const StockScreener = () => {
     }
 
     setScanning(true);
+    setResults([]);
+    
     try {
-      // Simulate API call - in production this would call an edge function
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (useLiveData) {
+        // Call the live stock screener edge function
+        console.log("[StockScreener] Running live scan with conditions:", conditions);
+        
+        const { data, error } = await supabase.functions.invoke("stock-screener-live", {
+          body: { 
+            conditions,
+            customSymbols: STOCK_UNIVERSE 
+          }
+        });
+
+        if (error) {
+          console.error("[StockScreener] Edge function error:", error);
+          throw new Error(error.message || "Failed to run screener");
+        }
+
+        if (data?.error) {
+          throw new Error(data.error);
+        }
+
+        if (data?.results) {
+          setResults(data.results);
+          setLastScanTime(data.timestamp);
+          toast.success(`Found ${data.results.length} matching stocks from ${data.totalScreened} scanned`);
+        } else {
+          setResults([]);
+          toast.info("No stocks matched your criteria");
+        }
+      } else {
+        // Use mock data for demo/testing
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const filteredResults = MOCK_RESULTS.filter(() => Math.random() > 0.3);
+        setResults(filteredResults.length > 0 ? filteredResults : MOCK_RESULTS.slice(0, 3));
+        setLastScanTime(new Date().toISOString());
+        toast.success(`Found ${filteredResults.length || 3} matching stocks (demo mode)`);
+      }
+    } catch (error: any) {
+      console.error("[StockScreener] Error running screener:", error);
+      toast.error(error.message || "Screener failed - try again");
       
-      // Filter mock results based on conditions (simplified)
-      const filteredResults = MOCK_RESULTS.filter(() => Math.random() > 0.3);
-      setResults(filteredResults.length > 0 ? filteredResults : MOCK_RESULTS.slice(0, 3));
-      
-      toast.success(`Found ${filteredResults.length || 3} matching stocks`);
-    } catch (error) {
-      console.error("Error running screener:", error);
-      toast.error("Screener failed");
+      // Fallback to mock data if live fails
+      if (useLiveData) {
+        toast.info("Falling back to demo data");
+        setResults(MOCK_RESULTS);
+        setLastScanTime(new Date().toISOString());
+      }
     } finally {
       setScanning(false);
     }
@@ -449,58 +507,85 @@ export const StockScreener = () => {
               )}
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2">
-              <Button 
-                onClick={runScreener} 
-                disabled={scanning || conditions.length === 0}
-                className="flex-1"
-              >
-                {scanning ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <Play className="w-4 h-4 mr-2" />
-                )}
-                Run Scan
-              </Button>
+            {/* Data Source Toggle & Actions */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Radio className={`w-4 h-4 ${useLiveData ? 'text-green-500' : 'text-muted-foreground'}`} />
+                  <div>
+                    <p className="text-sm font-medium">
+                      {useLiveData ? 'Live Market Data' : 'Demo Mode'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {useLiveData ? 'Real-time quotes via Polygon.io' : 'Using sample data for testing'}
+                    </p>
+                  </div>
+                </div>
+                <Switch 
+                  checked={useLiveData}
+                  onCheckedChange={setUseLiveData}
+                />
+              </div>
 
-              {conditions.length > 0 && user && (
-                <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <Save className="w-4 h-4 mr-2" />
-                      Save
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Save Screener Preset</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div className="space-y-2">
-                        <Label>Preset Name</Label>
-                        <Input
-                          placeholder="e.g., My Momentum Scanner"
-                          value={newPresetName}
-                          onChange={(e) => setNewPresetName(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Description (optional)</Label>
-                        <Input
-                          placeholder="Brief description..."
-                          value={newPresetDescription}
-                          onChange={(e) => setNewPresetDescription(e.target.value)}
-                        />
-                      </div>
-                      <Button onClick={savePreset} className="w-full">
-                        <Save className="w-4 h-4 mr-2" />
-                        Save Preset
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+              {lastScanTime && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  Last scan: {new Date(lastScanTime).toLocaleTimeString()}
+                </div>
               )}
+
+              <div className="flex gap-2">
+                <Button 
+                  onClick={runScreener} 
+                  disabled={scanning || conditions.length === 0}
+                  className="flex-1"
+                >
+                  {scanning ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  {scanning ? 'Scanning...' : 'Run Scan'}
+                </Button>
+
+                {conditions.length > 0 && user && (
+                  <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline">
+                        <Save className="w-4 h-4 mr-2" />
+                        Save
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Save Screener Preset</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="space-y-2">
+                          <Label>Preset Name</Label>
+                          <Input
+                            placeholder="e.g., My Momentum Scanner"
+                            value={newPresetName}
+                            onChange={(e) => setNewPresetName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Description (optional)</Label>
+                          <Input
+                            placeholder="Brief description..."
+                            value={newPresetDescription}
+                            onChange={(e) => setNewPresetDescription(e.target.value)}
+                          />
+                        </div>
+                        <Button onClick={savePreset} className="w-full">
+                          <Save className="w-4 h-4 mr-2" />
+                          Save Preset
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
             </div>
           </TabsContent>
 
@@ -554,7 +639,7 @@ export const StockScreener = () => {
           </TabsContent>
 
           <TabsContent value="results" className="mt-4">
-            <ScrollArea className="h-[350px]">
+            <ScrollArea className="h-[400px]">
               {results.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -563,40 +648,101 @@ export const StockScreener = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
+                    <Activity className="w-3 h-3" />
+                    {results.length} stocks matched your criteria
+                  </div>
                   {results.map(result => (
                     <div 
                       key={result.symbol}
-                      className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                      className="p-3 rounded-lg border hover:bg-muted/50 transition-colors"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <span className="font-bold text-sm">{result.symbol.slice(0, 2)}</span>
-                        </div>
-                        <div>
-                          <div className="font-semibold">{result.symbol}</div>
-                          <div className="text-sm text-muted-foreground">
-                            ${result.price.toFixed(2)}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            result.change_percent >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'
+                          }`}>
+                            {result.change_percent >= 0 ? (
+                              <TrendingUp className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <TrendingDown className="w-5 h-5 text-red-500" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-lg">{result.symbol}</div>
+                            <div className="text-sm text-muted-foreground">
+                              ${result.price?.toFixed(2) || 'N/A'}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="text-right">
-                        <div className={`font-medium ${result.change_percent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {result.change_percent >= 0 ? '+' : ''}{result.change_percent.toFixed(2)}%
+                        
+                        <div className="text-right">
+                          <div className={`font-bold text-lg ${result.change_percent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {result.change_percent >= 0 ? '+' : ''}{result.change_percent?.toFixed(2) || '0.00'}%
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Vol: {result.volume ? (result.volume / 1000000).toFixed(1) + 'M' : 'N/A'}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Vol: {(result.volume / 1000000).toFixed(1)}M
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-2 ml-4">
                         <Badge 
-                          variant={result.match_score > 80 ? "default" : "secondary"}
-                          className={result.match_score > 80 ? "bg-green-500" : ""}
+                          variant={result.match_score >= 100 ? "default" : result.match_score >= 75 ? "secondary" : "outline"}
+                          className={`ml-3 ${
+                            result.match_score >= 100 ? "bg-green-500 text-white" : 
+                            result.match_score >= 75 ? "bg-primary/20" : ""
+                          }`}
                         >
-                          {result.match_score}%
+                          {result.match_score}% match
                         </Badge>
                       </div>
+
+                      {/* Matched Conditions */}
+                      {result.matched_conditions && result.matched_conditions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {result.matched_conditions.map((condition, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              {condition}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Additional Data (if available from live API) */}
+                      {result.data && (
+                        <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t text-xs">
+                          {result.data.rsi && (
+                            <div className="text-center">
+                              <div className="text-muted-foreground">RSI</div>
+                              <div className={`font-medium ${
+                                result.data.rsi > 70 ? 'text-red-500' : 
+                                result.data.rsi < 30 ? 'text-green-500' : ''
+                              }`}>
+                                {result.data.rsi.toFixed(1)}
+                              </div>
+                            </div>
+                          )}
+                          {result.data.relativeVolume && (
+                            <div className="text-center">
+                              <div className="text-muted-foreground">Rel Vol</div>
+                              <div className={`font-medium ${result.data.relativeVolume > 2 ? 'text-primary' : ''}`}>
+                                {result.data.relativeVolume.toFixed(1)}x
+                              </div>
+                            </div>
+                          )}
+                          {result.data.high52w && (
+                            <div className="text-center">
+                              <div className="text-muted-foreground">52W High</div>
+                              <div className="font-medium">${result.data.high52w.toFixed(0)}</div>
+                            </div>
+                          )}
+                          {result.data.atrPercent && (
+                            <div className="text-center">
+                              <div className="text-muted-foreground">ATR%</div>
+                              <div className="font-medium">{result.data.atrPercent.toFixed(1)}%</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
