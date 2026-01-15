@@ -110,8 +110,6 @@ const PaperTrading = () => {
           totalOptions: data.options.length,
           uniqueExpirations: [...new Set(data.options.map((o: any) => o.expiration))],
           uniqueStrikes: [...new Set(data.options.map((o: any) => o.strike))].length,
-          sampleCALL: data.options.find((o: any) => o.type === 'CALL'),
-          samplePUT: data.options.find((o: any) => o.type === 'PUT')
         });
         
         setOptionsData(data.options);
@@ -125,26 +123,36 @@ const PaperTrading = () => {
             : 'Complete Schwab OAuth in Settings for live data',
         });
         
-        // Extract unique expiration dates - filter to only Fridays for weekly options
+        // Extract all unique expiration dates and sort by date
         const uniqueExpirations = Array.from(
           new Set(data.options.map((opt: any) => opt.expiration))
         ).map((exp: any) => {
           const date = new Date(exp);
           const daysOut = Math.ceil((date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
           return {
             date,
             formattedDate: exp,
             daysOut,
             dayOfWeek: date.getDay(),
-            type: "Weekly 100",
-            iv: `${(Math.random() * 20 + 10).toFixed(2)}%`
+            dayName: dayNames[date.getDay()],
+            type: date.getDay() === 5 ? "Weekly" : "Monthly",
           };
         })
-        .filter(exp => exp.dayOfWeek === 5) // Only show Fridays (day 5)
+        .filter(exp => exp.daysOut > 0) // Only future expirations
         .sort((a, b) => a.date.getTime() - b.date.getTime());
         
-        console.log("📅 Expiration Dates:", uniqueExpirations.map(e => `${e.formattedDate} (${e.daysOut}d)`));
+        console.log("📅 Expiration Dates:", uniqueExpirations.map(e => `${e.formattedDate} (${e.daysOut}d, ${e.dayName})`));
         setExpirationDates(uniqueExpirations);
+        
+        // Auto-select the nearest expiration (preferably Friday within 2 weeks)
+        const nearestFriday = uniqueExpirations.find(e => e.dayOfWeek === 5 && e.daysOut <= 14);
+        const autoSelectExpiration = nearestFriday || uniqueExpirations[0];
+        
+        if (autoSelectExpiration && !formData.expiration) {
+          setFormData(prev => ({ ...prev, expiration: autoSelectExpiration.formattedDate }));
+          console.log("🎯 Auto-selected expiration:", autoSelectExpiration.formattedDate);
+        }
       }
     } catch (error: any) {
       console.error('Error fetching options:', error);
@@ -775,7 +783,11 @@ const PaperTrading = () => {
                           <SelectContent>
                             {expirationDates.map((exp) => (
                               <SelectItem key={exp.formattedDate} value={exp.formattedDate}>
-                                {new Date(exp.formattedDate).toLocaleDateString()} ({exp.daysOut} days)
+                                {new Date(exp.formattedDate).toLocaleDateString('en-US', { 
+                                  weekday: 'short', 
+                                  month: 'short', 
+                                  day: 'numeric' 
+                                })} • {exp.daysOut}d • {exp.type}
                               </SelectItem>
                             ))}
                           </SelectContent>

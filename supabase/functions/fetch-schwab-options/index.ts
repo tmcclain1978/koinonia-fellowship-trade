@@ -160,13 +160,40 @@ serve(async (req) => {
     }
 
     // Fallback to mock data for paper trading
+    // Generate realistic Friday expirations (weekly options expire on Fridays)
     const currentDate = new Date();
-    const mockExpirations = [
-      new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      new Date(currentDate.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      new Date(currentDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      new Date(currentDate.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    ];
+    const mockExpirations: string[] = [];
+    
+    // Find the next 4 Fridays
+    for (let i = 0; i < 4; i++) {
+      const daysUntilFriday = (5 - currentDate.getDay() + 7) % 7 || 7;
+      const nextFriday = new Date(currentDate);
+      nextFriday.setDate(currentDate.getDate() + daysUntilFriday + (i * 7));
+      mockExpirations.push(nextFriday.toISOString().split('T')[0]);
+    }
+    
+    // Also add monthly expirations (3rd Friday of next 2 months)
+    for (let monthOffset = 1; monthOffset <= 2; monthOffset++) {
+      const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + monthOffset, 1);
+      // Find 3rd Friday
+      let fridayCount = 0;
+      for (let day = 1; day <= 31; day++) {
+        const checkDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day);
+        if (checkDate.getMonth() !== targetMonth.getMonth()) break;
+        if (checkDate.getDay() === 5) {
+          fridayCount++;
+          if (fridayCount === 3) {
+            const expStr = checkDate.toISOString().split('T')[0];
+            if (!mockExpirations.includes(expStr)) {
+              mockExpirations.push(expStr);
+            }
+            break;
+          }
+        }
+      }
+    }
+    
+    console.log('Generated mock expirations:', mockExpirations);
 
     const mockStrikes = [150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200];
     const mockOptions = [];
