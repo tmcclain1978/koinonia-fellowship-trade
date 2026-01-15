@@ -22,6 +22,7 @@ import { SchwabPortfolio } from "@/components/SchwabPortfolio";
 import { SchwabLiveQuotes } from "@/components/SchwabLiveQuotes";
 import { PriceAlertSystem } from "@/components/PriceAlertSystem";
 import { StockScreener } from "@/components/StockScreener";
+import { WatchlistPanel } from "@/components/WatchlistPanel";
 import { OptionPnLChart } from "@/components/options/OptionPnLChart";
 import { SchwabOptionsChain } from "@/components/options/SchwabOptionsChain";
 import { SchwabOptionsOrderEntry } from "@/components/options/SchwabOptionsOrderEntry";
@@ -669,9 +670,16 @@ const Trading = () => {
 
             {/* Screeners Tab */}
             <TabsContent value="screeners" className="space-y-6">
-              <div className="grid lg:grid-cols-2 gap-6">
-                <StockScreener />
-                <PriceAlertSystem />
+              <div className="grid lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <StockScreener />
+                </div>
+                <div className="space-y-6">
+                  <WatchlistPanel 
+                    onSelectSymbol={(sym) => setSymbol(sym)} 
+                  />
+                  <PriceAlertSystem />
+                </div>
               </div>
             </TabsContent>
 
