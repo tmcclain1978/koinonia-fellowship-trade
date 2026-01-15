@@ -38,19 +38,22 @@ const PaperTrading = () => {
     bbands: false,
   });
   
-  const [formData, setFormData] = useState({
-    symbol: "AAPL",
-    side: "CALL",
-    expiration: "",
-    strike: "",
-    quantity: "1",
-    price: "",
-    orderType: "LIMIT",
-    duration: "DAY",
-    limitPrice: "",
-    stopPrice: "",
-    trailAmount: "",
-    trailType: "DOLLAR", // DOLLAR or PERCENT
+  const [formData, setFormData] = useState(() => {
+    const savedSymbol = localStorage.getItem('trading_symbol') || "AAPL";
+    return {
+      symbol: savedSymbol,
+      side: "CALL",
+      expiration: "",
+      strike: "",
+      quantity: "1",
+      price: "",
+      orderType: "LIMIT",
+      duration: "DAY",
+      limitPrice: "",
+      stopPrice: "",
+      trailAmount: "",
+      trailType: "DOLLAR",
+    };
   });
   
   const [account, setAccount] = useState<any>(null);
@@ -78,10 +81,11 @@ const PaperTrading = () => {
     loadTrades();
   }, []);
 
-  // Fetch options when symbol changes
+  // Fetch options when symbol changes and persist to localStorage
   useEffect(() => {
     if (formData.symbol && formData.symbol.length >= 1) {
       fetchOptionsChain();
+      localStorage.setItem('trading_symbol', formData.symbol);
     }
   }, [formData.symbol]);
 

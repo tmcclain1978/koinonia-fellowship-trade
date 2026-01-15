@@ -42,7 +42,9 @@ import { useChartHotkeys } from "@/hooks/useChartHotkeys";
 const Trading = () => {
   const [user, setUser] = useState<any>(null);
   const [tradingMode, setTradingMode] = useState<string>("paper");
-  const [symbol, setSymbol] = useState("AAPL");
+  const [symbol, setSymbol] = useState(() => {
+    return localStorage.getItem('trading_symbol') || "AAPL";
+  });
   const [accountId, setAccountId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [orderType, setOrderType] = useState("CALL");
@@ -220,10 +222,11 @@ const Trading = () => {
     setStrikePrices(uniqueStrikes);
   }, [optionsData, expirationDate, orderType]);
 
-  // Fetch options when symbol changes
+  // Fetch options when symbol changes and persist to localStorage
   useEffect(() => {
     if (symbol && symbol.length >= 1) {
       fetchOptionsChain();
+      localStorage.setItem('trading_symbol', symbol);
     }
   }, [symbol]);
 
