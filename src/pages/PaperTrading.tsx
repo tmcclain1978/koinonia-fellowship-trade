@@ -8,9 +8,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
-import { BarChart3, TrendingUp, Download, FileText, BarChart2, ChevronDown, ChevronUp } from "lucide-react";
+import { BarChart3, TrendingUp, Download, FileText, BarChart2, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
+import { QuickJournalButton } from "@/components/journal/QuickJournalButton";
 import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAnalytics";
@@ -585,11 +586,14 @@ const PaperTrading = () => {
       <div className="min-h-screen bg-background pt-16">
         <div className="container mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Paper Trading Platform</h1>
-            <p className="text-muted-foreground">
-              Test your trading strategies with simulated options trading
-            </p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Paper Trading Platform</h1>
+              <p className="text-muted-foreground">
+                Test your trading strategies with simulated options trading
+              </p>
+            </div>
+            <QuickJournalButton symbol={formData.symbol} defaultEntryType="during_trade" />
           </div>
           {account && (
             <div className="flex gap-3 items-center">

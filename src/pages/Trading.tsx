@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, TrendingUp, Activity, BarChart2, Wallet, Search, LineChart, LayoutGrid, Shield, Clock } from "lucide-react";
+import { CalendarIcon, TrendingUp, Activity, BarChart2, Wallet, Search, LineChart, LayoutGrid, Shield, Clock, BookOpen } from "lucide-react";
+import { QuickJournalButton } from "@/components/journal/QuickJournalButton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -361,7 +362,10 @@ const Trading = () => {
         <div className="container mx-auto px-6 py-8">
           {/* Header Bar */}
           <div className="flex items-center justify-between mb-6">
-            <p className="text-muted-foreground">Build, validate, and preview orders.</p>
+            <div className="flex items-center gap-3">
+              <p className="text-muted-foreground">Build, validate, and preview orders.</p>
+              <QuickJournalButton symbol={symbol} defaultEntryType="during_trade" />
+            </div>
             <div className="flex items-center gap-3">
               <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
                 isMarketOpen ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
