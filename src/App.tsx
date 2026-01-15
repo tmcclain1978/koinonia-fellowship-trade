@@ -31,7 +31,21 @@ import BotTesting from "./pages/BotTesting";
 import PocketOption from "./pages/PocketOption";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh
+      gcTime: 30 * 60 * 1000, // 30 minutes cache time (formerly cacheTime)
+      refetchOnWindowFocus: false, // Prevent refetch on tab switch
+      refetchOnMount: false, // Prevent refetch on mount if data exists
+      retry: 1, // Limit retries to reduce failed requests
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

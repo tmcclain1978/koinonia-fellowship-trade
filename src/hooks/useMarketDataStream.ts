@@ -92,7 +92,7 @@ export const useMarketDataStream = ({
       if (fetchError) throw fetchError;
       
       if (data?.mock) {
-        console.log('📊 Polygon API not configured, using simulated data');
+        // Silent fallback to simulated data
         return false;
       }
 
@@ -141,13 +141,16 @@ export const useMarketDataStream = ({
       console.error('Error fetching real data:', err);
       return false;
     }
-  }, [symbols, onPriceUpdate]);
+  }, [symbols.length, onPriceUpdate]);
 
-  // Start simulated data stream
+  // Start simulated data stream - reduced frequency
   const startSimulatedStream = useCallback(() => {
-    console.log('🎮 Starting simulated market data stream');
-    setDataSource('simulated');
+    // Silent start - only log once
+    if (!isRealDataRef.current) {
+      setDataSource('simulated');
+    }
     
+    // Reduced from 250ms to 1000ms to prevent excessive updates
     intervalRef.current = setInterval(() => {
       symbols.forEach((symbol) => {
         const previousPrice = previousPricesRef.current.get(symbol);
@@ -165,14 +168,12 @@ export const useMarketDataStream = ({
       });
 
       setTickCount((prev) => prev + 1);
-    }, 250);
+    }, 1000); // Changed from 250ms to 1000ms
   }, [symbols, onPriceUpdate]);
 
   // Connect to data stream
   const connect = useCallback(async () => {
     if (!enabled || symbols.length === 0) return;
-
-    console.log('📡 Connecting to market data stream for:', symbols);
     
     // Try real data first if enabled
     if (useRealData) {
@@ -180,12 +181,11 @@ export const useMarketDataStream = ({
       
       if (realDataSuccess) {
         isRealDataRef.current = true;
-        // Start polling for real data (every 1 second)
-        intervalRef.current = setInterval(fetchRealData, 1000);
+        // Start polling for real data (every 5 seconds instead of 1 second)
+        intervalRef.current = setInterval(fetchRealData, 5000);
         setIsConnected(true);
         setError(null);
         onConnectionChange?.(true);
-        console.log('✅ Connected to Polygon market data');
         return;
       }
     }
@@ -196,12 +196,9 @@ export const useMarketDataStream = ({
     setIsConnected(true);
     setError(null);
     onConnectionChange?.(true);
-    console.log('✅ Connected to simulated market data');
-  }, [symbols, enabled, useRealData, fetchRealData, startSimulatedStream, onConnectionChange]);
+  }, [symbols.length, enabled, useRealData, fetchRealData, startSimulatedStream, onConnectionChange]);
 
   const disconnect = useCallback(() => {
-    console.log('🔌 Disconnecting market data stream');
-    
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -211,12 +208,11 @@ export const useMarketDataStream = ({
     onConnectionChange?.(false);
   }, [onConnectionChange]);
 
-  const subscribe = useCallback((newSymbols: string[]) => {
-    console.log('📊 Subscribing to:', newSymbols);
+  const subscribe = useCallback((_newSymbols: string[]) => {
+    // Silent subscription
   }, []);
 
   const unsubscribe = useCallback((removeSymbols: string[]) => {
-    console.log('📉 Unsubscribing from:', removeSymbols);
     removeSymbols.forEach((symbol) => {
       previousPricesRef.current.delete(symbol);
       setPrices((prev) => {
@@ -227,18 +223,33 @@ export const useMarketDataStream = ({
     });
   }, []);
 
-  // Auto-connect when enabled and symbols change
+  // Memoized symbols key to prevent unnecessary reconnections
+  const symbolsKey = symbols.slice().sort().join(',');
+  const symbolsKeyRef = useRef(symbolsKey);
+  const isInitializedRef = useRef(false);
+
+  // Auto-connect when enabled and symbols change - debounced
   useEffect(() => {
+    // Skip if symbols haven't changed
+    if (symbolsKeyRef.current === symbolsKey && isInitializedRef.current) {
+      return;
+    }
+    symbolsKeyRef.current = symbolsKey;
+    isInitializedRef.current = true;
+    
     if (enabled && symbols.length > 0) {
-      connect();
+      // Debounce connection
+      const timeout = setTimeout(() => {
+        connect();
+      }, 100);
+      return () => {
+        clearTimeout(timeout);
+        disconnect();
+      };
     } else {
       disconnect();
     }
-
-    return () => {
-      disconnect();
-    };
-  }, [enabled, symbols.join(',')]);
+  }, [enabled, symbolsKey]);
 
   const getPrice = useCallback((symbol: string): StreamingPrice | undefined => {
     return prices.get(symbol.toUpperCase());
