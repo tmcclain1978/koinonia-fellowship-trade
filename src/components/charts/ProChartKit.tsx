@@ -1708,6 +1708,18 @@ export const ProChartKit = ({
           onChange={setCandleType}
         />
 
+        {/* Fit to Screen Button - Prominent standalone button */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="gap-2"
+          onClick={fitToData}
+          title="Auto-adjust zoom to show all visible candles optimally"
+        >
+          <Focus className="w-4 h-4" />
+          <span className="text-xs">Fit</span>
+        </Button>
+
         {/* Y-Axis Scale Control */}
         <Popover open={showScaleControls} onOpenChange={setShowScaleControls}>
           <PopoverTrigger asChild>
