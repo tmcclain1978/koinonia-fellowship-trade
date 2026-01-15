@@ -184,15 +184,33 @@ export const ProChartKit = ({
     }
   });
   
-  // Price precision (decimal places)
+  // Price precision (decimal places) - 'auto' uses -1 as sentinel
   const [pricePrecision, setPricePrecision] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('prochartkit-price-precision');
-      return saved ? parseInt(saved, 10) : 2;
+      if (saved === 'auto') return -1; // -1 represents auto mode
+      return saved ? parseInt(saved, 10) : -1; // Default to auto
     } catch {
-      return 2;
+      return -1;
     }
   });
+  
+  // Helper to determine if auto precision is enabled
+  const isAutoPrecision = pricePrecision === -1;
+  
+  // Calculate effective precision based on current price (for auto mode)
+  const getEffectivePrecision = useCallback((price: number | null): number => {
+    if (!isAutoPrecision) return pricePrecision;
+    
+    // Auto-determine precision based on price level
+    if (!price || price === 0) return 2;
+    if (price < 0.01) return 6;      // Micro-penny stocks
+    if (price < 0.1) return 5;       // Sub-penny stocks  
+    if (price < 1) return 4;         // Penny stocks under $1
+    if (price < 10) return 3;        // Stocks under $10
+    if (price < 1000) return 2;      // Most stocks
+    return 1;                         // Very high-priced stocks
+  }, [isAutoPrecision, pricePrecision]);
   
   // Volume profile state
   const [showVolumeProfile, setShowVolumeProfile] = useState<boolean>(() => {
@@ -261,7 +279,7 @@ export const ProChartKit = ({
   // Persist price precision to localStorage when it changes
   useEffect(() => {
     try {
-      localStorage.setItem('prochartkit-price-precision', String(pricePrecision));
+      localStorage.setItem('prochartkit-price-precision', pricePrecision === -1 ? 'auto' : String(pricePrecision));
     } catch (e) {
       console.warn('Failed to save price precision to localStorage:', e);
     }
@@ -940,10 +958,14 @@ export const ProChartKit = ({
           const ticks: Array<{ coord: number; value: number | string; text: string }> = [];
           const startValue = Math.ceil(range.from / niceStep) * niceStep;
           
+          // Get effective precision - use auto calculation or manual setting
+          const midPrice = (range.from + range.to) / 2;
+          const effectivePrecision = getEffectivePrecision(midPrice);
+          
           for (let value = startValue; value <= range.to; value += niceStep) {
-            // Use the user-defined price precision, but ensure at least enough decimals for the step
+            // Ensure at least enough decimals for the step size
             const minDecimalsForStep = niceStep < 0.001 ? 4 : niceStep < 0.01 ? 3 : niceStep < 0.1 ? 2 : niceStep < 1 ? 1 : 0;
-            const decimals = Math.max(pricePrecision, minDecimalsForStep);
+            const decimals = Math.max(effectivePrecision, minDecimalsForStep);
             
             ticks.push({
               coord: 0, // klinecharts will calculate the coord
@@ -956,7 +978,7 @@ export const ProChartKit = ({
         }
       }
     });
-  }, [yAxisScale, pricePrecision]);
+  }, [yAxisScale, pricePrecision, getEffectivePrecision]);
 
   // Fit to data - automatically adjust scale to frame visible candles perfectly
   const fitToData = useCallback(() => {
@@ -1800,6 +1822,18 @@ export const ProChartKit = ({
           <span className="text-xs">Fit</span>
         </Button>
 
+        {/* Quick Time Format Toggle */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="gap-1.5"
+          onClick={() => setTimeFormat(timeFormat === '12h' ? '24h' : '12h')}
+          title={`Switch to ${timeFormat === '12h' ? '24-hour' : '12-hour'} format`}
+        >
+          <Clock className="w-4 h-4" />
+          <span className="text-xs font-mono">{timeFormat === '12h' ? '12H' : '24H'}</span>
+        </Button>
+
         {/* Y-Axis Scale Control */}
         <Popover open={showScaleControls} onOpenChange={setShowScaleControls}>
           <PopoverTrigger asChild>
@@ -1856,21 +1890,37 @@ export const ProChartKit = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Price Decimals</span>
-                  <span className="text-xs text-muted-foreground">{pricePrecision}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {isAutoPrecision ? `Auto (${getEffectivePrecision(currentPrice)})` : pricePrecision}
+                  </span>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap">
+                  <Button
+                    variant={isAutoPrecision ? "default" : "outline"}
+                    size="sm"
+                    className={`text-xs ${isAutoPrecision ? 'bg-primary text-primary-foreground' : ''}`}
+                    onClick={() => setPricePrecision(-1)}
+                    title="Automatically adjust precision based on stock price"
+                  >
+                    Auto
+                  </Button>
                   {[0, 1, 2, 3, 4].map((p) => (
                     <Button
                       key={p}
                       variant={pricePrecision === p ? "default" : "outline"}
                       size="sm"
-                      className="flex-1 text-xs"
+                      className="text-xs min-w-[2rem]"
                       onClick={() => setPricePrecision(p)}
                     >
                       {p}
                     </Button>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  {isAutoPrecision 
+                    ? 'Auto mode adjusts decimals based on stock price (more for penny stocks)' 
+                    : `Fixed at ${pricePrecision} decimal places`}
+                </p>
               </div>
               
               {/* Separator */}
@@ -1921,7 +1971,7 @@ export const ProChartKit = ({
                 className="w-full"
                 onClick={() => {
                   setYAxisScale(10);
-                  setPricePrecision(2);
+                  setPricePrecision(-1); // Auto mode as default
                   setTimeFormat('12h');
                 }}
               >
