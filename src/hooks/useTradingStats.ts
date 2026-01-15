@@ -94,8 +94,10 @@ export const useTradingStats = () => {
         (t) => new Date(t.executed_at) >= today
       ).length;
 
-      // Calculate total trades
-      const totalTrades = autoTrades.length + paperTrades.length;
+      // Calculate total trades - only count completed trades (those with profit_loss, i.e. round-trip trades)
+      // An entry + exit = 1 completed trade, not 2 separate trades
+      const completedPaperTrades = paperTrades.filter(t => t.profit_loss !== null);
+      const totalTrades = autoTrades.length + completedPaperTrades.length;
 
       // Calculate P&L from paper trades (actual profit_loss column)
       const paperPnL = paperTrades.reduce(

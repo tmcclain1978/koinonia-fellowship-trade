@@ -126,7 +126,8 @@ export const PaperTradingAnalytics = () => {
     }
 
     return {
-      totalTrades: trades.length,
+      // Count only completed trades (with profit_loss) - entry+exit = 1 trade
+      totalTrades: tradesWithPnL.length,
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
       winRate: tradesWithPnL.length > 0 ? (winningTrades.length / tradesWithPnL.length) * 100 : 0,

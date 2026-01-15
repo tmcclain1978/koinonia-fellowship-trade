@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +22,8 @@ import {
   Trophy,
   Coffee,
   Timer,
-  RefreshCw
+  RefreshCw,
+  BellOff
 } from "lucide-react";
 
 interface StreakData {
@@ -57,6 +60,17 @@ export const StreakTracker = ({
   const [loading, setLoading] = useState(true);
   const [breakTimerActive, setBreakTimerActive] = useState(false);
   const [breakTimeRemaining, setBreakTimeRemaining] = useState(0);
+  
+  // Break notification preference (persisted to localStorage)
+  const [breakNotificationsEnabled, setBreakNotificationsEnabled] = useState(() => {
+    const saved = localStorage.getItem('streak-break-notifications');
+    return saved !== 'false'; // Default to enabled
+  });
+
+  const handleBreakNotificationToggle = (enabled: boolean) => {
+    setBreakNotificationsEnabled(enabled);
+    localStorage.setItem('streak-break-notifications', String(enabled));
+  };
 
   // Fetch streak data from trades
   const fetchStreakData = async () => {
@@ -64,11 +78,13 @@ export const StreakTracker = ({
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // Fetch today's paper trades
+      // Fetch today's paper trades - only completed trades (with profit_loss)
+      // This counts round-trip trades (entry+exit = 1 trade)
       const { data: trades } = await supabase
         .from('paper_trades')
         .select('*')
         .gte('executed_at', today)
+        .not('profit_loss', 'is', null)
         .order('executed_at', { ascending: false });
 
       if (!trades || trades.length === 0) {
@@ -134,8 +150,8 @@ export const StreakTracker = ({
         consecutiveLosses,
       });
 
-      // Show break dialog after 3 consecutive losses
-      if (consecutiveLosses >= 3 && !breakTimerActive) {
+      // Show break dialog after 3 consecutive losses (only if notifications are enabled)
+      if (consecutiveLosses >= 3 && !breakTimerActive && breakNotificationsEnabled) {
         setShowBreakDialog(true);
         onBreakSuggested?.();
       }
@@ -235,15 +251,35 @@ export const StreakTracker = ({
               <span>Performance Streak</span>
               {loading && <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={fetchStreakData}
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={fetchStreakData}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </CardTitle>
+          {/* Break notification toggle */}
+          <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {breakNotificationsEnabled ? (
+                <Coffee className="w-4 h-4" />
+              ) : (
+                <BellOff className="w-4 h-4" />
+              )}
+              <Label htmlFor="break-notifications" className="text-xs cursor-pointer">
+                Break Reminders
+              </Label>
+            </div>
+            <Switch
+              id="break-notifications"
+              checked={breakNotificationsEnabled}
+              onCheckedChange={handleBreakNotificationToggle}
+            />
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
