@@ -88,6 +88,12 @@ export const ProChartKit = ({
       return [];
     }
   });
+
+  // IMPORTANT: keep an immediate ref to avoid race conditions (e.g. Clear All -> settings change re-applies old indicators)
+  const selectedIndicatorsRef = useRef<string[]>(selectedIndicators);
+  useEffect(() => {
+    selectedIndicatorsRef.current = selectedIndicators;
+  }, [selectedIndicators]);
   
   // Indicator settings (color, width, data source)
   const [indicatorSettings, setIndicatorSettings] = useState<IndicatorSettingsMap>(() => {
@@ -1934,6 +1940,10 @@ export const ProChartKit = ({
 
   // Handle indicator changes with proper pane management and custom styles
   const handleIndicatorChange = useCallback((indicators: string[], settings?: IndicatorSettingsMap) => {
+    // Always update state/ref even if the chart is temporarily not ready
+    selectedIndicatorsRef.current = indicators;
+    setSelectedIndicators(indicators);
+
     if (!chartRef.current) return;
 
     const chart = chartRef.current;
@@ -1986,18 +1996,18 @@ export const ProChartKit = ({
         }
       }
     });
-
-    setSelectedIndicators(indicators);
   }, [indicatorSettings]);
 
   // Handle indicator settings changes
   const handleIndicatorSettingsChange = useCallback((newSettings: IndicatorSettingsMap) => {
     setIndicatorSettings(newSettings);
-    // Re-apply indicators with new settings
-    if (chartRef.current && selectedIndicators.length > 0) {
-      handleIndicatorChange(selectedIndicators, newSettings);
+
+    // Re-apply indicators with new settings using the latest selection (avoids "Clear All" race)
+    const currentSelected = selectedIndicatorsRef.current;
+    if (chartRef.current && currentSelected.length > 0) {
+      handleIndicatorChange(currentSelected, newSettings);
     }
-  }, [selectedIndicators, handleIndicatorChange]);
+  }, [handleIndicatorChange]);
 
   return (
     <div className="space-y-4">
