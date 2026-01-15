@@ -395,11 +395,11 @@ const PaperTrading = () => {
           </Card>
 
           {/* Main Chart */}
-          <Card className="mb-1 h-[900px] overflow-hidden">
-            <CardContent className="p-0 h-full">
+          <Card className="mb-4">
+            <CardContent className="p-0">
               <ProChartKit 
                 symbol={symbol}
-                height={900}
+                height={500}
                 interval={chartInterval}
                 theme="dark"
                 showKoinoniaSignals={true}
