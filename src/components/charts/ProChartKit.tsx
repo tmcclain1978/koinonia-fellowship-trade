@@ -1938,7 +1938,7 @@ export const ProChartKit = ({
 
     const chart = chartRef.current;
     const currentSettings = settings || indicatorSettings;
-    
+
     // Remove all existing indicators
     chart.removeIndicator();
 
@@ -1948,36 +1948,39 @@ export const ProChartKit = ({
       if (indicatorConfig) {
         try {
           const { name, params, paneId } = indicatorConfig;
-          
+
           // Get custom settings for this indicator
           const customSettings = currentSettings[indicator] || getDefaultIndicatorSettings(indicator, index);
-          
+
           // Determine if this is an overlay indicator (on main chart) or separate pane
           const isOverlay = !paneId || ['SMA', 'EMA', 'BOLL', 'SAR', 'AVP'].includes(name);
-          
+
           // Build styles based on custom settings
           const customStyles = {
             lines: [
               { color: customSettings.color, size: customSettings.width },
               { color: customSettings.color, size: customSettings.width },
               { color: customSettings.color, size: customSettings.width },
-            ]
+            ],
           };
-          
-          if (isOverlay) {
-            // Add to main candle pane with custom styles
-            chart.createIndicator(name, true, { 
-              id: 'candle_pane', 
-              ...params,
-              styles: customStyles,
-            });
-          } else {
-            // Create in separate pane with custom styles
-            chart.createIndicator(name, false, {
-              ...params,
-              styles: customStyles,
-            });
-          }
+
+          // IMPORTANT: Use IndicatorCreate (1st arg) so calcParams/styles apply and so duplicates (e.g. SMA(20) + SMA(50)) can coexist.
+          const indicatorInstanceId = `ind_${indicator.replace(/[^a-z0-9]+/gi, '_')}`;
+
+          const indicatorCreate = {
+            id: indicatorInstanceId,
+            name,
+            ...(params || {}),
+            styles: customStyles,
+          };
+
+          const paneOptions = isOverlay
+            ? { id: 'candle_pane' }
+            : paneId
+              ? { id: paneId }
+              : undefined;
+
+          chart.createIndicator(indicatorCreate as any, isOverlay, paneOptions);
         } catch (error) {
           console.warn(`Failed to create indicator ${indicator}:`, error);
         }
