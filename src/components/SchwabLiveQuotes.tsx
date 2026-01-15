@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +42,9 @@ export const SchwabLiveQuotes = ({
     resume 
   } = useSchwabStreaming({
     symbols,
-    refreshInterval: 1000,
+    refreshInterval: 15000, // Reduced from 1000ms to 15000ms to prevent rate limiting
     enabled: !isPaused,
+    useWebSocket: false, // Use polling only to reduce connection spam
   });
 
   const addSymbol = () => {
@@ -247,3 +248,6 @@ export const SchwabLiveQuotes = ({
     </Card>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export default memo(SchwabLiveQuotes);

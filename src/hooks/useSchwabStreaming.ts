@@ -41,9 +41,35 @@ interface UseSchwabStreamingOptions {
 
 type StreamingStatus = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'error' | 'polling';
 
+// Global connection manager to prevent multiple hooks from spamming connections
+const connectionManager = {
+  activeHooks: 0,
+  lastAttemptTime: 0,
+  attemptCount: 0,
+  isPollingMode: false,
+  
+  canAttemptConnection(): boolean {
+    const now = Date.now();
+    // Rate limit: max 3 attempts per 60 seconds globally
+    if (now - this.lastAttemptTime < 20000) {
+      this.attemptCount++;
+      if (this.attemptCount > 3) {
+        this.isPollingMode = true;
+        return false;
+      }
+    } else if (now - this.lastAttemptTime > 60000) {
+      // Reset after 60 seconds of no attempts
+      this.attemptCount = 0;
+      this.isPollingMode = false;
+    }
+    this.lastAttemptTime = now;
+    return !this.isPollingMode;
+  }
+};
+
 export const useSchwabStreaming = ({
   symbols,
-  refreshInterval = 10000, // Increased to 10s to reduce API calls significantly
+  refreshInterval = 15000, // Increased to 15s to reduce API calls significantly
   enabled = true,
   useWebSocket = true,
   subscribeToAccountActivity = false,
@@ -63,6 +89,8 @@ export const useSchwabStreaming = ({
   const reconnectAttemptsRef = useRef(0);
   const subscribedSymbolsRef = useRef<string[]>([]);
   const isWebSocketActiveRef = useRef(false);
+  const isInitializedRef = useRef(false);
+  const symbolsKeyRef = useRef<string>('');
   
   // WebSocket connection rate limiting refs - must be with other refs for consistent hook ordering
   const wsConnectionAttemptRef = useRef<number>(0);
@@ -71,6 +99,9 @@ export const useSchwabStreaming = ({
   // Refs for onPriceUpdate callback to avoid stale closures
   const onPriceUpdateRef = useRef(onPriceUpdate);
   onPriceUpdateRef.current = onPriceUpdate;
+  
+  // Memoized symbols key to prevent unnecessary re-renders
+  const symbolsKey = symbols.slice().sort().join(',');
 
   // Process quote updates (shared between WS and polling)
   const processQuotes = useCallback((fetchedQuotes: SchwabQuote[]) => {
@@ -242,21 +273,23 @@ export const useSchwabStreaming = ({
   const connectWebSocket = useCallback(async (): Promise<boolean> => {
     if (!enabled || !useWebSocket) return false;
     
-    // Rate limit connection attempts - max 3 attempts per 30 seconds
+    // Use global connection manager to prevent spam across multiple hook instances
+    if (!connectionManager.canAttemptConnection()) {
+      // Silent fallback - don't spam console
+      return false;
+    }
+    
+    // Also check local rate limiting
     const now = Date.now();
     const timeSinceLastAttempt = now - lastWsAttemptTimeRef.current;
     
-    if (timeSinceLastAttempt < 10000) { // Less than 10 seconds since last attempt
+    if (timeSinceLastAttempt < 15000) { // 15 seconds between local attempts
       wsConnectionAttemptRef.current++;
-      if (wsConnectionAttemptRef.current > 3) {
-        console.log('[useSchwabStreaming] Too many connection attempts, using polling');
+      if (wsConnectionAttemptRef.current > 2) {
         return false;
       }
-    } else {
-      // Reset counter after 30 seconds
-      if (timeSinceLastAttempt > 30000) {
-        wsConnectionAttemptRef.current = 0;
-      }
+    } else if (timeSinceLastAttempt > 60000) {
+      wsConnectionAttemptRef.current = 0;
     }
     
     lastWsAttemptTimeRef.current = now;
@@ -264,7 +297,6 @@ export const useSchwabStreaming = ({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.log('[useSchwabStreaming] No session, falling back to polling');
         return false;
       }
 
@@ -279,7 +311,10 @@ export const useSchwabStreaming = ({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('[useSchwabStreaming] WebSocket connected');
+        // Only log on first successful connection
+        if (reconnectAttemptsRef.current === 0) {
+          console.log('[useSchwabStreaming] WebSocket connected');
+        }
         setStatus('connected');
         reconnectAttemptsRef.current = 0;
         wsConnectionAttemptRef.current = 0; // Reset on successful connection
@@ -288,7 +323,6 @@ export const useSchwabStreaming = ({
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('[useSchwabStreaming] Received:', message.type);
 
           if (message.type === 'connected') {
             setStatus('authenticated');
@@ -372,9 +406,8 @@ export const useSchwabStreaming = ({
       clearTimeout(reconnectTimeoutRef.current);
     }
 
-    // Max 5 reconnect attempts, then stay on polling permanently
+    // Max 5 reconnect attempts, then stay on polling permanently (silently)
     if (reconnectAttemptsRef.current >= 5) {
-      console.log('[useSchwabStreaming] Max reconnects reached, staying on polling');
       if (!intervalRef.current && enabled && symbols.length > 0) {
         startPolling();
       }
@@ -452,21 +485,32 @@ export const useSchwabStreaming = ({
     }
   }, [enabled, symbols, refreshInterval, fetchQuotes]);
 
-  // Connect/disconnect based on enabled state
+  // Connect/disconnect based on enabled state - debounced to prevent rapid re-connections
   useEffect(() => {
+    // Skip if symbols haven't actually changed
+    if (symbolsKeyRef.current === symbolsKey && isInitializedRef.current) {
+      return;
+    }
+    symbolsKeyRef.current = symbolsKey;
+    isInitializedRef.current = true;
+    
     if (enabled && symbols.length > 0) {
-      // Try WebSocket first
-      if (useWebSocket) {
-        connectWebSocket().then(connected => {
-          if (!connected) {
-            startPolling();
-          }
-        });
-      } else {
-        startPolling();
-      }
+      // Debounce connection attempts
+      const connectionTimeout = setTimeout(() => {
+        // Try WebSocket first, but only if global manager allows
+        if (useWebSocket && !connectionManager.isPollingMode) {
+          connectWebSocket().then(connected => {
+            if (!connected && !intervalRef.current) {
+              startPolling();
+            }
+          });
+        } else if (!intervalRef.current) {
+          startPolling();
+        }
+      }, 100); // Small debounce
       
       return () => {
+        clearTimeout(connectionTimeout);
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
@@ -488,7 +532,7 @@ export const useSchwabStreaming = ({
       }
       setIsConnected(false);
     }
-  }, [enabled, symbols.join(','), useWebSocket, connectWebSocket, startPolling]);
+  }, [enabled, symbolsKey, useWebSocket, connectWebSocket, startPolling]);
 
   // Update subscriptions when symbols change (for WebSocket)
   useEffect(() => {

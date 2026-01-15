@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -190,10 +190,13 @@ export const LivePriceDisplay = ({
         {/* Last Update */}
         {isConnected && (
           <div className="mt-4 text-xs text-muted-foreground text-center">
-            Streaming live market data • Updates every 250ms
+            Streaming live market data • Updates every 1s
           </div>
         )}
       </CardContent>
     </Card>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export default memo(LivePriceDisplay);
