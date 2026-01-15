@@ -149,6 +149,40 @@ const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
   { id: "ZigZag", label: "Zig Zag", category: "Support/Resistance", description: "Zig Zag indicator", displayType: "overlay" },
 ];
 
+// Indicator presets for quick selection
+const INDICATOR_PRESETS = {
+  dayTrading: {
+    name: "Day Trading",
+    description: "RSI, MACD, VWAP, Volume",
+    indicators: ["RSI(14)", "MACD", "VWAP", "Volume"],
+  },
+  swingTrading: {
+    name: "Swing Trading", 
+    description: "SMA 20/50, RSI, MACD",
+    indicators: ["SMA(20)", "SMA(50)", "RSI(14)", "MACD"],
+  },
+  scalping: {
+    name: "Scalping",
+    description: "EMA 9/20, RSI 7, Stochastic",
+    indicators: ["EMA(9)", "EMA(20)", "RSI(7)", "Stochastic"],
+  },
+  trendFollowing: {
+    name: "Trend Following",
+    description: "SMA 50/200, ADX, Supertrend",
+    indicators: ["SMA(50)", "SMA(200)", "ADX(14)", "Supertrend"],
+  },
+  momentum: {
+    name: "Momentum",
+    description: "RSI, MACD, Stochastic RSI, CCI",
+    indicators: ["RSI(14)", "MACD", "StochRSI", "CCI(14)"],
+  },
+  volatility: {
+    name: "Volatility",
+    description: "BB, ATR, KC",
+    indicators: ["BB(20,2)", "ATR(14)", "KC(20,1.5)"],
+  },
+};
+
 // Helper component for display type badge
 const DisplayTypeBadge = ({ type }: { type: DisplayType }) => (
   <Badge 
@@ -323,6 +357,43 @@ export const IndicatorPanel = ({
     }
   };
 
+  // Apply a preset set of indicators
+  const applyPreset = (presetKey: keyof typeof INDICATOR_PRESETS) => {
+    const preset = INDICATOR_PRESETS[presetKey];
+    const newIndicators = [...new Set([...selectedIndicators, ...preset.indicators])];
+    onIndicatorChange(newIndicators);
+    
+    // Add default settings for new indicators
+    if (onSettingsChange) {
+      const newSettings = { ...indicatorSettings };
+      preset.indicators.forEach((id, index) => {
+        if (!newSettings[id]) {
+          newSettings[id] = getDefaultIndicatorSettings(id, Object.keys(newSettings).length);
+        }
+      });
+      onSettingsChange(newSettings);
+    }
+  };
+
+  // Select all indicators in a category
+  const selectAllInCategory = (category: string) => {
+    const categoryIndicators = AVAILABLE_INDICATORS
+      .filter(ind => ind.category === category)
+      .map(ind => ind.id);
+    const newIndicators = [...new Set([...selectedIndicators, ...categoryIndicators])];
+    onIndicatorChange(newIndicators);
+    
+    if (onSettingsChange) {
+      const newSettings = { ...indicatorSettings };
+      categoryIndicators.forEach((id, index) => {
+        if (!newSettings[id]) {
+          newSettings[id] = getDefaultIndicatorSettings(id, Object.keys(newSettings).length);
+        }
+      });
+      onSettingsChange(newSettings);
+    }
+  };
+
   const filteredIndicators = AVAILABLE_INDICATORS.filter(indicator => {
     const matchesSearch = indicator.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           indicator.description?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -451,6 +522,25 @@ export const IndicatorPanel = ({
               <span>= customize</span>
             </div>
           </div>
+          
+          {/* Quick Presets */}
+          <div className="pt-2 border-t mt-2">
+            <div className="text-xs text-muted-foreground mb-1.5">Quick Presets:</div>
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(INDICATOR_PRESETS).map(([key, preset]) => (
+                <Button
+                  key={key}
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  onClick={() => applyPreset(key as keyof typeof INDICATOR_PRESETS)}
+                  title={preset.description}
+                >
+                  {preset.name}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
         
         <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
@@ -473,9 +563,19 @@ export const IndicatorPanel = ({
               {activeCategory === "All" ? (
                 Object.entries(groupedIndicators).map(([category, indicators]) => (
                   <div key={category} className="space-y-2">
-                    <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      {category}
-                    </h5>
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        {category}
+                      </h5>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 text-[10px] px-1.5"
+                        onClick={() => selectAllInCategory(category)}
+                      >
+                        Select All
+                      </Button>
+                    </div>
                     <div className="space-y-1">
                       {indicators.map(indicator => renderIndicatorRow(indicator))}
                     </div>

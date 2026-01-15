@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { TrendingUp, TrendingDown, X, Minus, Plus } from "lucide-react";
+import { TrendingUp, TrendingDown, X, Minus, Plus, Edit } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { EditableExitStrategy, ExitStrategy } from "@/components/options/EditableExitStrategy";
 
 interface Position {
   symbol: string;
@@ -34,14 +35,34 @@ interface OpenPositionsProps {
   positions: Position[];
   onPositionClick?: (position: Position) => void;
   onPositionClosed?: () => void;
+  onExitStrategyChange?: (position: Position, strategy: ExitStrategy) => void;
 }
 
-export const OpenPositions = ({ positions, onPositionClick, onPositionClosed }: OpenPositionsProps) => {
+export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, onExitStrategyChange }: OpenPositionsProps) => {
   const { toast } = useToast();
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [closeQuantity, setCloseQuantity] = useState(1);
   const [closing, setClosing] = useState(false);
+  
+  // Exit strategy editing
+  const [exitStrategyDialogOpen, setExitStrategyDialogOpen] = useState(false);
+  const [exitStrategyPosition, setExitStrategyPosition] = useState<Position | null>(null);
+  
+  const handleOpenExitStrategyDialog = (e: React.MouseEvent, position: Position) => {
+    e.stopPropagation();
+    setExitStrategyPosition(position);
+    setExitStrategyDialogOpen(true);
+  };
+  
+  const handleSaveExitStrategy = (strategy: ExitStrategy) => {
+    if (exitStrategyPosition) {
+      onExitStrategyChange?.(exitStrategyPosition, strategy);
+      // Save to localStorage as fallback
+      const key = `exit_strategy_${exitStrategyPosition.symbol}_${exitStrategyPosition.strike || 'stock'}`;
+      localStorage.setItem(key, JSON.stringify(strategy));
+    }
+  };
 
   const handleOpenCloseDialog = (e: React.MouseEvent, position: Position) => {
     e.stopPropagation();
@@ -144,7 +165,7 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed }: 
                         </p>
                       )}
                     </div>
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2">
                       <div className="text-right">
                         <div className={`flex items-center gap-1 text-lg font-bold ${pl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {pl >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
@@ -154,6 +175,15 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed }: 
                           {pl >= 0 ? '+' : ''}{plPercentage}%
                         </p>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => handleOpenExitStrategyDialog(e, position)}
+                        className="shrink-0"
+                        title="Edit Exit Strategy"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -349,6 +379,16 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed }: 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Exit Strategy Dialog */}
+      {exitStrategyPosition && (
+        <EditableExitStrategy
+          position={exitStrategyPosition}
+          open={exitStrategyDialogOpen}
+          onOpenChange={setExitStrategyDialogOpen}
+          onSave={handleSaveExitStrategy}
+        />
+      )}
     </>
   );
 };
