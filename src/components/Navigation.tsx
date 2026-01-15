@@ -130,6 +130,16 @@ const Navigation = () => {
                 Analytics
               </Link>
               <Link 
+                to="/trading-journal"
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/trading-journal" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Journal
+              </Link>
+              <Link 
                 to="/advanced-analytics"
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/advanced-analytics" 
@@ -260,6 +270,17 @@ const Navigation = () => {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Analytics
+                </Link>
+                <Link 
+                  to="/trading-journal"
+                  className={`text-sm font-medium ${
+                    location.pathname === "/trading-journal" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Journal
                 </Link>
                 <Link 
                   to="/academy"
