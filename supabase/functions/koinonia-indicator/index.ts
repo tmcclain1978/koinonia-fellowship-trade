@@ -771,6 +771,55 @@ Format your response as JSON with this structure:
     const analysisText = aiData.choices[0].message.content;
     const analysis = JSON.parse(analysisText);
 
+    // Log the prediction for accuracy tracking
+    try {
+      const tradingDate = new Date();
+      tradingDate.setDate(tradingDate.getDate() + 1); // Prediction is for next trading day
+      
+      // Skip weekends for trading date
+      if (tradingDate.getDay() === 0) tradingDate.setDate(tradingDate.getDate() + 1); // Sunday -> Monday
+      if (tradingDate.getDay() === 6) tradingDate.setDate(tradingDate.getDate() + 2); // Saturday -> Monday
+      
+      const direction = analysis.optionStrategy?.type === 'CALL' ? 'bullish' : 
+                       analysis.optionStrategy?.type === 'PUT' ? 'bearish' : 'neutral';
+      
+      // Calculate predicted high/low based on entry and exit signals
+      const entryPrice = analysis.entrySignal?.price || currentPrice;
+      const takeProfitSignals = (analysis.exitSignals || []).filter((s: any) => s.type === 'take_profit');
+      const stopLossSignal = (analysis.exitSignals || []).find((s: any) => s.type === 'stop_loss');
+      
+      const predictedHigh = direction === 'bullish' 
+        ? Math.max(entryPrice, ...takeProfitSignals.map((s: any) => s.price))
+        : entryPrice;
+      const predictedLow = direction === 'bearish'
+        ? Math.min(entryPrice, ...takeProfitSignals.map((s: any) => s.price))
+        : (stopLossSignal?.price || entryPrice * 0.98);
+      
+      const { error: logError } = await supabase
+        .from('ai_prediction_logs')
+        .insert({
+          user_id: userId,
+          symbol: symbol.toUpperCase(),
+          predicted_at: new Date().toISOString(),
+          predicted_direction: direction,
+          confidence: analysis.overallConfidence || 75,
+          predicted_high: predictedHigh,
+          predicted_low: predictedLow,
+          key_level: entryPrice,
+          reasoning: analysis.analysis || analysis.entrySignal?.reasoning || null,
+          trading_date: tradingDate.toISOString().split('T')[0],
+        });
+      
+      if (logError) {
+        console.error('[koinonia] Failed to log prediction:', logError);
+      } else {
+        console.log(`[koinonia] Logged prediction for ${symbol}: ${direction} with ${analysis.overallConfidence}% confidence`);
+      }
+    } catch (logErr) {
+      console.error('[koinonia] Error logging prediction:', logErr);
+      // Don't fail the request if logging fails
+    }
+
     // Return the signals with sentiment data and candlestick patterns
     return new Response(
       JSON.stringify({
@@ -799,6 +848,7 @@ Format your response as JSON with this structure:
         isEnterprise,
         requiresPayment: !isEnterprise,
         usingFallbackData,
+        predictionLogged: true,
         note: usingFallbackData ? 'Using estimated data - market may be closed or API temporarily unavailable' : undefined
       }),
       {

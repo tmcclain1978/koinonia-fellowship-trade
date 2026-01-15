@@ -53,6 +53,8 @@ export const AIPredictionTracker = ({ userId, symbol }: AIPredictionTrackerProps
     bearishAccuracy: 0,
   });
 
+  const [evaluating, setEvaluating] = useState(false);
+
   const fetchPredictions = async () => {
     if (!userId) return;
     
@@ -82,6 +84,32 @@ export const AIPredictionTracker = ({ userId, symbol }: AIPredictionTrackerProps
       toast.error('Failed to load prediction history');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const evaluatePendingPredictions = async () => {
+    if (!userId) return;
+    
+    setEvaluating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('evaluate-ai-predictions', {
+        body: { userId }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.evaluated > 0) {
+        toast.success(`Evaluated ${data.evaluated} predictions`);
+        // Refresh the predictions list
+        await fetchPredictions();
+      } else {
+        toast.info('No predictions ready for evaluation yet');
+      }
+    } catch (error) {
+      console.error('Error evaluating predictions:', error);
+      toast.error('Failed to evaluate predictions');
+    } finally {
+      setEvaluating(false);
     }
   };
 
@@ -197,12 +225,27 @@ export const AIPredictionTracker = ({ userId, symbol }: AIPredictionTrackerProps
             size="sm" 
             onClick={fetchPredictions}
             disabled={loading}
+            title="Refresh predictions"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={evaluatePendingPredictions}
+            disabled={evaluating || predictions.length === 0}
+            title="Evaluate past predictions"
+          >
+            {evaluating ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-1" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 mr-1" />
+            )}
+            Evaluate
           </Button>
         </div>
       </div>
@@ -270,8 +313,9 @@ export const AIPredictionTracker = ({ userId, symbol }: AIPredictionTrackerProps
           ) : predictions.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
               <Brain className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No predictions yet</p>
-              <p className="text-xs">Run AI analysis to start tracking</p>
+              <p className="font-medium">No predictions yet</p>
+              <p className="text-xs mt-1">Use the Koinonia AI Indicator to generate signals.</p>
+              <p className="text-xs mt-1">Each signal will be logged and tracked for accuracy.</p>
             </div>
           ) : (
             <div className="space-y-2">
