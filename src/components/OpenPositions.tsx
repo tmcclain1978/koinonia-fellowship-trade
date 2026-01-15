@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { TrendingUp, TrendingDown, X, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, X, Minus, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -234,23 +234,19 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed }: 
 
               {/* Quantity Selector */}
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label>Contracts to Close</Label>
-                  <span className="text-sm text-muted-foreground">
-                    {closeQuantity} of {selectedPosition.quantity}
-                  </span>
-                </div>
+                <Label>Contracts to Close</Label>
                 
-                <Slider
-                  value={[closeQuantity]}
-                  onValueChange={([value]) => setCloseQuantity(value)}
-                  min={1}
-                  max={selectedPosition.quantity}
-                  step={1}
-                  className="w-full"
-                />
-
-                <div className="flex items-center gap-2">
+                {/* Numerical Input with +/- buttons */}
+                <div className="flex items-center justify-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setCloseQuantity(Math.max(1, closeQuantity - 1))}
+                    disabled={closeQuantity <= 1}
+                  >
+                    <Minus className="w-4 h-4" />
+                  </Button>
+                  
                   <Input
                     type="number"
                     min={1}
@@ -260,24 +256,48 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed }: 
                       const val = parseInt(e.target.value) || 1;
                       setCloseQuantity(Math.min(Math.max(val, 1), selectedPosition.quantity));
                     }}
-                    className="w-20"
+                    className="w-24 text-center text-lg font-bold"
                   />
-                  <div className="flex gap-1">
-                    {[25, 50, 75, 100].map((pct) => {
-                      const qty = Math.max(1, Math.round(selectedPosition.quantity * (pct / 100)));
-                      return (
-                        <Button
-                          key={pct}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCloseQuantity(qty)}
-                          className={closeQuantity === qty ? 'border-primary' : ''}
-                        >
-                          {pct}%
-                        </Button>
-                      );
-                    })}
-                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setCloseQuantity(Math.min(selectedPosition.quantity, closeQuantity + 1))}
+                    disabled={closeQuantity >= selectedPosition.quantity}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  {closeQuantity} of {selectedPosition.quantity} contracts
+                </p>
+
+                {/* Slider */}
+                <Slider
+                  value={[closeQuantity]}
+                  onValueChange={([value]) => setCloseQuantity(value)}
+                  min={1}
+                  max={selectedPosition.quantity}
+                  step={1}
+                  className="w-full"
+                />
+
+                {/* Quick percentage buttons */}
+                <div className="flex justify-center gap-2">
+                  {[25, 50, 75, 100].map((pct) => {
+                    const qty = Math.max(1, Math.round(selectedPosition.quantity * (pct / 100)));
+                    return (
+                      <Button
+                        key={pct}
+                        variant={closeQuantity === qty ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCloseQuantity(qty)}
+                      >
+                        {pct}%
+                      </Button>
+                    );
+                  })}
                 </div>
 
                 {/* Estimated P/L for this close */}
