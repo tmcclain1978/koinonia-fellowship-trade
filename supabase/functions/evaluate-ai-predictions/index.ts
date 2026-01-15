@@ -23,6 +23,8 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const FMP_API_KEY = Deno.env.get('FMP_API_KEY');
+    const POLYGON_API_KEY = Deno.env.get('POLYGON_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { userId, predictionId, actualData } = await req.json();
@@ -66,7 +68,7 @@ serve(async (req) => {
       });
     }
 
-    // Otherwise, fetch unevaluated predictions for the user
+    // Fetch unevaluated predictions for the user
     const { data: predictions, error } = await supabase
       .from('ai_prediction_logs')
       .select('*')
@@ -78,9 +80,8 @@ serve(async (req) => {
 
     console.log(`Found ${predictions?.length || 0} unevaluated predictions`);
 
-    // For each prediction, we'd need to fetch actual market data
-    // This is a placeholder - in production you'd fetch from your market data source
     const evaluated: string[] = [];
+    const errors: string[] = [];
     
     for (const prediction of predictions || []) {
       // Skip if trading date is today or future
@@ -90,15 +91,50 @@ serve(async (req) => {
       
       if (tradingDate >= today) continue;
 
-      // Here you would fetch actual market data for the symbol on that trading date
-      // For now, we'll mark these as needing manual evaluation
-      console.log(`Prediction ${prediction.id} for ${prediction.symbol} on ${prediction.trading_date} needs evaluation`);
+      // Fetch actual market data for the symbol on that trading date
+      const actualMarketData = await fetchHistoricalData(
+        prediction.symbol, 
+        prediction.trading_date,
+        FMP_API_KEY,
+        POLYGON_API_KEY
+      );
+
+      if (actualMarketData) {
+        const evaluation = calculateAccuracy(prediction, actualMarketData);
+        
+        const { error: updateError } = await supabase
+          .from('ai_prediction_logs')
+          .update({
+            actual_open: actualMarketData.open,
+            actual_high: actualMarketData.high,
+            actual_low: actualMarketData.low,
+            actual_close: actualMarketData.close,
+            direction_correct: evaluation.directionCorrect,
+            high_accuracy_pct: evaluation.highAccuracy,
+            low_accuracy_pct: evaluation.lowAccuracy,
+            overall_score: evaluation.overallScore,
+            evaluated_at: new Date().toISOString(),
+          })
+          .eq('id', prediction.id);
+
+        if (updateError) {
+          console.error(`Error updating prediction ${prediction.id}:`, updateError);
+          errors.push(prediction.id);
+        } else {
+          evaluated.push(prediction.id);
+          console.log(`Evaluated prediction ${prediction.id} for ${prediction.symbol}: score=${evaluation.overallScore}%`);
+        }
+      } else {
+        console.log(`Could not fetch market data for ${prediction.symbol} on ${prediction.trading_date}`);
+      }
     }
 
     return new Response(JSON.stringify({ 
       success: true, 
       message: `Found ${predictions?.length || 0} predictions needing evaluation`,
-      evaluated: evaluated.length 
+      evaluated: evaluated.length,
+      evaluatedIds: evaluated,
+      errors: errors.length
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -111,6 +147,66 @@ serve(async (req) => {
     });
   }
 });
+
+async function fetchHistoricalData(
+  symbol: string, 
+  date: string,
+  fmpApiKey?: string,
+  polygonApiKey?: string
+): Promise<{ open: number; high: number; low: number; close: number } | null> {
+  
+  // Try FMP first
+  if (fmpApiKey) {
+    try {
+      const resp = await fetch(
+        `https://financialmodelingprep.com/api/v3/historical-price-full/${symbol}?from=${date}&to=${date}&apikey=${fmpApiKey}`
+      );
+      
+      if (resp.ok) {
+        const data = await resp.json();
+        const candle = data?.historical?.[0];
+        
+        if (candle) {
+          return {
+            open: Number(candle.open),
+            high: Number(candle.high),
+            low: Number(candle.low),
+            close: Number(candle.close),
+          };
+        }
+      }
+    } catch (e) {
+      console.error('FMP historical fetch error:', e);
+    }
+  }
+
+  // Try Polygon
+  if (polygonApiKey) {
+    try {
+      const resp = await fetch(
+        `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${date}/${date}?adjusted=true&apiKey=${polygonApiKey}`
+      );
+      
+      if (resp.ok) {
+        const data = await resp.json();
+        const candle = data?.results?.[0];
+        
+        if (candle) {
+          return {
+            open: Number(candle.o),
+            high: Number(candle.h),
+            low: Number(candle.l),
+            close: Number(candle.c),
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Polygon historical fetch error:', e);
+    }
+  }
+
+  return null;
+}
 
 function calculateAccuracy(
   prediction: PredictionLog,
