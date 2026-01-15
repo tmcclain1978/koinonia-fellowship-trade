@@ -23,6 +23,7 @@ import { DrawdownChart } from "@/components/analytics/DrawdownChart";
 import { TimeOfDayHeatmap } from "@/components/analytics/TimeOfDayHeatmap";
 import { PositionSizeCalculator } from "@/components/analytics/PositionSizeCalculator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ConditionalExitBuilder } from "@/components/options/ConditionalExitBuilder";
 
 const PaperTrading = () => {
   const navigate = useNavigate();
@@ -994,6 +995,17 @@ const PaperTrading = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Conditional Exit Strategy Builder */}
+            <ConditionalExitBuilder
+              onStrategyChange={(strategy) => {
+                console.log('Paper trading exit strategy updated:', strategy);
+              }}
+              positionValue={formData.price && formData.quantity 
+                ? parseFloat(formData.price) * parseFloat(formData.quantity) * 100 
+                : 1000
+              }
+            />
           </div>
         </div>
 
