@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { init, dispose, Chart, KLineData, CandleType, LineType, ActionType, Crosshair } from "klinecharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2, Focus } from "lucide-react";
+import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2, Focus, Palette } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -212,6 +212,45 @@ export const ProChartKit = ({
     return 1;                         // Very high-priced stocks
   }, [isAutoPrecision, pricePrecision]);
   
+  // Signal line colors - customizable
+  const [signalEntryColor, setSignalEntryColor] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-entry-color');
+      return saved || '#f97316'; // Default: orange
+    } catch {
+      return '#f97316';
+    }
+  });
+  
+  const [signalStopLossColor, setSignalStopLossColor] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-stoploss-color');
+      return saved || '#3b82f6'; // Default: blue
+    } catch {
+      return '#3b82f6';
+    }
+  });
+  
+  const [signalTarget1Color, setSignalTarget1Color] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-target1-color');
+      return saved || '#a855f7'; // Default: purple
+    } catch {
+      return '#a855f7';
+    }
+  });
+  
+  const [signalTarget2Color, setSignalTarget2Color] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-signal-target2-color');
+      return saved || '#8b5cf6'; // Default: lighter purple
+    } catch {
+      return '#8b5cf6';
+    }
+  });
+  
+  const [showSignalColorControls, setShowSignalColorControls] = useState(false);
+  
   // Volume profile state
   const [showVolumeProfile, setShowVolumeProfile] = useState<boolean>(() => {
     try {
@@ -284,6 +323,18 @@ export const ProChartKit = ({
       console.warn('Failed to save price precision to localStorage:', e);
     }
   }, [pricePrecision]);
+  
+  // Persist signal colors to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-signal-entry-color', signalEntryColor);
+      localStorage.setItem('prochartkit-signal-stoploss-color', signalStopLossColor);
+      localStorage.setItem('prochartkit-signal-target1-color', signalTarget1Color);
+      localStorage.setItem('prochartkit-signal-target2-color', signalTarget2Color);
+    } catch (e) {
+      console.warn('Failed to save signal colors to localStorage:', e);
+    }
+  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color]);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -1375,7 +1426,7 @@ export const ProChartKit = ({
     setAiOverlayVisibility(prev => ({ ...prev, [overlay]: !prev[overlay] }));
   }, []);
 
-  // Add signal overlays to chart with colors
+  // Add signal overlays to chart with customizable colors
   const addSignalOverlays = useCallback((signal: any) => {
     if (!chartRef.current) return;
 
@@ -1384,14 +1435,14 @@ export const ProChartKit = ({
     // Remove existing overlays first
     chart.removeOverlay();
 
-    // Entry point overlay - GREEN
+    // Entry point overlay - using customizable color (default: orange)
     if (signal.signal?.entry_price) {
       chart.createOverlay({
         name: "horizontalStraightLine",
         points: [{ value: signal.signal.entry_price }],
         styles: {
           line: {
-            color: '#22c55e',
+            color: signalEntryColor,
             size: 2,
             style: LineType.Solid
           }
@@ -1400,14 +1451,14 @@ export const ProChartKit = ({
       });
     }
 
-    // Stop loss overlay - RED
+    // Stop loss overlay - using customizable color (default: blue)
     if (signal.signal?.stop_loss) {
       chart.createOverlay({
         name: "horizontalStraightLine",
         points: [{ value: signal.signal.stop_loss }],
         styles: {
           line: {
-            color: '#ef4444',
+            color: signalStopLossColor,
             size: 2,
             style: LineType.Dashed
           }
@@ -1416,8 +1467,8 @@ export const ProChartKit = ({
       });
     }
 
-    // Target overlays - PURPLE/BLUE gradient
-    const targetColors = ['#a855f7', '#8b5cf6', '#6366f1'];
+    // Target overlays - using customizable colors (default: purples)
+    const targetColors = [signalTarget1Color, signalTarget2Color, '#6366f1'];
     signal.signal?.targets?.forEach((target: number, index: number) => {
       chart.createOverlay({
         name: "horizontalStraightLine",
@@ -1432,9 +1483,9 @@ export const ProChartKit = ({
         extendData: `Target ${index + 1}: $${target.toFixed(2)}`
       });
     });
-  }, []);
+  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color]);
 
-  // Add entry/exit/stop overlays from props
+  // Add entry/exit/stop overlays from props - uses customizable colors
   useEffect(() => {
     if (!chartRef.current) return;
     
@@ -1449,7 +1500,7 @@ export const ProChartKit = ({
           name: "horizontalStraightLine",
           points: [{ value: entryPrice }],
           styles: {
-            line: { color: '#22c55e', size: 2, style: LineType.Solid }
+            line: { color: signalEntryColor, size: 2, style: LineType.Solid }
           },
           extendData: `Entry: $${entryPrice.toFixed(2)}`
         });
@@ -1460,7 +1511,7 @@ export const ProChartKit = ({
           name: "horizontalStraightLine",
           points: [{ value: exitPrice }],
           styles: {
-            line: { color: '#a855f7', size: 2, style: LineType.Dashed }
+            line: { color: signalTarget1Color, size: 2, style: LineType.Dashed }
           },
           extendData: `Exit: $${exitPrice.toFixed(2)}`
         });
@@ -1471,13 +1522,20 @@ export const ProChartKit = ({
           name: "horizontalStraightLine",
           points: [{ value: stopLoss }],
           styles: {
-            line: { color: '#ef4444', size: 2, style: LineType.Dashed }
+            line: { color: signalStopLossColor, size: 2, style: LineType.Dashed }
           },
           extendData: `Stop: $${stopLoss.toFixed(2)}`
         });
       }
     }
-  }, [entryPrice, exitPrice, stopLoss, koinoniaSignal]);
+  }, [entryPrice, exitPrice, stopLoss, koinoniaSignal, signalEntryColor, signalStopLossColor, signalTarget1Color]);
+  
+  // Re-apply signal overlays when colors change (if Koinonia signal is active)
+  useEffect(() => {
+    if (koinoniaSignal && chartRef.current) {
+      addSignalOverlays(koinoniaSignal);
+    }
+  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, koinoniaSignal, addSignalOverlays]);
   // Map interval format - handles all Trading page formats
   const mapInterval = (interval: string): string => {
     const map: Record<string, string> = {
@@ -2045,6 +2103,161 @@ export const ProChartKit = ({
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}
         />
+
+        {/* Signal Line Colors */}
+        <Popover open={showSignalColorControls} onOpenChange={setShowSignalColorControls}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Palette className="w-4 h-4" />
+              <span className="text-xs">Signals</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-4" align="start">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Signal Line Colors</span>
+              </div>
+              
+              {/* Entry Color */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-4 h-4 rounded border" 
+                    style={{ backgroundColor: signalEntryColor }}
+                  />
+                  <span className="text-sm">Entry</span>
+                </div>
+                <input
+                  type="color"
+                  value={signalEntryColor}
+                  onChange={(e) => setSignalEntryColor(e.target.value)}
+                  className="w-16 h-8 rounded cursor-pointer border-0"
+                  title="Entry line color"
+                />
+              </div>
+              
+              {/* Stop Loss Color */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-4 h-4 rounded border" 
+                    style={{ backgroundColor: signalStopLossColor }}
+                  />
+                  <span className="text-sm">Stop Loss</span>
+                </div>
+                <input
+                  type="color"
+                  value={signalStopLossColor}
+                  onChange={(e) => setSignalStopLossColor(e.target.value)}
+                  className="w-16 h-8 rounded cursor-pointer border-0"
+                  title="Stop loss line color"
+                />
+              </div>
+              
+              {/* Target 1 Color */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-4 h-4 rounded border" 
+                    style={{ backgroundColor: signalTarget1Color }}
+                  />
+                  <span className="text-sm">Target 1</span>
+                </div>
+                <input
+                  type="color"
+                  value={signalTarget1Color}
+                  onChange={(e) => setSignalTarget1Color(e.target.value)}
+                  className="w-16 h-8 rounded cursor-pointer border-0"
+                  title="Target 1 line color"
+                />
+              </div>
+              
+              {/* Target 2 Color */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-4 h-4 rounded border" 
+                    style={{ backgroundColor: signalTarget2Color }}
+                  />
+                  <span className="text-sm">Target 2+</span>
+                </div>
+                <input
+                  type="color"
+                  value={signalTarget2Color}
+                  onChange={(e) => setSignalTarget2Color(e.target.value)}
+                  className="w-16 h-8 rounded cursor-pointer border-0"
+                  title="Target 2+ line color"
+                />
+              </div>
+              
+              {/* Separator */}
+              <div className="border-t border-border my-2" />
+              
+              {/* Quick Presets */}
+              <div className="space-y-2">
+                <span className="text-xs text-muted-foreground">Quick Presets</span>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => {
+                      setSignalEntryColor('#f97316'); // orange
+                      setSignalStopLossColor('#3b82f6'); // blue
+                      setSignalTarget1Color('#a855f7'); // purple
+                      setSignalTarget2Color('#8b5cf6'); // light purple
+                    }}
+                  >
+                    Default
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => {
+                      setSignalEntryColor('#22c55e'); // green
+                      setSignalStopLossColor('#ef4444'); // red
+                      setSignalTarget1Color('#3b82f6'); // blue
+                      setSignalTarget2Color('#06b6d4'); // cyan
+                    }}
+                  >
+                    Classic
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => {
+                      setSignalEntryColor('#facc15'); // yellow
+                      setSignalStopLossColor('#ef4444'); // red
+                      setSignalTarget1Color('#06b6d4'); // cyan
+                      setSignalTarget2Color('#10b981'); // emerald
+                    }}
+                  >
+                    High Contrast
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => {
+                      setSignalEntryColor('#3b82f6'); // blue
+                      setSignalStopLossColor('#f97316'); // orange
+                      setSignalTarget1Color('#22c55e'); // green
+                      setSignalTarget2Color('#14b8a6'); // teal
+                    }}
+                  >
+                    Colorblind
+                  </Button>
+                </div>
+              </div>
+              
+              <p className="text-xs text-muted-foreground">
+                Colors apply to Koinonia AI signals and trade entry/exit overlays.
+              </p>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Market Status Indicator with Eastern Time */}
         <Badge 
