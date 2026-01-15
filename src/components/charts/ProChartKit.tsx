@@ -174,6 +174,26 @@ export const ProChartKit = ({
   });
   const [showScaleControls, setShowScaleControls] = useState<boolean>(false);
   
+  // Time format: 12-hour or 24-hour
+  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-time-format');
+      return (saved === '24h' ? '24h' : '12h') as '12h' | '24h';
+    } catch {
+      return '12h';
+    }
+  });
+  
+  // Price precision (decimal places)
+  const [pricePrecision, setPricePrecision] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('prochartkit-price-precision');
+      return saved ? parseInt(saved, 10) : 2;
+    } catch {
+      return 2;
+    }
+  });
+  
   // Volume profile state
   const [showVolumeProfile, setShowVolumeProfile] = useState<boolean>(() => {
     try {
@@ -228,6 +248,24 @@ export const ProChartKit = ({
       console.warn('Failed to save volume profile setting to localStorage:', e);
     }
   }, [showVolumeProfile]);
+  
+  // Persist time format to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-time-format', timeFormat);
+    } catch (e) {
+      console.warn('Failed to save time format to localStorage:', e);
+    }
+  }, [timeFormat]);
+  
+  // Persist price precision to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('prochartkit-price-precision', String(pricePrecision));
+    } catch (e) {
+      console.warn('Failed to save price precision to localStorage:', e);
+    }
+  }, [pricePrecision]);
   
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
@@ -538,11 +576,14 @@ export const ProChartKit = ({
               const date = new Date(timestamp);
               
               // Use Eastern Time for market hours display when showing premarket/intraday
+              // Check if 24-hour format is preferred
+              const use24Hour = timeFormat === '24h';
+              
               const easternTimeOptions: Intl.DateTimeFormatOptions = {
                 timeZone: 'America/New_York',
                 hour: '2-digit',
                 minute: '2-digit',
-                hour12: true,
+                hour12: !use24Hour,
               };
               const easternDateOptions: Intl.DateTimeFormatOptions = {
                 timeZone: 'America/New_York',
@@ -567,7 +608,7 @@ export const ProChartKit = ({
                   return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
                 }
                 // Weekly/Monthly: show month and year
-                if (['1W', '1M', 'weekly', 'monthly'].includes(interval)) {
+                if (['1W', '1M', 'W', 'weekly', 'monthly'].includes(interval)) {
                   return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', year: '2-digit' });
                 }
               }
@@ -580,7 +621,7 @@ export const ProChartKit = ({
                 year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
-                hour12: true,
+                hour12: !use24Hour,
               };
               return date.toLocaleString('en-US', fullDateOptions) + ' ET';
             }
@@ -750,7 +791,7 @@ export const ProChartKit = ({
         chartRef.current = null;
       }
     };
-  }, [symbol, interval, theme, resetAllTrackingRefs, enableCrosshairSync, broadcastCrosshair]);
+  }, [symbol, interval, theme, timeFormat, resetAllTrackingRefs, enableCrosshairSync, broadcastCrosshair]);
 
   // Handle candle type changes dynamically - also reapply after chart re-init (interval/symbol change)
   useEffect(() => {
@@ -900,8 +941,9 @@ export const ProChartKit = ({
           const startValue = Math.ceil(range.from / niceStep) * niceStep;
           
           for (let value = startValue; value <= range.to; value += niceStep) {
-            // Calculate decimal places based on step size
-            const decimals = niceStep < 0.01 ? 3 : niceStep < 0.1 ? 2 : niceStep < 1 ? 2 : niceStep < 10 ? 1 : 0;
+            // Use the user-defined price precision, but ensure at least enough decimals for the step
+            const minDecimalsForStep = niceStep < 0.001 ? 4 : niceStep < 0.01 ? 3 : niceStep < 0.1 ? 2 : niceStep < 1 ? 1 : 0;
+            const decimals = Math.max(pricePrecision, minDecimalsForStep);
             
             ticks.push({
               coord: 0, // klinecharts will calculate the coord
@@ -914,7 +956,7 @@ export const ProChartKit = ({
         }
       }
     });
-  }, [yAxisScale]);
+  }, [yAxisScale, pricePrecision]);
 
   // Fit to data - automatically adjust scale to frame visible candles perfectly
   const fitToData = useCallback(() => {
@@ -1807,6 +1849,59 @@ export const ProChartKit = ({
                 </Button>
               </div>
               
+              {/* Separator */}
+              <div className="border-t border-border my-2" />
+              
+              {/* Price Precision Control */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Price Decimals</span>
+                  <span className="text-xs text-muted-foreground">{pricePrecision}</span>
+                </div>
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3, 4].map((p) => (
+                    <Button
+                      key={p}
+                      variant={pricePrecision === p ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 text-xs"
+                      onClick={() => setPricePrecision(p)}
+                    >
+                      {p}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Separator */}
+              <div className="border-t border-border my-2" />
+              
+              {/* Time Format Control */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Time Format</span>
+                <div className="flex gap-2">
+                  <Button
+                    variant={timeFormat === '12h' ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setTimeFormat('12h')}
+                  >
+                    12-hour
+                  </Button>
+                  <Button
+                    variant={timeFormat === '24h' ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setTimeFormat('24h')}
+                  >
+                    24-hour
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Separator */}
+              <div className="border-t border-border my-2" />
+              
               <Button 
                 variant="default" 
                 size="sm" 
@@ -1824,13 +1919,17 @@ export const ProChartKit = ({
                 variant="ghost" 
                 size="sm" 
                 className="w-full"
-                onClick={() => setYAxisScale(10)}
+                onClick={() => {
+                  setYAxisScale(10);
+                  setPricePrecision(2);
+                  setTimeFormat('12h');
+                }}
               >
-                Reset to Default
+                Reset All to Default
               </Button>
               
               <p className="text-xs text-muted-foreground">
-                Drag the slider or use mouse wheel on the price axis to adjust the vertical scale.
+                Adjust scale, precision, and time format for your chart display.
               </p>
             </div>
           </PopoverContent>
