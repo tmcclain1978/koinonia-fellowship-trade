@@ -641,6 +641,10 @@ export const ProChartKit = ({
         // Set optimal bar spacing for crisp candles
         chart.setBarSpace(8);
         
+        // Enable scrolling (horizontal drag to pan) and zooming (mouse wheel)
+        chart.setScrollEnabled(true);
+        chart.setZoomEnabled(true);
+        
         // Enable Y-axis scroll zoom and set initial scale gaps
         chart.setPaneOptions({
           id: 'candle_pane',
