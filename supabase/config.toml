@@ -134,3 +134,9 @@ verify_jwt = false
 
 [functions.stock-screener-live]
 verify_jwt = false
+
+[functions.fetch-sp500-constituents]
+verify_jwt = false
+
+[functions.screen-breakout-candidates]
+verify_jwt = false
