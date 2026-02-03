@@ -10,6 +10,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Search, 
   Filter, 
@@ -28,11 +30,18 @@ import {
   Radio,
   Clock,
   Star,
-  StarOff
+  StarOff,
+  Sparkles,
+  Newspaper,
+  Flame,
+  Database,
+  Info
 } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
 import { useWatchlist } from "./WatchlistPanel";
+
+type StockUniverse = "default" | "sp500" | "custom";
 
 interface ScreenerCondition {
   id: string;
@@ -49,6 +58,7 @@ interface ScreenerPreset {
   is_default: boolean;
   last_run_at: string | null;
   results_count: number | null;
+  isSpecialPreset?: boolean;
 }
 
 interface ScreenerResultData {
@@ -59,6 +69,7 @@ interface ScreenerResultData {
   atrPercent?: number;
   sma20?: number;
   sma50?: number;
+  momentum5d?: number;
 }
 
 interface ScreenerResult {
@@ -69,6 +80,16 @@ interface ScreenerResult {
   match_score: number;
   matched_conditions: string[];
   data?: ScreenerResultData;
+  // Low-cap breakout specific fields
+  companyName?: string;
+  marketCap?: number;
+  sentiment?: {
+    overall: string;
+    score: number;
+    headline?: string;
+  } | null;
+  catalystFlag?: boolean;
+  scoreBreakdown?: Record<string, number>;
 }
 
 const CONDITION_TYPES = [
@@ -93,6 +114,11 @@ const CONDITION_TYPES = [
   { id: "macd_negative", label: "MACD Negative", category: "Technical", unit: "" },
   { id: "macd_crossover", label: "MACD Bullish Cross", category: "Technical", unit: "" },
   { id: "bb_squeeze", label: "BB Squeeze", category: "Technical", unit: "%" },
+  { id: "momentum_5d", label: "5-Day Momentum %", category: "Technical", unit: "%" },
+  
+  // Sentiment conditions
+  { id: "news_bullish", label: "Bullish News Sentiment", category: "Sentiment", unit: "" },
+  { id: "has_catalyst", label: "Has Recent Catalyst", category: "Sentiment", unit: "" },
   
   // Range conditions
   { id: "52w_high_near", label: "Near 52W High (%)", category: "Range", unit: "%" },
@@ -113,6 +139,16 @@ const CONDITION_TYPES = [
 ];
 
 const DEFAULT_PRESETS: Partial<ScreenerPreset>[] = [
+  {
+    name: "Low-Cap Breakout",
+    description: "Stocks under $10 with momentum and catalyst signals",
+    conditions: [
+      { id: "1", type: "price_below", operator: "<", value: 10 },
+      { id: "2", type: "volume_spike", operator: ">", value: 2 },
+      { id: "3", type: "momentum_5d", operator: ">", value: 5 },
+    ],
+    isSpecialPreset: true,
+  },
   {
     name: "Volume Breakout",
     description: "Stocks with unusual volume and positive momentum",
@@ -208,6 +244,10 @@ export const StockScreener = () => {
   const [newPresetDescription, setNewPresetDescription] = useState("");
   const [useLiveData, setUseLiveData] = useState(true);
   const [lastScanTime, setLastScanTime] = useState<string | null>(null);
+  const [stockUniverse, setStockUniverse] = useState<StockUniverse>("default");
+  const [isBreakoutPreset, setIsBreakoutPreset] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [sp500Symbols, setSp500Symbols] = useState<string[]>([]);
   const { addToWatchlist, removeFromWatchlist, isInWatchlist, refresh: refreshWatchlist } = useWatchlist();
 
   useEffect(() => {
@@ -216,6 +256,30 @@ export const StockScreener = () => {
       if (user) fetchPresets(user.id);
     });
   }, []);
+
+  // Fetch S&P 500 constituents when universe is selected
+  const fetchSP500 = async () => {
+    if (sp500Symbols.length > 0) return sp500Symbols; // Use cache
+    
+    try {
+      toast.loading("Fetching S&P 500 list...", { id: "sp500-fetch" });
+      const { data, error } = await supabase.functions.invoke("fetch-sp500-constituents");
+      
+      if (error) throw error;
+      
+      if (data?.symbols) {
+        setSp500Symbols(data.symbols);
+        toast.success(`Loaded ${data.symbols.length} S&P 500 stocks`, { id: "sp500-fetch" });
+        return data.symbols;
+      }
+      
+      throw new Error("No symbols returned");
+    } catch (error) {
+      console.error("Error fetching S&P 500:", error);
+      toast.error("Failed to load S&P 500 list", { id: "sp500-fetch" });
+      return STOCK_UNIVERSE; // Fallback
+    }
+  };
 
   const fetchPresets = async (userId: string) => {
     try {
@@ -265,12 +329,14 @@ export const StockScreener = () => {
       ? preset.conditions 
       : JSON.parse(preset.conditions as unknown as string);
     setConditions(parsedConditions);
+    setIsBreakoutPreset(false);
     toast.success(`Loaded preset: ${preset.name}`);
   };
 
   const loadQuickPreset = (preset: Partial<ScreenerPreset>) => {
     setSelectedPreset(null);
     setConditions(preset.conditions || []);
+    setIsBreakoutPreset(preset.isSpecialPreset === true);
     toast.success(`Loaded: ${preset.name}`);
   };
 
@@ -320,25 +386,104 @@ export const StockScreener = () => {
   };
 
   const runScreener = async () => {
-    if (conditions.length === 0) {
+    if (conditions.length === 0 && !isBreakoutPreset) {
       toast.error("Add at least one condition to scan");
       return;
     }
 
     setScanning(true);
     setResults([]);
+    setScanProgress(0);
     
     try {
+      // Handle Low-Cap Breakout preset specially
+      if (isBreakoutPreset) {
+        console.log("[StockScreener] Running Low-Cap Breakout scan");
+        setScanProgress(10);
+        
+        const { data, error } = await supabase.functions.invoke("screen-breakout-candidates", {
+          body: { 
+            maxPrice: 10,
+            minMarketCap: 50,
+            maxMarketCap: 2000,
+            includeSentiment: true,
+          }
+        });
+        
+        setScanProgress(90);
+        
+        if (error) {
+          console.error("[StockScreener] Breakout screener error:", error);
+          throw new Error(error.message || "Failed to run breakout screener");
+        }
+
+        if (data?.error) {
+          throw new Error(data.error);
+        }
+
+        if (data?.results) {
+          // Transform breakout results to match ScreenerResult interface
+          const transformedResults: ScreenerResult[] = data.results.map((r: any) => ({
+            symbol: r.symbol,
+            price: r.price,
+            change_percent: r.changePercent,
+            volume: r.volume,
+            match_score: r.breakoutScore,
+            matched_conditions: [
+              r.technicals?.aboveSma20 ? 'Above SMA20' : null,
+              r.technicals?.nearHigh20d ? 'Near 20D High' : null,
+              r.relativeVolume >= 2 ? 'Vol Spike' : null,
+              r.technicals?.momentum5d >= 5 ? 'Momentum' : null,
+              r.sentiment?.overall === 'bullish' ? 'Bullish News' : null,
+            ].filter(Boolean) as string[],
+            data: {
+              rsi: r.technicals?.rsi,
+              relativeVolume: r.relativeVolume,
+              momentum5d: r.technicals?.momentum5d,
+              sma20: r.technicals?.sma20,
+            },
+            companyName: r.companyName,
+            marketCap: r.marketCap,
+            sentiment: r.sentiment,
+            catalystFlag: r.catalystFlag,
+            scoreBreakdown: r.scoreBreakdown,
+          }));
+          
+          setResults(transformedResults);
+          setLastScanTime(data.timestamp);
+          toast.success(`Found ${transformedResults.length} breakout candidates from ${data.totalCandidates} screened`);
+        } else {
+          setResults([]);
+          toast.info("No breakout candidates found");
+        }
+        
+        setScanProgress(100);
+        return;
+      }
+      
       if (useLiveData) {
+        // Determine which symbol list to use
+        let symbolsToScan = STOCK_UNIVERSE;
+        
+        if (stockUniverse === "sp500") {
+          setScanProgress(5);
+          symbolsToScan = await fetchSP500();
+          toast.info(`Scanning ${symbolsToScan.length} S&P 500 stocks... This may take 30-60 seconds.`);
+        }
+        
         // Call the live stock screener edge function
-        console.log("[StockScreener] Running live scan with conditions:", conditions);
+        console.log(`[StockScreener] Running live scan with ${symbolsToScan.length} symbols`);
+        setScanProgress(10);
         
         const { data, error } = await supabase.functions.invoke("stock-screener-live", {
           body: { 
             conditions,
-            customSymbols: STOCK_UNIVERSE 
+            customSymbols: symbolsToScan,
+            universe: stockUniverse,
           }
         });
+        
+        setScanProgress(90);
 
         if (error) {
           console.error("[StockScreener] Edge function error:", error);
@@ -357,6 +502,8 @@ export const StockScreener = () => {
           setResults([]);
           toast.info("No stocks matched your criteria");
         }
+        
+        setScanProgress(100);
       } else {
         // Use mock data for demo/testing
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -406,6 +553,50 @@ export const StockScreener = () => {
           </TabsList>
 
           <TabsContent value="build" className="mt-4 space-y-4">
+            {/* Stock Universe Selector */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Stock Universe</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="w-3 h-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-xs">
+                        S&P 500 scans ~500 stocks and may take 30-60 seconds.
+                        Low-Cap Breakout uses its own AI-powered stock universe.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <Select 
+                value={stockUniverse} 
+                onValueChange={(v: StockUniverse) => setStockUniverse(v)}
+                disabled={isBreakoutPreset}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4" />
+                      <span>Default (Top 60 Liquid Stocks)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="sp500">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4" />
+                      <span>S&P 500 (All ~500 Stocks)</span>
+                      <Badge variant="outline" className="text-xs ml-1">Slower</Badge>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Quick Presets */}
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Quick Presets</Label>
@@ -413,33 +604,61 @@ export const StockScreener = () => {
                 {DEFAULT_PRESETS.map((preset, idx) => (
                   <Button
                     key={idx}
-                    variant="outline"
+                    variant={preset.isSpecialPreset ? "default" : "outline"}
                     size="sm"
                     onClick={() => loadQuickPreset(preset)}
-                    className="text-xs"
+                    className={`text-xs ${preset.isSpecialPreset ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-0' : ''}`}
                   >
-                    <Zap className="w-3 h-3 mr-1" />
+                    {preset.isSpecialPreset ? (
+                      <Flame className="w-3 h-3 mr-1" />
+                    ) : (
+                      <Zap className="w-3 h-3 mr-1" />
+                    )}
                     {preset.name}
+                    {preset.isSpecialPreset && (
+                      <Badge variant="secondary" className="ml-1 text-[10px] bg-white/20 text-white">AI</Badge>
+                    )}
                   </Button>
                 ))}
               </div>
             </div>
 
+            {/* Low-Cap Breakout Special Indicator */}
+            {isBreakoutPreset && (
+              <div className="p-3 rounded-lg border bg-amber-500/10 border-amber-500/30">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span className="font-medium text-sm">Low-Cap Breakout Mode</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This scan uses AI-powered multi-factor analysis including news sentiment, 
+                  momentum, volume spikes, and technical indicators to find stocks under $10 
+                  with breakout potential.
+                </p>
+              </div>
+            )}
+
             {/* Conditions Builder */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Conditions</Label>
-                <Button size="sm" variant="outline" onClick={addCondition}>
+                <Button size="sm" variant="outline" onClick={addCondition} disabled={isBreakoutPreset}>
                   <Plus className="w-4 h-4 mr-1" />
                   Add Condition
                 </Button>
               </div>
 
-              {conditions.length === 0 ? (
+              {conditions.length === 0 && !isBreakoutPreset ? (
                 <div className="text-center py-6 border rounded-lg border-dashed text-muted-foreground">
                   <Filter className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No conditions added</p>
                   <p className="text-xs">Add conditions or select a preset</p>
+                </div>
+              ) : isBreakoutPreset ? (
+                <div className="p-3 rounded-lg border bg-muted/30">
+                  <p className="text-sm text-muted-foreground">
+                    Low-Cap Breakout uses pre-defined AI criteria. Click "Run Scan" to find breakout candidates.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -538,18 +757,30 @@ export const StockScreener = () => {
                 </div>
               )}
 
+              {/* Progress bar during scan */}
+              {scanning && scanProgress > 0 && (
+                <div className="space-y-1">
+                  <Progress value={scanProgress} className="h-2" />
+                  <p className="text-xs text-muted-foreground text-center">
+                    {scanProgress < 90 ? 'Scanning stocks...' : 'Processing results...'}
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button 
                   onClick={runScreener} 
-                  disabled={scanning || conditions.length === 0}
-                  className="flex-1"
+                  disabled={scanning || (conditions.length === 0 && !isBreakoutPreset)}
+                  className={`flex-1 ${isBreakoutPreset ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600' : ''}`}
                 >
                   {scanning ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : isBreakoutPreset ? (
+                    <Flame className="w-4 h-4 mr-2" />
                   ) : (
                     <Play className="w-4 h-4 mr-2" />
                   )}
-                  {scanning ? 'Scanning...' : 'Run Scan'}
+                  {scanning ? 'Scanning...' : isBreakoutPreset ? 'Find Breakouts' : 'Run Scan'}
                 </Button>
 
                 {conditions.length > 0 && user && (
@@ -659,23 +890,38 @@ export const StockScreener = () => {
                   {results.map(result => (
                     <div 
                       key={result.symbol}
-                      className="p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                      className={`p-3 rounded-lg border hover:bg-muted/50 transition-colors ${result.catalystFlag ? 'border-amber-500/50 bg-amber-500/5' : ''}`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            result.catalystFlag ? 'bg-amber-500/20' :
                             result.change_percent >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'
                           }`}>
-                            {result.change_percent >= 0 ? (
+                            {result.catalystFlag ? (
+                              <Flame className="w-5 h-5 text-amber-500" />
+                            ) : result.change_percent >= 0 ? (
                               <TrendingUp className="w-5 h-5 text-green-500" />
                             ) : (
                               <TrendingDown className="w-5 h-5 text-red-500" />
                             )}
                           </div>
                           <div>
-                            <div className="font-semibold text-lg">{result.symbol}</div>
-                            <div className="text-sm text-muted-foreground">
-                              ${result.price?.toFixed(2) || 'N/A'}
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-lg">{result.symbol}</span>
+                              {result.companyName && result.companyName !== result.symbol && (
+                                <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                                  {result.companyName}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                              <span>${result.price?.toFixed(2) || 'N/A'}</span>
+                              {result.marketCap && (
+                                <span className="text-xs">
+                                  MCap: ${(result.marketCap / 1000000).toFixed(0)}M
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -712,16 +958,38 @@ export const StockScreener = () => {
                           </div>
 
                           <Badge 
-                            variant={result.match_score >= 100 ? "default" : result.match_score >= 75 ? "secondary" : "outline"}
+                            variant={result.match_score >= 80 ? "default" : result.match_score >= 60 ? "secondary" : "outline"}
                             className={`ml-3 ${
-                              result.match_score >= 100 ? "bg-green-500 text-white" : 
-                              result.match_score >= 75 ? "bg-primary/20" : ""
+                              result.match_score >= 80 ? "bg-green-500 text-white" : 
+                              result.match_score >= 60 ? "bg-primary/20" : ""
                             }`}
                           >
-                            {result.match_score}% match
+                            {result.match_score}%
                           </Badge>
                         </div>
                       </div>
+
+                      {/* Sentiment & Catalyst Display (for breakout results) */}
+                      {result.sentiment && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <Newspaper className="w-3 h-3 text-muted-foreground" />
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              result.sentiment.overall === 'bullish' ? 'border-green-500/50 text-green-600' :
+                              result.sentiment.overall === 'bearish' ? 'border-red-500/50 text-red-600' :
+                              'border-muted'
+                            }`}
+                          >
+                            {result.sentiment.overall.charAt(0).toUpperCase() + result.sentiment.overall.slice(1)} News
+                          </Badge>
+                          {result.sentiment.headline && (
+                            <span className="text-xs text-muted-foreground italic truncate max-w-[200px]">
+                              "{result.sentiment.headline}"
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Matched Conditions */}
                       {result.matched_conditions && result.matched_conditions.length > 0 && (
@@ -737,7 +1005,7 @@ export const StockScreener = () => {
                       {/* Additional Data (if available from live API) */}
                       {result.data && (
                         <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t text-xs">
-                          {result.data.rsi && (
+                          {result.data.rsi !== undefined && (
                             <div className="text-center">
                               <div className="text-muted-foreground">RSI</div>
                               <div className={`font-medium ${
@@ -748,11 +1016,19 @@ export const StockScreener = () => {
                               </div>
                             </div>
                           )}
-                          {result.data.relativeVolume && (
+                          {result.data.relativeVolume !== undefined && (
                             <div className="text-center">
                               <div className="text-muted-foreground">Rel Vol</div>
                               <div className={`font-medium ${result.data.relativeVolume > 2 ? 'text-primary' : ''}`}>
                                 {result.data.relativeVolume.toFixed(1)}x
+                              </div>
+                            </div>
+                          )}
+                          {result.data.momentum5d !== undefined && (
+                            <div className="text-center">
+                              <div className="text-muted-foreground">5D Mom</div>
+                              <div className={`font-medium ${result.data.momentum5d > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {result.data.momentum5d > 0 ? '+' : ''}{result.data.momentum5d.toFixed(1)}%
                               </div>
                             </div>
                           )}
