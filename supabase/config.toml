@@ -58,7 +58,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.pocketoption-websocket]
-verify_jwt = true
+verify_jwt = false  # We verify JWT manually from query param
 
 [functions.execute-paper-trade]
 verify_jwt = true

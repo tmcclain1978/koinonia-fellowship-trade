@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
@@ -6,15 +5,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, upgrade, connection',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const { headers } = req;
-  const upgradeHeader = headers.get("upgrade") || "";
-
+  const upgradeHeader = req.headers.get("upgrade") || "";
   if (upgradeHeader.toLowerCase() !== "websocket") {
     return new Response("Expected WebSocket connection", { 
       status: 400,
@@ -22,91 +19,80 @@ serve(async (req) => {
     });
   }
 
-  console.log("WebSocket upgrade request received");
-
-  // Get token from query parameter
+  // CRITICAL: Authenticate BEFORE upgrading the WebSocket
   const url = new URL(req.url);
   const token = url.searchParams.get('token');
-  
-  console.log("Token present:", !!token);
 
-  // Upgrade to WebSocket MUST happen synchronously
+  if (!token) {
+    console.error("No authentication token provided in query params");
+    return new Response("Auth token not provided", { 
+      status: 403,
+      headers: corsHeaders 
+    });
+  }
+
+  console.log("WebSocket upgrade request received, verifying token...");
+
+  // Use service role to verify user and fetch credentials
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+
+  // Verify the JWT token
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  
+  if (authError || !user) {
+    console.error("Authentication failed:", authError?.message || "No user found");
+    return new Response("Invalid or expired token", { 
+      status: 403,
+      headers: corsHeaders 
+    });
+  }
+
+  console.log("User authenticated:", user.id);
+
+  // Fetch credentials BEFORE upgrading
+  const { data: creds, error: credError } = await supabase
+    .from('user_api_credentials')
+    .select('pocketoption_ssid')
+    .eq('user_id', user.id)
+    .single();
+
+  if (credError || !creds?.pocketoption_ssid) {
+    console.error("PocketOption credentials not found:", credError?.message);
+    return new Response("PocketOption credentials not found. Please save your SSID first.", { 
+      status: 400,
+      headers: corsHeaders 
+    });
+  }
+
+  console.log("Credentials verified, upgrading to WebSocket...");
+
+  // NOW safe to upgrade - auth is complete
   const { socket, response } = Deno.upgradeWebSocket(req);
   
+  // Set up WebSocket handlers with credentials available via closure
   let poSocket: WebSocket | null = null;
   let isConnected = false;
   let heartbeatInterval: number | null = null;
-  let credentials: any = null;
+  const ssid = creds.pocketoption_ssid;
 
-  // Handle WebSocket open
-  socket.onopen = async () => {
-    console.log("Client WebSocket opened, authenticating...");
+  socket.onopen = () => {
+    console.log("Client WebSocket opened, ready to connect to PocketOption");
     
-    try {
-      if (!token) {
-        console.error("No authentication token provided");
-        socket.close(1008, "No authentication token provided");
-        return;
-      }
-
-      // Authenticate user
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        {
-          global: {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        }
-      );
-
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-      if (authError || !user) {
-        console.error("Authentication failed:", authError);
-        socket.close(1008, "Authentication failed");
-        return;
-      }
-      
-      console.log("User authenticated:", user.id);
-
-      // Get user's PocketOption credentials
-      const { data: creds, error: credError } = await supabaseClient
-        .from('user_api_credentials')
-        .select('pocketoption_api_key, pocketoption_ssid')
-        .eq('user_id', user.id)
-        .single();
-
-      if (credError || !creds?.pocketoption_ssid) {
-        console.error("PocketOption credentials not found");
-        socket.close(1008, "PocketOption credentials not found");
-        return;
-      }
-
-      credentials = creds;
-      console.log(`WebSocket setup complete for user ${user.id}`);
-      
-      // Send ready message to client
-      socket.send(JSON.stringify({ 
-        type: 'authenticated',
-        message: 'Ready to connect'
-      }));
-    } catch (error) {
-      console.error("WebSocket setup error:", error);
-      socket.close(1011, error.message);
-    }
+    // Send ready message to client
+    socket.send(JSON.stringify({ 
+      type: 'authenticated',
+      message: 'Ready to connect to PocketOption'
+    }));
   };
 
   // Connect to PocketOption WebSocket
   const connectToPocketOption = () => {
-    if (!credentials) {
-      socket.send(JSON.stringify({ 
-        type: 'error',
-        message: 'Not authenticated yet'
-      }));
-      return;
-    }
-
     try {
+      console.log("Connecting to PocketOption WebSocket...");
+      
       // PocketOption WebSocket endpoint
       poSocket = new WebSocket("wss://platform44.po2.capital/socket.io/?EIO=3&transport=websocket");
 
@@ -114,8 +100,9 @@ serve(async (req) => {
         console.log("Connected to PocketOption WebSocket");
         
         // Send authentication with SSID
-        if (poSocket && credentials.pocketoption_ssid) {
-          poSocket.send(credentials.pocketoption_ssid);
+        if (poSocket && ssid) {
+          poSocket.send(ssid);
+          console.log("Sent SSID authentication to PocketOption");
           
           // Send to client
           if (socket.readyState === WebSocket.OPEN) {
@@ -138,8 +125,6 @@ serve(async (req) => {
       };
 
       poSocket.onmessage = (event) => {
-        console.log("Received from PocketOption:", event.data);
-        
         // Forward to client
         if (socket.readyState === WebSocket.OPEN) {
           try {
@@ -155,12 +140,19 @@ serve(async (req) => {
                 socket.send(JSON.stringify({ type: 'po_ready' }));
               } else if (data.startsWith('42')) {
                 // Actual data message
-                const jsonData = data.substring(2);
-                socket.send(JSON.stringify({ 
-                  type: 'po_data',
-                  data: JSON.parse(jsonData)
-                }));
-              } else {
+                try {
+                  const jsonData = data.substring(2);
+                  socket.send(JSON.stringify({ 
+                    type: 'po_data',
+                    data: JSON.parse(jsonData)
+                  }));
+                } catch {
+                  socket.send(JSON.stringify({ 
+                    type: 'po_message',
+                    data: data
+                  }));
+                }
+              } else if (data !== '3') { // Ignore heartbeat responses
                 // Forward raw data
                 socket.send(JSON.stringify({ 
                   type: 'po_message',
@@ -206,7 +198,7 @@ serve(async (req) => {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ 
           type: 'error',
-          message: error.message
+          message: error instanceof Error ? error.message : 'Connection failed'
         }));
       }
     }
@@ -216,7 +208,7 @@ serve(async (req) => {
   socket.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data);
-      console.log("Received from client:", message);
+      console.log("Received from client:", message.type);
 
       if (message.type === 'connect') {
         connectToPocketOption();
@@ -231,7 +223,7 @@ serve(async (req) => {
           }])}`;
           
           poSocket.send(tradeCommand);
-          console.log("Sent trade command:", tradeCommand);
+          console.log("Sent trade command");
         } else {
           socket.send(JSON.stringify({ 
             type: 'error',
@@ -276,6 +268,6 @@ serve(async (req) => {
     console.error("Client WebSocket error:", error);
   };
 
-  // MUST return response synchronously
+  // Return the WebSocket response
   return response;
 });
