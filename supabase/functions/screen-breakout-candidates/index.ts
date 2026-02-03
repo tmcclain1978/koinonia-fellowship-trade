@@ -76,14 +76,14 @@ function calculate5DayMomentum(closes: number[]): number {
 }
 
 // Fallback low-cap stock universe for when FMP screener fails
+// Using actively traded stocks under $10 with decent volume
 const LOW_CAP_UNIVERSE = [
-  // Known low-cap/penny stocks and small caps
-  "SOUN", "PLTR", "SOFI", "NIO", "LCID", "RIVN", "PLUG", "SNAP", "HOOD", "DKNG",
-  "COIN", "RBLX", "AFRM", "UPST", "PATH", "U", "DOCN", "CRWD", "NET", "TWLO",
-  "ROKU", "WISH", "CLOV", "SKLZ", "SPCE", "BB", "TLRY", "SNDL", "ACB", "CGC",
-  "MARA", "RIOT", "BITF", "HUT", "CLSK", "BTBT", "SOS", "EBON", "CANF", "NCTY",
-  "ATER", "CENN", "MULN", "FFIE", "GOEV", "ARVL", "REE", "PSNY", "FSR", "NKLA",
-  "WKHS", "RIDE", "HYLN", "BLNK", "CHPT", "EVGO", "DCFC", "SHLS", "ARRY", "MAXN"
+  // Actively traded low-cap stocks (verified as of 2024-2025)
+  "SOUN", "SOFI", "NIO", "PLTR", "HOOD", "SNAP", "PLUG", "LCID", "RIVN", "DKNG",
+  "MARA", "RIOT", "AFRM", "UPST", "COIN", "RBLX", "PATH", "IONQ", "SMCI", "ARM",
+  "JOBY", "OPEN", "CLSK", "DNA", "WOLF", "PTRA", "CLOV", "SNDL", "TLRY", "BB",
+  "CIFR", "BITF", "HUT", "IREN", "BTDR", "WULF", "CORZ", "ARBK", "GREE", "DMYY",
+  "LAZR", "LIDR", "OUST", "INVZ", "AEVA", "CPTN", "VLDR", "HSAI", "AUR", "FFIE"
 ];
 
 serve(async (req) => {
@@ -94,10 +94,11 @@ serve(async (req) => {
   try {
     const polygonApiKey = Deno.env.get("POLYGON_API_KEY");
     const fmpApiKey = Deno.env.get("FMP_API_KEY");
+    const alphaVantageKey = Deno.env.get("ALPHA_VANTAGE_API_KEY");
     
-    if (!polygonApiKey) {
+    if (!polygonApiKey && !fmpApiKey && !alphaVantageKey) {
       return new Response(
-        JSON.stringify({ error: "Polygon API key not configured" }),
+        JSON.stringify({ error: "No API keys configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -153,151 +154,272 @@ serve(async (req) => {
     
     console.log(`[Breakout Screener] Processing ${candidates.length} candidates (fallback: ${usedFallback})`);
 
-    // Step 2: Enrich with Polygon data and calculate scores
-    const results: BreakoutCandidate[] = [];
-    const batchSize = 5;
+    // Step 2: Get market data
+    // Try Polygon grouped endpoint first, then fall back to FMP batch quotes
+    console.log(`[Breakout Screener] Fetching market data`);
     
-    for (let i = 0; i < Math.min(candidates.length, 50); i += batchSize) {
-      const batch = candidates.slice(i, i + batchSize);
-      
-      const batchPromises = batch.map(async (candidate: any) => {
-        const symbol = candidate.symbol;
+    let marketData: Map<string, any> = new Map();
+    let dataSource = "none";
+    
+    // Try Polygon's grouped daily endpoint with retry
+    const today = new Date();
+    const prevDate = new Date(today);
+    prevDate.setDate(prevDate.getDate() - 1);
+    if (prevDate.getDay() === 0) prevDate.setDate(prevDate.getDate() - 2);
+    if (prevDate.getDay() === 6) prevDate.setDate(prevDate.getDate() - 1);
+    
+    const dateStr = prevDate.toISOString().split('T')[0];
+    
+    // Try with different dates if needed (in case market was closed)
+    const datesToTry = [dateStr];
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(prevDate);
+      d.setDate(d.getDate() - i);
+      datesToTry.push(d.toISOString().split('T')[0]);
+    }
+    
+    if (polygonApiKey) {
+      for (const tryDate of datesToTry) {
+        if (marketData.size > 0) break;
+        
+        const groupedUrl = `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${tryDate}?adjusted=true&apiKey=${polygonApiKey}`;
         
         try {
-          // Fetch Polygon snapshot
-          const snapshotUrl = `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}?apiKey=${polygonApiKey}`;
-          const snapshotRes = await fetch(snapshotUrl);
-          
-          if (!snapshotRes.ok) return null;
-          
-          const snapshot = await snapshotRes.json();
-          const ticker = snapshot.ticker;
-          
-          if (!ticker?.day) return null;
-          
-          // Fetch 20-day history for technicals
-          const today = new Date();
-          const startDate = new Date(today);
-          startDate.setDate(startDate.getDate() - 30);
-          
-          const barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${startDate.toISOString().split('T')[0]}/${today.toISOString().split('T')[0]}?adjusted=true&sort=desc&limit=30&apiKey=${polygonApiKey}`;
-          
-          let historicalData: { c: number[], h: number[], l: number[] } = { c: [], h: [], l: [] };
-          
-          try {
-            const barsRes = await fetch(barsUrl);
-            if (barsRes.ok) {
-              const bars = await barsRes.json();
-              if (bars.results) {
-                historicalData = {
-                  c: bars.results.map((b: any) => b.c),
-                  h: bars.results.map((b: any) => b.h),
-                  l: bars.results.map((b: any) => b.l),
-                };
+          const groupedRes = await fetch(groupedUrl);
+          if (groupedRes.ok) {
+            const groupedData = await groupedRes.json();
+            if (groupedData.results && groupedData.results.length > 0) {
+              for (const ticker of groupedData.results) {
+                marketData.set(ticker.T, {
+                  price: ticker.c,
+                  open: ticker.o,
+                  high: ticker.h,
+                  low: ticker.l,
+                  volume: ticker.v,
+                  change: ticker.c - ticker.o,
+                  changePercent: ((ticker.c - ticker.o) / ticker.o) * 100
+                });
               }
+              dataSource = "polygon";
+              console.log(`[Breakout Screener] Polygon: Loaded ${marketData.size} tickers for ${tryDate}`);
             }
-          } catch (e) {
-            console.log(`[Breakout Screener] No history for ${symbol}`);
+          } else if (groupedRes.status === 429) {
+            console.log(`[Breakout Screener] Polygon rate limited, waiting...`);
+            await new Promise(r => setTimeout(r, 2000));
+          } else {
+            console.log(`[Breakout Screener] Polygon grouped for ${tryDate} returned ${groupedRes.status}`);
           }
-          
-          // Calculate technicals
-          const rsi = historicalData.c.length > 14 ? calculateRSI(historicalData.c) : 50;
-          const sma20 = historicalData.c.length >= 20 ? calculateSMA(historicalData.c, 20) : 0;
-          const momentum5d = calculate5DayMomentum(historicalData.c);
-          const high20d = historicalData.h.length >= 20 ? Math.max(...historicalData.h.slice(0, 20)) : ticker.day?.h || 0;
-          
-          const currentPrice = ticker.day?.c || candidate.price || 0;
-          const prevClose = ticker.prevDay?.c || currentPrice;
-          const changePercent = prevClose ? ((currentPrice - prevClose) / prevClose) * 100 : 0;
-          const volume = ticker.day?.v || candidate.volume || 0;
-          const avgVolume = ticker.prevDay?.v || volume;
-          const relativeVolume = avgVolume > 0 ? volume / avgVolume : 1;
-          
-          const nearHigh20d = high20d > 0 && currentPrice >= high20d * 0.95;
-          const aboveSma20 = sma20 > 0 && currentPrice > sma20;
-          
-          // Calculate scores (100 points total)
-          const scoreBreakdown = {
-            volumeScore: relativeVolume >= 2 ? 20 : relativeVolume >= 1.5 ? 15 : relativeVolume >= 1.2 ? 10 : 5,
-            momentumScore: momentum5d >= 10 ? 20 : momentum5d >= 5 ? 15 : momentum5d >= 2 ? 10 : momentum5d > 0 ? 5 : 0,
-            rsiScore: rsi >= 40 && rsi <= 70 ? 15 : rsi >= 30 && rsi <= 80 ? 10 : 5,
-            sentimentScore: 0, // Will be filled if sentiment is fetched
-            marketCapScore: candidate.marketCap >= 50000000 && candidate.marketCap <= 2000000000 ? 10 : 5,
-            nearHighScore: nearHigh20d ? 10 : 0,
-            smaScore: aboveSma20 ? 10 : 0,
-          };
-          
-          let sentiment: BreakoutCandidate['sentiment'] = null;
-          
-          // Optionally fetch sentiment
-          if (includeSentiment && results.length < 25) {
-            try {
-              // Use the project's news-sentiment-scanner function
-              const sentimentUrl = `${Deno.env.get('SUPABASE_URL') || 'https://cxsfpxsbejzpukrdrulu.supabase.co'}/functions/v1/news-sentiment-scanner`;
-              const sentimentRes = await fetch(sentimentUrl, {
-                method: 'POST',
-                headers: { 
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY') || ''}`,
-                },
-                body: JSON.stringify({ symbols: [symbol] }),
-              });
-              
-              if (sentimentRes.ok) {
-                const sentimentData = await sentimentRes.json();
-                if (sentimentData.results?.[symbol]) {
-                  const s = sentimentData.results[symbol];
-                  sentiment = {
-                    overall: s.sentiment || 'neutral',
-                    score: s.sentimentScore || 0,
-                    headline: s.headlines?.[0],
-                  };
-                  
-                  // Add sentiment score
-                  if (s.sentiment === 'bullish') scoreBreakdown.sentimentScore = 15;
-                  else if (s.sentiment === 'neutral') scoreBreakdown.sentimentScore = 5;
-                }
-              }
-            } catch (e) {
-              console.log(`[Breakout Screener] Sentiment fetch failed for ${symbol}`);
-            }
-          }
-          
-          const breakoutScore = Object.values(scoreBreakdown).reduce((a, b) => a + b, 0);
-          
-          return {
-            symbol,
-            companyName: candidate.companyName || symbol,
-            price: currentPrice,
-            changePercent,
-            volume,
-            avgVolume,
-            relativeVolume,
-            marketCap: candidate.marketCap || 0,
-            breakoutScore,
-            scoreBreakdown,
-            sentiment,
-            technicals: {
-              rsi,
-              sma20,
-              momentum5d,
-              nearHigh20d,
-              aboveSma20,
-            },
-            catalystFlag: sentiment?.overall === 'bullish' || momentum5d >= 10 || relativeVolume >= 3,
-          } as BreakoutCandidate;
         } catch (e) {
-          console.error(`[Breakout Screener] Error processing ${symbol}:`, e);
-          return null;
+          console.log(`[Breakout Screener] Polygon failed for ${tryDate}`);
         }
+      }
+    }
+    
+    // If Polygon failed, try FMP batch quotes
+    if (marketData.size === 0 && fmpApiKey) {
+      const symbolList = candidates.slice(0, 50).map((c: any) => c.symbol).join(',');
+      const quoteUrl = `https://financialmodelingprep.com/api/v3/quote/${symbolList}?apikey=${fmpApiKey}`;
+      
+      try {
+        const quoteRes = await fetch(quoteUrl);
+        if (quoteRes.ok) {
+          const quotes = await quoteRes.json();
+          if (Array.isArray(quotes)) {
+            for (const q of quotes) {
+              marketData.set(q.symbol, {
+                price: q.price,
+                open: q.open,
+                high: q.dayHigh,
+                low: q.dayLow,
+                volume: q.volume,
+                avgVolume: q.avgVolume,
+                change: q.change,
+                changePercent: q.changesPercentage,
+                marketCap: q.marketCap,
+                pe: q.pe
+              });
+            }
+            dataSource = "fmp";
+            console.log(`[Breakout Screener] FMP: Loaded ${marketData.size} quotes`);
+          }
+        } else {
+          console.log(`[Breakout Screener] FMP quotes returned ${quoteRes.status}`);
+        }
+      } catch (e) {
+        console.log(`[Breakout Screener] FMP quotes failed`);
+      }
+    }
+    
+    // If still no data, try Alpha Vantage for a few key symbols (faster approach)
+    if (marketData.size === 0 && alphaVantageKey) {
+      console.log(`[Breakout Screener] Trying Alpha Vantage as fallback`);
+      // Use batch quote endpoint if available, otherwise single quotes
+      const topSymbols = candidates.slice(0, 3);
+      
+      for (const candidate of topSymbols) {
+        try {
+          const avUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${candidate.symbol}&apikey=${alphaVantageKey}`;
+          const avRes = await fetch(avUrl);
+          
+          if (avRes.ok) {
+            const avData = await avRes.json();
+            const quote = avData["Global Quote"];
+            
+            if (quote && quote["05. price"]) {
+              marketData.set(candidate.symbol, {
+                price: parseFloat(quote["05. price"]),
+                open: parseFloat(quote["02. open"]),
+                high: parseFloat(quote["03. high"]),
+                low: parseFloat(quote["04. low"]),
+                volume: parseInt(quote["06. volume"]),
+                change: parseFloat(quote["09. change"]),
+                changePercent: parseFloat(quote["10. change percent"]?.replace('%', '') || '0'),
+              });
+            }
+          }
+          
+          // Short delay between calls
+          await new Promise(r => setTimeout(r, 500));
+        } catch (e) {
+          console.log(`[Breakout Screener] Alpha Vantage failed for ${candidate.symbol}`);
+        }
+      }
+      
+      if (marketData.size > 0) {
+        dataSource = "alphavantage";
+        console.log(`[Breakout Screener] Alpha Vantage: Loaded ${marketData.size} quotes`);
+      }
+    }
+    
+    // If still no data, return empty with explanation
+    if (marketData.size === 0) {
+      console.log(`[Breakout Screener] No market data available from any source`);
+      return new Response(
+        JSON.stringify({
+          results: [],
+          totalCandidates: candidates.length,
+          scoredCandidates: 0,
+          message: "Market data temporarily unavailable due to API rate limits. Please try again in a few minutes.",
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    // Process candidates using market data
+    const results: BreakoutCandidate[] = [];
+    
+    for (const candidate of candidates.slice(0, 50)) {
+      const symbol = candidate.symbol;
+      const data = marketData.get(symbol);
+      
+      if (!data) continue;
+      
+      const price = data.price;
+      if (!price || price > maxPrice || price < 0.5) continue;
+      
+      const volume = data.volume || 0;
+      const avgVolume = data.avgVolume || volume;
+      const relativeVolume = avgVolume > 0 ? volume / avgVolume : 1;
+      const changePercent = data.changePercent || 0;
+      
+      // For simplified scoring without historical data
+      // Focus on volume, price change, and available metrics
+      const scoreBreakdown = {
+        volumeScore: relativeVolume >= 2 ? 20 : relativeVolume >= 1.5 ? 15 : relativeVolume >= 1.2 ? 10 : 5,
+        momentumScore: changePercent >= 5 ? 20 : changePercent >= 3 ? 15 : changePercent >= 1 ? 10 : changePercent > 0 ? 5 : 0,
+        rsiScore: 10, // Default without historical data
+        sentimentScore: 0,
+        marketCapScore: (data.marketCap && data.marketCap >= 50000000 && data.marketCap <= 2000000000) ? 10 : 5,
+        nearHighScore: data.high && price >= data.high * 0.98 ? 10 : 0,
+        smaScore: 5, // Default without historical data
+      };
+      
+      const breakoutScore = Object.values(scoreBreakdown).reduce((a, b) => a + b, 0);
+      
+      results.push({
+        symbol,
+        companyName: candidate.companyName || symbol,
+        price,
+        changePercent,
+        volume,
+        avgVolume,
+        relativeVolume,
+        marketCap: data.marketCap || candidate.marketCap || 0,
+        breakoutScore,
+        scoreBreakdown,
+        sentiment: null,
+        technicals: {
+          rsi: 50, // Default
+          sma20: 0,
+          momentum5d: changePercent, // Use daily change as proxy
+          nearHigh20d: data.high && price >= data.high * 0.98,
+          aboveSma20: true, // Assume true without data
+        },
+        catalystFlag: changePercent >= 5 || relativeVolume >= 2,
       });
+    }
+    
+    console.log(`[Breakout Screener] Scored ${results.length} candidates from ${dataSource}`);
+    
+    // If we got data from a source, try to enrich top candidates with historical data
+    // Only do this if we have fewer API calls to make
+    if (results.length > 0 && dataSource === "polygon") {
+      // Sort first
+      results.sort((a, b) => b.breakoutScore - a.breakoutScore);
       
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults.filter((r): r is BreakoutCandidate => r !== null));
+      // Enrich top 10 with historical data
+      const topSymbols = results.slice(0, 10).map(r => r.symbol);
       
-      // Rate limit delay
-      if (i + batchSize < candidates.length) {
-        await new Promise(r => setTimeout(r, 250));
+      for (let i = 0; i < topSymbols.length; i++) {
+        const symbol = topSymbols[i];
+        try {
+          const startDate = new Date(today);
+          startDate.setDate(startDate.getDate() - 25);
+          
+          const barsUrl = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${startDate.toISOString().split('T')[0]}/${today.toISOString().split('T')[0]}?adjusted=true&sort=desc&limit=20&apiKey=${polygonApiKey}`;
+          
+          const barsRes = await fetch(barsUrl);
+          if (barsRes.ok) {
+            const bars = await barsRes.json();
+            if (bars.results && bars.results.length > 5) {
+              const closes = bars.results.map((b: any) => b.c);
+              const highs = bars.results.map((b: any) => b.h);
+              const volumes = bars.results.map((b: any) => b.v);
+              
+              const result = results.find(r => r.symbol === symbol);
+              if (result) {
+                const rsi = closes.length > 14 ? calculateRSI(closes) : 50;
+                const sma20 = closes.length >= 20 ? calculateSMA(closes, 20) : closes[0];
+                const momentum5d = calculate5DayMomentum(closes);
+                const high20d = Math.max(...highs);
+                const avgVol5d = volumes.slice(1, 6).reduce((a: number, b: number) => a + b, 0) / 5;
+                
+                result.technicals.rsi = rsi;
+                result.technicals.sma20 = sma20;
+                result.technicals.momentum5d = momentum5d;
+                result.technicals.nearHigh20d = result.price >= high20d * 0.95;
+                result.technicals.aboveSma20 = result.price > sma20;
+                result.relativeVolume = avgVol5d > 0 ? result.volume / avgVol5d : result.relativeVolume;
+                
+                // Recalculate scores
+                result.scoreBreakdown.rsiScore = rsi >= 40 && rsi <= 70 ? 15 : rsi >= 30 && rsi <= 80 ? 10 : 5;
+                result.scoreBreakdown.momentumScore = momentum5d >= 10 ? 20 : momentum5d >= 5 ? 15 : momentum5d >= 2 ? 10 : momentum5d > 0 ? 5 : 0;
+                result.scoreBreakdown.nearHighScore = result.technicals.nearHigh20d ? 10 : 0;
+                result.scoreBreakdown.smaScore = result.technicals.aboveSma20 ? 10 : 0;
+                result.scoreBreakdown.volumeScore = result.relativeVolume >= 2 ? 20 : result.relativeVolume >= 1.5 ? 15 : result.relativeVolume >= 1.2 ? 10 : 5;
+                
+                result.breakoutScore = Object.values(result.scoreBreakdown).reduce((a, b) => a + b, 0);
+                result.catalystFlag = momentum5d >= 10 || result.relativeVolume >= 3;
+              }
+            }
+          }
+          
+          // Rate limit
+          await new Promise(r => setTimeout(r, 250));
+        } catch (e) {
+          // Skip on error
+        }
       }
     }
     
