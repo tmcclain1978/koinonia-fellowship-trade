@@ -9,7 +9,7 @@ interface WebSocketMessage {
   message?: string;
 }
 
-interface Trade {
+export interface Trade {
   asset: string;
   action: 'call' | 'put';
   amount: number;

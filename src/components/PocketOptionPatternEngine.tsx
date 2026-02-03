@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +9,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { usePocketOptionWebSocket } from "@/hooks/usePocketOptionWebSocket";
-import { Loader2, TrendingUp, TrendingDown, Activity, BarChart3, Wifi, WifiOff } from "lucide-react";
+import { usePocketOptionCandles } from "@/hooks/usePocketOptionCandles";
+import { Loader2, TrendingUp, TrendingDown, Activity, BarChart3, Wifi, WifiOff, Brain } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import PocketOptionPredictionPanel from "./PocketOptionPredictionPanel";
 
 interface Pattern {
   id: string;
@@ -40,6 +43,7 @@ const PocketOptionPatternEngine = () => {
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [liveTradingEnabled, setLiveTradingEnabled] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("predictions");
   const { toast } = useToast();
   
   const { 
@@ -53,6 +57,18 @@ const PocketOptionPatternEngine = () => {
     subscribeToCandles 
   } = usePocketOptionWebSocket();
 
+  const {
+    recentCandles,
+    addCandle,
+    loadCandles,
+    candleCount,
+  } = usePocketOptionCandles();
+
+  // Load candle history when pair changes
+  useEffect(() => {
+    loadCandles(selectedPair);
+  }, [selectedPair, loadCandles]);
+
   useEffect(() => {
     loadPatterns();
   }, [selectedPair]);
@@ -64,6 +80,49 @@ const PocketOptionPatternEngine = () => {
       subscribeToCandles(assetCode);
     }
   }, [isConnected, selectedPair, subscribeToCandles]);
+
+  // Handle incoming price data and convert to candles
+  useEffect(() => {
+    const assetCode = selectedPair.replace('/', '');
+    const price = prices[assetCode];
+    
+    if (price && isConnected) {
+      // In a real implementation, we'd receive full OHLC data
+      // For now, simulate candle creation from price ticks
+      const now = new Date();
+      const candleTime = new Date(Math.floor(now.getTime() / 60000) * 60000); // Round to minute
+      
+      addCandle({
+        pair: selectedPair,
+        timestamp: candleTime,
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+        timeframe: '1m',
+      });
+    }
+  }, [prices, selectedPair, isConnected, addCandle]);
+
+  // Handle trade execution from prediction panel
+  const handleExecuteFromPrediction = useCallback((direction: 'call' | 'put', amount: number) => {
+    if (!isConnected) {
+      toast({
+        title: "Not Connected",
+        description: "Please connect to PocketOption first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const assetCode = selectedPair.replace('/', '');
+    executeTrade({
+      asset: assetCode,
+      action: direction,
+      amount,
+      duration: 60,
+    });
+  }, [isConnected, selectedPair, executeTrade, toast]);
 
   const loadPatterns = async () => {
     setLoading(true);
@@ -288,87 +347,112 @@ const PocketOptionPatternEngine = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Active Patterns</CardTitle>
-          <CardDescription>
-            Detected patterns with high confidence for {selectedPair}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : patterns.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No active patterns found for {selectedPair}</p>
-              <p className="text-sm mt-2">Click "Analyze Patterns" to detect new patterns</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {patterns.map((pattern) => (
-                <Card key={pattern.id} className="border-2">
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg">{pattern.pair}</h3>
-                          <Badge variant={pattern.predicted_direction === "up" ? "default" : "destructive"}>
-                            {pattern.predicted_direction === "up" ? (
-                              <TrendingUp className="w-3 h-3 mr-1" />
-                            ) : (
-                              <TrendingDown className="w-3 h-3 mr-1" />
-                            )}
-                            {pattern.predicted_direction.toUpperCase()}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Pattern: {pattern.pattern_type}
-                        </p>
-                      </div>
-                      <Button 
-                        onClick={() => handleExecuteTrade(pattern)} 
-                        size="sm"
-                        disabled={!isConnected || !liveTradingEnabled}
-                      >
-                        {liveTradingEnabled ? 'Execute Trade' : 'Enable Live Trading'}
-                      </Button>
-                    </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="predictions" className="flex items-center gap-2">
+            <Brain className="w-4 h-4" />
+            AI Predictions
+          </TabsTrigger>
+          <TabsTrigger value="patterns" className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Active Patterns
+          </TabsTrigger>
+        </TabsList>
 
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-muted-foreground">Confidence</span>
-                          <span className="font-medium">{pattern.confidence}%</span>
-                        </div>
-                        <Progress value={pattern.confidence} />
-                      </div>
+        <TabsContent value="predictions">
+          <PocketOptionPredictionPanel
+            pair={selectedPair}
+            recentCandles={recentCandles}
+            isConnected={isConnected}
+            onExecuteTrade={handleExecuteFromPrediction}
+            candleCount={candleCount}
+          />
+        </TabsContent>
 
-                      <div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-muted-foreground">Historical Accuracy</span>
-                          <span className="font-medium">{pattern.accuracy_rate}%</span>
+        <TabsContent value="patterns">
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Patterns</CardTitle>
+              <CardDescription>
+                Detected patterns with high confidence for {selectedPair}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : patterns.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No active patterns found for {selectedPair}</p>
+                  <p className="text-sm mt-2">Click "Analyze Patterns" to detect new patterns</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {patterns.map((pattern) => (
+                    <Card key={pattern.id} className="border-2">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-lg">{pattern.pair}</h3>
+                              <Badge variant={pattern.predicted_direction === "up" ? "default" : "destructive"}>
+                                {pattern.predicted_direction === "up" ? (
+                                  <TrendingUp className="w-3 h-3 mr-1" />
+                                ) : (
+                                  <TrendingDown className="w-3 h-3 mr-1" />
+                                )}
+                                {pattern.predicted_direction.toUpperCase()}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Pattern: {pattern.pattern_type}
+                            </p>
+                          </div>
+                          <Button 
+                            onClick={() => handleExecuteTrade(pattern)} 
+                            size="sm"
+                            disabled={!isConnected || !liveTradingEnabled}
+                          >
+                            {liveTradingEnabled ? 'Execute Trade' : 'Enable Live Trading'}
+                          </Button>
                         </div>
-                        <Progress value={pattern.accuracy_rate} />
-                      </div>
 
-                      <div className="flex justify-between text-sm text-muted-foreground pt-2 border-t border-border">
-                        <span>
-                          Predicted: {new Date(pattern.predicted_at).toLocaleTimeString()}
-                        </span>
-                        <span>
-                          Expires: {new Date(pattern.expires_at).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                        <div className="space-y-3">
+                          <div>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-muted-foreground">Confidence</span>
+                              <span className="font-medium">{pattern.confidence}%</span>
+                            </div>
+                            <Progress value={pattern.confidence} />
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-muted-foreground">Historical Accuracy</span>
+                              <span className="font-medium">{pattern.accuracy_rate}%</span>
+                            </div>
+                            <Progress value={pattern.accuracy_rate} />
+                          </div>
+
+                          <div className="flex justify-between text-sm text-muted-foreground pt-2 border-t border-border">
+                            <span>
+                              Predicted: {new Date(pattern.predicted_at).toLocaleTimeString()}
+                            </span>
+                            <span>
+                              Expires: {new Date(pattern.expires_at).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
