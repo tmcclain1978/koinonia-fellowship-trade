@@ -80,6 +80,17 @@ export const useMarketDataStream = ({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRealDataRef = useRef(false);
 
+  const toFiniteNumber = useCallback((value: unknown, fallback = 0): number => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return fallback;
+      const n = Number(trimmed);
+      if (Number.isFinite(n)) return n;
+    }
+    return fallback;
+  }, []);
+
   // Fetch real market data from Polygon
   const fetchRealData = useCallback(async () => {
     if (symbols.length === 0) return false;
@@ -99,33 +110,48 @@ export const useMarketDataStream = ({
       if (data?.quotes) {
         data.quotes.forEach((quote: any) => {
           if (quote.error) return;
+
+          const symbol = String(quote.symbol || "").toUpperCase();
+          if (!symbol) return;
+
+          const price = toFiniteNumber(quote.price, NaN);
+          if (!Number.isFinite(price)) return;
+
+          const bid = toFiniteNumber(quote.bid, price);
+          const ask = toFiniteNumber(quote.ask, price);
+          const volume = toFiniteNumber(quote.volume, 0);
+          const change = toFiniteNumber(quote.change, 0);
+          const changePercent = toFiniteNumber(quote.changePercent, 0);
+          const high = toFiniteNumber(quote.high, price);
+          const low = toFiniteNumber(quote.low, price);
+          const open = toFiniteNumber(quote.open, price);
           
-          const previousPrice = previousPricesRef.current.get(quote.symbol);
+          const previousPrice = previousPricesRef.current.get(symbol);
           const direction: 'up' | 'down' | 'unchanged' = previousPrice
-            ? quote.price > previousPrice ? 'up' : quote.price < previousPrice ? 'down' : 'unchanged'
+            ? price > previousPrice ? 'up' : price < previousPrice ? 'down' : 'unchanged'
             : 'unchanged';
 
           const priceData: StreamingPrice = {
-            symbol: quote.symbol,
-            price: quote.price,
-            bid: quote.bid,
-            ask: quote.ask,
-            volume: quote.volume,
-            change: quote.change,
-            changePercent: quote.changePercent,
-            high: quote.high,
-            low: quote.low,
-            open: quote.open,
+            symbol,
+            price,
+            bid,
+            ask,
+            volume,
+            change,
+            changePercent,
+            high,
+            low,
+            open,
             timestamp: new Date(),
             direction,
             source: 'polygon',
           };
 
-          previousPricesRef.current.set(quote.symbol, quote.price);
+          previousPricesRef.current.set(symbol, price);
           
           setPrices((prev) => {
             const newPrices = new Map(prev);
-            newPrices.set(quote.symbol, priceData);
+            newPrices.set(symbol, priceData);
             return newPrices;
           });
 
