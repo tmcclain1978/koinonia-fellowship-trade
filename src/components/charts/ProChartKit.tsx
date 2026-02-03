@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { init, dispose, Chart, KLineData, CandleType, LineType, ActionType, Crosshair } from "klinecharts";
+import { safeNumber, safeToFixed } from "@/lib/safeNumber";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2, Focus, Palette } from "lucide-react";
@@ -1573,7 +1574,7 @@ export const ProChartKit = ({
             backgroundColor: signalEntryColor
           }
         },
-        extendData: showSignalPriceLabels ? `Entry: $${signal.signal.entry_price.toFixed(2)}` : undefined
+        extendData: showSignalPriceLabels ? `Entry: $${safeToFixed(signal.signal.entry_price, 2)}` : undefined
       });
       console.log("📊 Entry overlay created:", result);
     }
@@ -1597,7 +1598,7 @@ export const ProChartKit = ({
             backgroundColor: signalStopLossColor
           }
         },
-        extendData: showSignalPriceLabels ? `Stop: $${signal.signal.stop_loss.toFixed(2)}` : undefined
+        extendData: showSignalPriceLabels ? `Stop: $${safeToFixed(signal.signal.stop_loss, 2)}` : undefined
       });
     }
 
@@ -1622,7 +1623,7 @@ export const ProChartKit = ({
             backgroundColor: targetColor
           }
         },
-        extendData: showSignalPriceLabels ? `T${index + 1}: $${target.toFixed(2)}` : undefined
+        extendData: showSignalPriceLabels ? `T${index + 1}: $${safeToFixed(target, 2)}` : undefined
       });
     });
   }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color, signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels, getLineType]);
@@ -1654,7 +1655,7 @@ export const ProChartKit = ({
             line: { color: signalEntryColor, size: signalEntryThickness, style: getLineType(signalEntryStyle) },
             text: { color: '#ffffff', backgroundColor: signalEntryColor }
           },
-          extendData: showSignalPriceLabels ? `Entry: $${entryPrice.toFixed(2)}` : undefined
+          extendData: showSignalPriceLabels ? `Entry: $${safeToFixed(entryPrice, 2)}` : undefined
         });
       }
       
@@ -1668,7 +1669,7 @@ export const ProChartKit = ({
             line: { color: signalTarget1Color, size: signalTargetThickness, style: getLineType(signalTargetStyle) },
             text: { color: '#ffffff', backgroundColor: signalTarget1Color }
           },
-          extendData: showSignalPriceLabels ? `Exit: $${exitPrice.toFixed(2)}` : undefined
+          extendData: showSignalPriceLabels ? `Exit: $${safeToFixed(exitPrice, 2)}` : undefined
         });
       }
       
@@ -1682,7 +1683,7 @@ export const ProChartKit = ({
             line: { color: signalStopLossColor, size: signalStopLossThickness, style: getLineType(signalStopLossStyle) },
             text: { color: '#ffffff', backgroundColor: signalStopLossColor }
           },
-          extendData: showSignalPriceLabels ? `Stop: $${stopLoss.toFixed(2)}` : undefined
+          extendData: showSignalPriceLabels ? `Stop: $${safeToFixed(stopLoss, 2)}` : undefined
         });
       }
     }
@@ -2568,15 +2569,15 @@ export const ProChartKit = ({
                 priceDirection === 'down' ? 'text-red-500' :
                 'text-foreground'
               }`}>
-                ${currentPrice.toFixed(2)}
+                ${safeToFixed(currentPrice, 2)}
               </span>
               {streamingVolume > 0 && (
                 <span className="font-mono text-xs text-muted-foreground leading-tight">
                   Vol: {streamingVolume >= 1000000 
-                    ? `${(streamingVolume / 1000000).toFixed(2)}M` 
+                    ? `${safeToFixed(streamingVolume / 1000000, 2)}M` 
                     : streamingVolume >= 1000 
-                      ? `${(streamingVolume / 1000).toFixed(1)}K`
-                      : streamingVolume.toLocaleString()}
+                      ? `${safeToFixed(streamingVolume / 1000, 1)}K`
+                      : safeNumber(streamingVolume).toLocaleString()}
                 </span>
               )}
             </div>
@@ -2728,10 +2729,10 @@ export const ProChartKit = ({
                 {new Date(allCandleData[replayIndex].timestamp).toLocaleString()}
               </div>
               <div className="font-mono">
-                O: ${allCandleData[replayIndex].open.toFixed(2)} | 
-                H: ${allCandleData[replayIndex].high.toFixed(2)} | 
-                L: ${allCandleData[replayIndex].low.toFixed(2)} | 
-                C: ${allCandleData[replayIndex].close.toFixed(2)}
+                O: ${safeToFixed(allCandleData[replayIndex].open, 2)} | 
+                H: ${safeToFixed(allCandleData[replayIndex].high, 2)} | 
+                L: ${safeToFixed(allCandleData[replayIndex].low, 2)} | 
+                C: ${safeToFixed(allCandleData[replayIndex].close, 2)}
               </div>
             </Card>
           </div>
@@ -2754,19 +2755,19 @@ export const ProChartKit = ({
                   <div>
                     <span className="text-muted-foreground">Entry:</span>
                     <span className="ml-2 font-medium">
-                      ${koinoniaSignal.signal.entry_price?.toFixed(2)}
+                      ${safeToFixed(koinoniaSignal.signal.entry_price, 2)}
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Stop Loss:</span>
                     <span className="ml-2 font-medium text-red-500">
-                      ${koinoniaSignal.signal.stop_loss?.toFixed(2)}
+                      ${safeToFixed(koinoniaSignal.signal.stop_loss, 2)}
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Confidence:</span>
                     <span className="ml-2 font-medium">
-                      {(koinoniaSignal.signal.confidence * 100).toFixed(0)}%
+                      {safeToFixed(safeNumber(koinoniaSignal.signal.confidence, 0) * 100, 0)}%
                     </span>
                   </div>
                   <div>
