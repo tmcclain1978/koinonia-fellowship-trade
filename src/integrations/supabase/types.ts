@@ -1083,6 +1083,48 @@ export type Database = {
         }
         Relationships: []
       }
+      pocketoption_candles: {
+        Row: {
+          close: number
+          created_at: string
+          direction: string
+          high: number
+          id: string
+          low: number
+          open: number
+          pair: string
+          timeframe: string
+          timestamp: string
+          user_id: string
+        }
+        Insert: {
+          close: number
+          created_at?: string
+          direction: string
+          high: number
+          id?: string
+          low: number
+          open: number
+          pair: string
+          timeframe?: string
+          timestamp: string
+          user_id: string
+        }
+        Update: {
+          close?: number
+          created_at?: string
+          direction?: string
+          high?: number
+          id?: string
+          low?: number
+          open?: number
+          pair?: string
+          timeframe?: string
+          timestamp?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       pocketoption_patterns: {
         Row: {
           accuracy_rate: number
@@ -1122,6 +1164,54 @@ export type Database = {
           predicted_direction?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      pocketoption_predictions: {
+        Row: {
+          actual_direction: string | null
+          confidence: number
+          created_at: string
+          id: string
+          pair: string
+          predicted_at: string
+          predicted_direction: string
+          prediction_method: string
+          sequence_used: string | null
+          updated_at: string
+          user_id: string
+          verified_at: string | null
+          was_correct: boolean | null
+        }
+        Insert: {
+          actual_direction?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          pair: string
+          predicted_at?: string
+          predicted_direction: string
+          prediction_method: string
+          sequence_used?: string | null
+          updated_at?: string
+          user_id: string
+          verified_at?: string | null
+          was_correct?: boolean | null
+        }
+        Update: {
+          actual_direction?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          pair?: string
+          predicted_at?: string
+          predicted_direction?: string
+          prediction_method?: string
+          sequence_used?: string | null
+          updated_at?: string
+          user_id?: string
+          verified_at?: string | null
+          was_correct?: boolean | null
         }
         Relationships: []
       }

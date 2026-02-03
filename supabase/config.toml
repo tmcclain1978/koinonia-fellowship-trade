@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.screen-breakout-candidates]
 verify_jwt = false
+
+[functions.predict-pocketoption-candle]
+verify_jwt = true
