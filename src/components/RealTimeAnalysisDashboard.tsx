@@ -180,13 +180,13 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
     }
   }, [symbols, fetchAnalysis]);
 
-  // Auto-refresh every 60 seconds
+  // Auto-refresh every 30 seconds (faster refresh cycle)
   useEffect(() => {
     const interval = setInterval(() => {
       if (symbols.length > 0) {
         fetchAnalysis();
       }
-    }, 60000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [symbols, fetchAnalysis]);

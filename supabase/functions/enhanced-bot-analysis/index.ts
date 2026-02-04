@@ -52,6 +52,8 @@ interface AnalysisResult {
   recommendation: string;
 }
 
+const BATCH_SIZE = 4; // Process 4 symbols concurrently
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -72,6 +74,7 @@ serve(async (req) => {
     }
 
     console.log(`[Enhanced Bot Analysis] Analyzing ${symbols.length} symbols for user ${userId}`);
+    const startTime = Date.now();
 
     // Fetch global trade suggestions once (not per symbol)
     let globalTradeSuggestions: TradeSuggestion[] = [];
@@ -87,104 +90,94 @@ serve(async (req) => {
       console.error("[Enhanced Bot Analysis] Error fetching trade suggestions:", e);
     }
 
-    const results: AnalysisResult[] = [];
-
-    for (const symbol of symbols.slice(0, 10)) { // Limit to 10 symbols
+    // Helper function to analyze a single symbol with parallel data fetching
+    async function analyzeSymbol(symbol: string): Promise<AnalysisResult> {
       const analysisSourcesUsed: string[] = [];
       let compositeScore = 0;
       let scoreComponents = 0;
 
-      // 1. Fetch live price data
-      let livePrice = null;
-      try {
-        const quoteResponse = await supabase.functions.invoke("schwab-quotes", {
+      // Fetch all data sources in PARALLEL for this symbol
+      const [livePriceResult, koinoniaResult, chartResult, stockResult] = await Promise.allSettled([
+        // 1. Live Price
+        supabase.functions.invoke("schwab-quotes", {
           body: { symbols: [symbol], userId }
-        });
-        
-        if (quoteResponse.data?.quotes?.[symbol]) {
-          const quote = quoteResponse.data.quotes[symbol];
-          livePrice = {
-            bid: quote.bidPrice || quote.bid || 0,
-            ask: quote.askPrice || quote.ask || 0,
-            last: quote.lastPrice || quote.last || quote.regularMarketLastPrice || 0,
-            volume: quote.totalVolume || quote.volume || 0
-          };
-          analysisSourcesUsed.push("live_quotes");
-          console.log(`[Enhanced Bot Analysis] Got live price for ${symbol}: $${livePrice.last}`);
-        }
-      } catch (e) {
-        console.error(`[Enhanced Bot Analysis] Error fetching live price for ${symbol}:`, e);
-      }
-
-      // 2. Fetch Koinonia Indicator signals
-      let koinoniaSignal = null;
-      try {
-        const koinoniaResponse = await supabase.functions.invoke("koinonia-indicator", {
+        }),
+        // 2. Koinonia Indicator
+        supabase.functions.invoke("koinonia-indicator", {
           body: { symbol, userId }
-        });
-
-        if (koinoniaResponse.data && !koinoniaResponse.error) {
-          const data = koinoniaResponse.data;
-          koinoniaSignal = {
-            direction: data.signal?.direction || data.signals?.direction || "neutral",
-            confidence: data.signal?.confidence || data.signals?.confidence || 0,
-            patterns: data.candlestickPatterns?.map((p: any) => p.name) || [],
-            rsi: data.technicalAnalysis?.rsi || data.indicators?.rsi || 50,
-            ema9: data.technicalAnalysis?.ema9 || 0,
-            ema20: data.technicalAnalysis?.ema20 || 0,
-            sentiment: data.sentiment?.overall || "neutral",
-            sentimentScore: data.sentiment?.score || 0
-          };
-          analysisSourcesUsed.push("koinonia_indicator");
-          
-          // Add to composite score (up to 30 points)
-          compositeScore += koinoniaSignal.confidence * 30;
-          scoreComponents++;
-          
-          console.log(`[Enhanced Bot Analysis] Koinonia signal for ${symbol}: ${koinoniaSignal.direction} (${koinoniaSignal.confidence})`);
-        }
-      } catch (e) {
-        console.error(`[Enhanced Bot Analysis] Error fetching Koinonia for ${symbol}:`, e);
-      }
-
-      // 3. Fetch AI Chart Analysis
-      let chartAnalysis = null;
-      try {
-        const chartResponse = await supabase.functions.invoke("ai-chart-analysis", {
+        }),
+        // 3. Chart Analysis
+        supabase.functions.invoke("ai-chart-analysis", {
           body: { symbol, userId, analysisType: "support_resistance" }
-        });
+        }),
+        // 4. Stock Analysis
+        supabase.functions.invoke("analyze-stock", {
+          body: { symbol, timeframe: "day trading" }
+        })
+      ]);
 
-        if (chartResponse.data && !chartResponse.error) {
-          const data = chartResponse.data;
-          chartAnalysis = {
-            supportLevels: data.supportLevels || data.analysis?.supportLevels || [],
-            resistanceLevels: data.resistanceLevels || data.analysis?.resistanceLevels || [],
-            bounceZones: data.bounceZones || data.analysis?.bounceZones || [],
-            keyLevel: data.keyLevel || data.analysis?.keyLevel || 0,
-            predictedDirection: data.predictedDirection || data.analysis?.direction || "neutral"
-          };
-          analysisSourcesUsed.push("chart_analysis");
-          
-          // Add to composite score based on price proximity to key levels (up to 20 points)
-          if (livePrice && chartAnalysis.supportLevels.length > 0) {
-            const nearestSupport = chartAnalysis.supportLevels[0];
-            const distanceToSupport = Math.abs((livePrice.last - nearestSupport) / livePrice.last);
-            if (distanceToSupport < 0.02) { // Within 2% of support
-              compositeScore += 20;
-              scoreComponents++;
-            } else if (distanceToSupport < 0.05) { // Within 5% of support
-              compositeScore += 10;
-              scoreComponents++;
-            }
-          }
-          
-          console.log(`[Enhanced Bot Analysis] Chart analysis for ${symbol}: ${chartAnalysis.predictedDirection}`);
-        }
-      } catch (e) {
-        console.error(`[Enhanced Bot Analysis] Error fetching chart analysis for ${symbol}:`, e);
+      // Process live price
+      let livePrice = null;
+      if (livePriceResult.status === "fulfilled" && livePriceResult.value.data?.quotes?.[symbol]) {
+        const quote = livePriceResult.value.data.quotes[symbol];
+        livePrice = {
+          bid: quote.bidPrice || quote.bid || 0,
+          ask: quote.askPrice || quote.ask || 0,
+          last: quote.lastPrice || quote.last || quote.regularMarketLastPrice || 0,
+          volume: quote.totalVolume || quote.volume || 0
+        };
+        analysisSourcesUsed.push("live_quotes");
+        console.log(`[Enhanced Bot Analysis] Got live price for ${symbol}: $${livePrice.last}`);
       }
 
-      // 4. Check AI Trade Suggestions for this symbol
+      // Process Koinonia signal
+      let koinoniaSignal = null;
+      if (koinoniaResult.status === "fulfilled" && koinoniaResult.value.data && !koinoniaResult.value.error) {
+        const data = koinoniaResult.value.data;
+        koinoniaSignal = {
+          direction: data.signal?.direction || data.signals?.direction || "neutral",
+          confidence: data.signal?.confidence || data.signals?.confidence || 0,
+          patterns: data.candlestickPatterns?.map((p: any) => p.name) || [],
+          rsi: data.technicalAnalysis?.rsi || data.indicators?.rsi || 50,
+          ema9: data.technicalAnalysis?.ema9 || 0,
+          ema20: data.technicalAnalysis?.ema20 || 0,
+          sentiment: data.sentiment?.overall || "neutral",
+          sentimentScore: data.sentiment?.score || 0
+        };
+        analysisSourcesUsed.push("koinonia_indicator");
+        compositeScore += koinoniaSignal.confidence * 30;
+        scoreComponents++;
+        console.log(`[Enhanced Bot Analysis] Koinonia signal for ${symbol}: ${koinoniaSignal.direction}`);
+      }
+
+      // Process chart analysis
+      let chartAnalysis = null;
+      if (chartResult.status === "fulfilled" && chartResult.value.data && !chartResult.value.error) {
+        const data = chartResult.value.data;
+        chartAnalysis = {
+          supportLevels: data.supportLevels || data.analysis?.supportLevels || [],
+          resistanceLevels: data.resistanceLevels || data.analysis?.resistanceLevels || [],
+          bounceZones: data.bounceZones || data.analysis?.bounceZones || [],
+          keyLevel: data.keyLevel || data.analysis?.keyLevel || 0,
+          predictedDirection: data.predictedDirection || data.analysis?.direction || "neutral"
+        };
+        analysisSourcesUsed.push("chart_analysis");
+        
+        if (livePrice && chartAnalysis.supportLevels.length > 0) {
+          const nearestSupport = chartAnalysis.supportLevels[0];
+          const distanceToSupport = Math.abs((livePrice.last - nearestSupport) / livePrice.last);
+          if (distanceToSupport < 0.02) {
+            compositeScore += 20;
+            scoreComponents++;
+          } else if (distanceToSupport < 0.05) {
+            compositeScore += 10;
+            scoreComponents++;
+          }
+        }
+        console.log(`[Enhanced Bot Analysis] Chart analysis for ${symbol}: ${chartAnalysis.predictedDirection}`);
+      }
+
+      // Check trade suggestions for this symbol
       let tradeSuggestion: TradeSuggestion | null = null;
       const matchingSuggestion = globalTradeSuggestions.find(
         s => s.symbol.toUpperCase() === symbol.toUpperCase()
@@ -192,47 +185,33 @@ serve(async (req) => {
       if (matchingSuggestion) {
         tradeSuggestion = matchingSuggestion;
         analysisSourcesUsed.push("ai_trade_suggestions");
-        
-        // Add to composite score based on suggestion confidence (up to 20 points)
         compositeScore += (matchingSuggestion.confidence / 100) * 20;
         scoreComponents++;
-        
-        console.log(`[Enhanced Bot Analysis] Trade suggestion for ${symbol}: ${matchingSuggestion.action} (${matchingSuggestion.confidence}%)`);
+        console.log(`[Enhanced Bot Analysis] Trade suggestion for ${symbol}: ${matchingSuggestion.action}`);
       }
 
-      // 5. Fetch AI Stock Analysis
+      // Process stock analysis
       let stockAnalysis: StockAnalysisResult | null = null;
-      try {
-        const analysisResponse = await supabase.functions.invoke("analyze-stock", {
-          body: { symbol, timeframe: "day trading" }
-        });
-
-        if (analysisResponse.data && !analysisResponse.error) {
-          stockAnalysis = {
-            symbol: analysisResponse.data.symbol,
-            analysis: analysisResponse.data.analysis,
-            recommendation: extractRecommendation(analysisResponse.data.analysis)
-          };
-          analysisSourcesUsed.push("ai_stock_analysis");
-          
-          // Add to composite score if analysis contains bullish/bearish signals (up to 15 points)
-          const analysisLower = (stockAnalysis.analysis || "").toLowerCase();
-          if (analysisLower.includes("strong buy") || analysisLower.includes("bullish")) {
-            compositeScore += 15;
-            scoreComponents++;
-          } else if (analysisLower.includes("buy") || analysisLower.includes("call")) {
-            compositeScore += 10;
-            scoreComponents++;
-          }
-          
-          console.log(`[Enhanced Bot Analysis] Stock analysis for ${symbol} completed`);
+      if (stockResult.status === "fulfilled" && stockResult.value.data && !stockResult.value.error) {
+        stockAnalysis = {
+          symbol: stockResult.value.data.symbol,
+          analysis: stockResult.value.data.analysis,
+          recommendation: extractRecommendation(stockResult.value.data.analysis)
+        };
+        analysisSourcesUsed.push("ai_stock_analysis");
+        
+        const analysisLower = (stockAnalysis.analysis || "").toLowerCase();
+        if (analysisLower.includes("strong buy") || analysisLower.includes("bullish")) {
+          compositeScore += 15;
+          scoreComponents++;
+        } else if (analysisLower.includes("buy") || analysisLower.includes("call")) {
+          compositeScore += 10;
+          scoreComponents++;
         }
-      } catch (e) {
-        console.error(`[Enhanced Bot Analysis] Error fetching stock analysis for ${symbol}:`, e);
+        console.log(`[Enhanced Bot Analysis] Stock analysis for ${symbol} completed`);
       }
 
-      // 6. Calculate final composite score
-      // Add direction alignment bonus (up to 15 points)
+      // Direction alignment bonus
       if (koinoniaSignal && chartAnalysis) {
         const directionsMatch = 
           (koinoniaSignal.direction === "bullish" && chartAnalysis.predictedDirection === "bullish") ||
@@ -243,7 +222,6 @@ serve(async (req) => {
           scoreComponents++;
         }
         
-        // Sentiment alignment bonus
         if (koinoniaSignal.sentiment !== "neutral" && 
             ((koinoniaSignal.sentiment === "bullish" && koinoniaSignal.direction === "bullish") ||
              (koinoniaSignal.sentiment === "bearish" && koinoniaSignal.direction === "bearish"))) {
@@ -251,7 +229,7 @@ serve(async (req) => {
         }
       }
 
-      // Trade suggestion alignment bonus (up to 10 points)
+      // Trade suggestion alignment bonus
       if (tradeSuggestion && koinoniaSignal) {
         const suggestionBullish = tradeSuggestion.action === "BUY";
         const signalBullish = koinoniaSignal.direction === "bullish";
@@ -260,12 +238,10 @@ serve(async (req) => {
         }
       }
 
-      // Normalize composite score to 0-100
       const normalizedScore = scoreComponents > 0 ? Math.min(100, compositeScore) : 0;
 
-      // Generate recommendation
       let recommendation = "pass";
-      if (normalizedScore >= 90) {
+      if (normalizedScore >= 85) {
         recommendation = "strong_buy_signal";
       } else if (normalizedScore >= 75) {
         recommendation = "moderate_signal";
@@ -273,7 +249,7 @@ serve(async (req) => {
         recommendation = "weak_signal";
       }
 
-      results.push({
+      return {
         symbol,
         livePrice,
         koinoniaSignal,
@@ -283,16 +259,29 @@ serve(async (req) => {
         compositeScore: normalizedScore,
         analysisSourcesUsed,
         recommendation
-      });
+      };
+    }
+
+    // Process symbols in batches for parallelization
+    const symbolsToProcess = symbols.slice(0, 10);
+    const results: AnalysisResult[] = [];
+
+    for (let i = 0; i < symbolsToProcess.length; i += BATCH_SIZE) {
+      const batch = symbolsToProcess.slice(i, i + BATCH_SIZE);
+      console.log(`[Enhanced Bot Analysis] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.join(", ")}`);
+      
+      const batchResults = await Promise.all(batch.map(symbol => analyzeSymbol(symbol)));
+      results.push(...batchResults);
     }
 
     // Sort by composite score descending
     results.sort((a, b) => b.compositeScore - a.compositeScore);
 
-    // Filter for 90%+ confidence opportunities
-    const highConfidenceOpportunities = results.filter(r => r.compositeScore >= 90);
+    // Filter for 85%+ confidence opportunities (lowered from 90%)
+    const highConfidenceOpportunities = results.filter(r => r.compositeScore >= 85);
 
-    console.log(`[Enhanced Bot Analysis] Found ${highConfidenceOpportunities.length} high-confidence opportunities`);
+    const totalTime = Date.now() - startTime;
+    console.log(`[Enhanced Bot Analysis] Completed in ${totalTime}ms. Found ${highConfidenceOpportunities.length} high-confidence opportunities`);
 
     return new Response(
       JSON.stringify({
@@ -300,6 +289,7 @@ serve(async (req) => {
         highConfidenceOpportunities,
         globalTradeSuggestions,
         totalAnalyzed: symbols.length,
+        processingTimeMs: totalTime,
         timestamp: new Date().toISOString()
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
