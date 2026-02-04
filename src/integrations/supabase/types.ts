@@ -1083,6 +1083,173 @@ export type Database = {
         }
         Relationships: []
       }
+      phroureo_exit_strategies: {
+        Row: {
+          allow_after_hours: boolean
+          created_at: string
+          current_stop_price: number | null
+          enable_trailing: boolean
+          enabled: boolean
+          entry_price: number
+          id: string
+          last_update_at: string | null
+          max_order_updates_per_minute: number
+          position_id: string | null
+          position_type: string
+          profit_trigger_type: string
+          profit_trigger_unit: string
+          profit_trigger_value: number
+          quantity: number
+          reference_price: number | null
+          side: string
+          slippage_buffer: number | null
+          state: string
+          stop_set_lock: boolean
+          stop_set_mode: string
+          stop_set_rounding: string
+          stop_set_value: number | null
+          strategy_name: string
+          symbol: string
+          trail_never_loosen: boolean
+          trail_reference: string | null
+          trail_start_delay: number | null
+          trail_step_type: string | null
+          trail_step_value: number | null
+          trailing_amount: number | null
+          trailing_type: string | null
+          trigger_once: boolean
+          triggered_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          allow_after_hours?: boolean
+          created_at?: string
+          current_stop_price?: number | null
+          enable_trailing?: boolean
+          enabled?: boolean
+          entry_price: number
+          id?: string
+          last_update_at?: string | null
+          max_order_updates_per_minute?: number
+          position_id?: string | null
+          position_type?: string
+          profit_trigger_type?: string
+          profit_trigger_unit?: string
+          profit_trigger_value?: number
+          quantity?: number
+          reference_price?: number | null
+          side: string
+          slippage_buffer?: number | null
+          state?: string
+          stop_set_lock?: boolean
+          stop_set_mode?: string
+          stop_set_rounding?: string
+          stop_set_value?: number | null
+          strategy_name?: string
+          symbol: string
+          trail_never_loosen?: boolean
+          trail_reference?: string | null
+          trail_start_delay?: number | null
+          trail_step_type?: string | null
+          trail_step_value?: number | null
+          trailing_amount?: number | null
+          trailing_type?: string | null
+          trigger_once?: boolean
+          triggered_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          allow_after_hours?: boolean
+          created_at?: string
+          current_stop_price?: number | null
+          enable_trailing?: boolean
+          enabled?: boolean
+          entry_price?: number
+          id?: string
+          last_update_at?: string | null
+          max_order_updates_per_minute?: number
+          position_id?: string | null
+          position_type?: string
+          profit_trigger_type?: string
+          profit_trigger_unit?: string
+          profit_trigger_value?: number
+          quantity?: number
+          reference_price?: number | null
+          side?: string
+          slippage_buffer?: number | null
+          state?: string
+          stop_set_lock?: boolean
+          stop_set_mode?: string
+          stop_set_rounding?: string
+          stop_set_value?: number | null
+          strategy_name?: string
+          symbol?: string
+          trail_never_loosen?: boolean
+          trail_reference?: string | null
+          trail_start_delay?: number | null
+          trail_step_type?: string | null
+          trail_step_value?: number | null
+          trailing_amount?: number | null
+          trailing_type?: string | null
+          trigger_once?: boolean
+          triggered_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      phroureo_strategy_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          new_state: string | null
+          new_stop: number | null
+          previous_state: string | null
+          previous_stop: number | null
+          reason: string | null
+          strategy_id: string
+          trigger_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          new_state?: string | null
+          new_stop?: number | null
+          previous_state?: string | null
+          previous_stop?: number | null
+          reason?: string | null
+          strategy_id: string
+          trigger_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          new_state?: string | null
+          new_stop?: number | null
+          previous_state?: string | null
+          previous_stop?: number | null
+          reason?: string | null
+          strategy_id?: string
+          trigger_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phroureo_strategy_events_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "phroureo_exit_strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pocketoption_candles: {
         Row: {
           close: number
