@@ -16,6 +16,7 @@ import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
 import RealTimeAnalysisDashboard from "@/components/RealTimeAnalysisDashboard";
 import DataSourceAccuracyTracker from "@/components/DataSourceAccuracyTracker";
+import BotScannerStatus from "@/components/BotScannerStatus";
 import { useTradingStats } from "@/hooks/useTradingStats";
 
 interface Trade {
@@ -240,7 +241,7 @@ const TradingBot = () => {
       toast({
         title: newStatus ? "Bot Started" : "Bot Stopped",
         description: newStatus
-          ? "The AI trading bot is now active with 90%+ confidence gate"
+          ? "The AI trading bot is now active with 85%+ confidence gate"
           : "The AI trading bot has been paused",
       });
     } catch (error: any) {
@@ -299,11 +300,11 @@ const TradingBot = () => {
                 <Bot className="w-8 h-8" />
                 AI Trading Bot
               </h1>
-              <p className="text-muted-foreground">
-                Automated trading with 90%+ confidence gate
-              </p>
+                <p className="text-muted-foreground">
+                  Automated trading with 85%+ confidence gate
+                </p>
+              </div>
             </div>
-          </div>
 
           <Button
             onClick={toggleBot}
@@ -541,6 +542,9 @@ const TradingBot = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Bot Scanner Status - NEW */}
+        <BotScannerStatus botEnabled={botEnabled} />
 
         {/* Real-Time Analysis Dashboard */}
         <RealTimeAnalysisDashboard />
