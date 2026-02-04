@@ -61,17 +61,17 @@ async function fetchFromSchwab(
       '5': { periodType: 'day', frequencyType: 'minute', frequency: 5, period: 10 },
       '15': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
       '30': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
-      '60': { periodType: 'day', frequencyType: 'minute', frequency: 60, period: 10 },
+      '60': { periodType: 'month', frequencyType: 'minute', frequency: 30, period: 6 }, // Schwab doesn't support 60-min, use 30-min with 6 months
       '1m': { periodType: 'day', frequencyType: 'minute', frequency: 1, period: 5 },
       '5m': { periodType: 'day', frequencyType: 'minute', frequency: 5, period: 10 },
       'minute': { periodType: 'day', frequencyType: 'minute', frequency: 1, period: 5 },
       '5minute': { periodType: 'day', frequencyType: 'minute', frequency: 5, period: 10 },
       '15minute': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
       '30minute': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
-      'hour': { periodType: 'month', frequencyType: 'minute', frequency: 60, period: 6 },
+      'hour': { periodType: 'month', frequencyType: 'minute', frequency: 30, period: 6 }, // Schwab doesn't support 60-min, use 30-min
       '15m': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
       '30m': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
-      '1h': { periodType: 'month', frequencyType: 'minute', frequency: 60, period: 6 },
+      '1h': { periodType: 'month', frequencyType: 'minute', frequency: 30, period: 6 }, // Schwab doesn't support 60-min, use 30-min
       'D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
       '1D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
       'daily': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
