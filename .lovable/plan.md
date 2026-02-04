@@ -1,397 +1,282 @@
 
-# Advanced Options Trading Curriculum Implementation
 
-## Overview
+# Beginner & Intermediate Options Trading Curriculum Enhancement
 
-This plan implements a comprehensive **Advanced Options Trading Academy** curriculum based on the Promise Consulting Group PDF document. The curriculum consists of 14 professional-grade modules designed for advanced retail traders, active investors, and semi-professional traders.
+## Current State Analysis
 
-## Curriculum Structure (from PDF)
+### Existing Beginner Content
+**Course: "Options Trading Fundamentals"** (1 course, 8 modules, ~20 lessons)
 
-The PDF outlines 14 modules that will be created as a single "Advanced" level course with 14 modules, each containing multiple lessons:
+| Module | Lessons |
+|--------|---------|
+| Introduction to Options | What Are Options?, Options vs Stocks |
+| Call Options Explained | Call Options Basics, Selling Covered Calls |
+| Put Options Explained | Put Options Basics, Using Puts for Protection |
+| Basic Options Strategies | Vertical Spreads, Cash-Secured Puts |
+| Risk Management Essentials | Position Sizing, Stop Losses, Risk-Reward |
+| Psychology of Options Trading | Controlling Emotions, Trading Plan, Losing Streaks |
+| Technical Analysis Basics | Candlesticks, Support/Resistance, Moving Averages |
+| Understanding Market Movers | Earnings, Economic Data, Sector Rotation |
 
-| Module | Title | Focus |
-|--------|-------|-------|
-| 1 | Professional Options Market Mechanics | Market makers, liquidity, bid/ask, GEX |
-| 2 | Volatility Mastery | IV, HV, skew, term structure, volatility cones |
-| 3 | Advanced Options Greeks | Dynamic & portfolio-level Greeks management |
-| 4 | Institutional Technical Analysis | VWAP, liquidity zones, multi-timeframe alignment |
-| 5 | Advanced Stock & Options Screeners | Systematic opportunity discovery |
-| 6 | Financial & Fundamental Analysis | Earnings analysis, sector rotation, macro |
-| 7 | LEAPS & Synthetic Stock Strategies | Deep ITM LEAPS, PMCC, rolling strategies |
-| 8 | Advanced Credit Strategies | Iron condors, iron flies, adjustments |
-| 9 | Advanced Debit & Directional Strategies | Diagonals, calendars, ratio spreads |
-| 10 | Earnings & Event-Driven Trading | IV crush, straddles, macro events |
-| 11 | Risk Management & Position Sizing | Volatility-adjusted sizing, risk of ruin |
-| 12 | Trade Management & Exit Engineering | Scaling, trailing stops, managing winners/losers |
-| 13 | Rules-Based Trading Systems | Strategy playbooks, decision trees, journaling |
-| 14 | Psychology, Discipline & Professional Mindset | Overtrading avoidance, discipline under drawdowns |
+### Existing Intermediate Content
+**Course 1: "Understanding Options Greeks"** (2 modules, 2 lessons)
+- Understanding Delta
+- Theta and Time Decay
 
-## Database Implementation
+**Course 2: "Advanced Options Spreads Mastery"** (4 modules, ~10 lessons)
+- Iron Condors
+- Butterfly Spreads
+- Calendar & Diagonal Spreads
+- Strategy Selection & Management
 
-### Course Record
+### Gap Analysis
 
-Create one main course:
+**Beginner Gaps (from PDF):**
+- No module on Options Pricing (Intrinsic/Extrinsic value, Time decay basics)
+- No module on Brokerage Accounts, Order Types & Platform Basics
+- No module on Volatility Introduction
+- No module on Trade Planning & Entry Discipline
+- No module on Common Beginner Mistakes
+- No module on Paper Trading & Skill Development
 
-```
-Course: "Advanced Options Trading Academy"
-- difficulty_level: "advanced"
-- estimated_duration: "40+ hours"
-- description: "Transform from intermediate trader to institutional-style options professional. Master volatility, Greeks, LEAPS, event trading, and systematic risk management."
-- status: "published"
-- order_index: 10 (after existing courses)
-```
+**Intermediate Gaps (from PDF):**
+- Missing Gamma and Vega in Greeks course
+- No Market Structure & Trend Identification
+- No Volatility for Strategy Selection
+- No Intermediate Technical Analysis (beyond basics)
+- No Income Strategies module (Covered Calls, CSPs execution)
+- No Trade Management & Adjustments
+- No Earnings & Event Awareness
+- No Position Sizing & Risk Control
+- No Screeners & Opportunity Identification
+- No Journaling & Performance Improvement
 
-### Module Records (14 total)
+## Implementation Plan
 
-Each module from the PDF becomes a `course_modules` record with:
-- Descriptive title
-- Learning objective as description
-- Sequential order_index (0-13)
-- Status: "published"
+### Approach
+Create two new comprehensive courses following the PDF curricula, ensuring no overlap with existing content:
 
-### Lesson Records (Detailed breakdown per module)
+1. **"Beginner Options Trading Academy"** - 13 modules, ~65 lessons
+2. **"Intermediate Options Trading Academy"** - 13 modules, ~70 lessons
 
-Each module will contain 4-8 lessons covering the key topics. Total: ~70-80 lessons.
+### New Beginner Course Structure
 
-## Detailed Module & Lesson Structure
+**Course: "Beginner Options Trading Academy"**
+- Difficulty: beginner
+- Estimated Duration: 15+ hours
+- Order Index: 0 (appears first)
 
-### Module 1: Professional Options Market Mechanics
-**Objective**: Understand how options markets truly function behind the scenes.
+| Module | Title | Key Topics | Lessons |
+|--------|-------|------------|---------|
+| 1 | Introduction to Financial Markets & Trading | Market types, stocks vs options, investing vs trading, retail participation | 5 |
+| 2 | Options Basics: What Options Are and How They Work | Calls vs puts, buyers vs sellers, expiration, strike prices, contract sizing | 5 |
+| 3 | How Options Make and Lose Money | Intrinsic vs extrinsic value, theta basics, payoff diagrams, max profit/loss | 5 |
+| 4 | Brokerage Accounts & Platform Basics | Account types, approval levels, order types, buying vs selling, avoiding mistakes | 5 |
+| 5 | Risk Management for Beginners | Position sizing, risk per trade, avoiding naked options, emotional vs financial risk | 5 |
+| 6 | Introduction to Technical Analysis | Candlestick basics, support/resistance, trends/ranges, timeframes | 5 |
+| 7 | Basic Options Strategies (Beginner-Safe) | Buying calls/puts, covered calls conceptual, cash-secured puts conceptual, when to avoid | 5 |
+| 8 | Introduction to Volatility | What volatility is, IV vs HV simple, why it matters, high vs low environments | 5 |
+| 9 | Trade Planning & Entry Discipline | Trade checklists, entry rules, avoiding FOMO, planning exits before entry | 5 |
+| 10 | Managing Trades & Simple Exits | Profit targets, stop losses, time-based exits, cutting losses | 5 |
+| 11 | Common Beginner Mistakes & How to Avoid Them | Overtrading, oversizing, holding to expiration, chasing losses | 5 |
+| 12 | Trading Psychology for Beginners | Fear vs greed, patience, detachment, building confidence | 5 |
+| 13 | Practice, Paper Trading & Skill Development | Paper trading benefits, simulating trades, tracking performance, going live | 5 |
 
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 1.1 | Introduction to Market Microstructure | 25 min | How options exchanges work, order flow |
-| 1.2 | Market Makers & Liquidity Provision | 30 min | Role of MMs, how they profit, delta hedging |
-| 1.3 | Bid/Ask Dynamics & Spread Behavior | 25 min | Why spreads widen/narrow, optimal entry timing |
-| 1.4 | Open Interest vs Volume Analysis | 30 min | Reading OI changes, spotting accumulation |
-| 1.5 | Dealer Positioning & Gamma Exposure (GEX) | 35 min | Understanding GEX levels, dealer hedging impact |
-| 1.6 | Module 1 Assessment | 15 min | Quiz covering market mechanics concepts |
+**Total: 13 modules, 65 lessons**
 
-### Module 2: Volatility Mastery
-**Objective**: Trade volatility as a core variable, not a byproduct.
+### New Intermediate Course Structure
 
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 2.1 | Implied vs Historical Volatility Deep Dive | 30 min | Calculation methods, interpretation differences |
-| 2.2 | IV Rank vs IV Percentile | 25 min | Which to use and when, practical examples |
-| 2.3 | Volatility Cones & Forecasting | 30 min | Building and reading volatility cones |
-| 2.4 | Vertical Skew Analysis | 30 min | Strike-by-strike IV differences, trading opportunities |
-| 2.5 | Horizontal/Term Structure Skew | 25 min | Expiration-based IV differences, calendar trades |
-| 2.6 | Premium Buying vs Selling by Regime | 35 min | When to buy vs sell premium based on environment |
-| 2.7 | Module 2 Assessment | 15 min | Quiz on volatility concepts |
+**Course: "Intermediate Options Trading Academy"**
+- Difficulty: intermediate
+- Estimated Duration: 20+ hours
+- Order Index: 5 (after existing intermediate courses)
 
-### Module 3: Advanced Options Greeks
-**Objective**: Manage risk and exposure across entire portfolios.
+| Module | Title | Key Topics | Lessons |
+|--------|-------|------------|---------|
+| 1 | Market Structure & Trend Identification | Market phases, timeframe alignment, trend strength, avoiding chop | 5 |
+| 2 | Intermediate Options Pricing & The Greeks | Delta/Theta/Vega practical use, time decay acceleration, Greeks in multi-leg trades | 6 |
+| 3 | Volatility for Strategy Selection | IV levels/rank, high vs low vol strategies, expansion/contraction, premium traps | 5 |
+| 4 | Intermediate Technical Analysis | Support/resistance refinement, trend channels, MAs & confluence, volume confirmation | 5 |
+| 5 | Defined-Risk Options Strategies | Debit spreads, credit spreads, risk/reward evaluation, spreads vs singles | 6 |
+| 6 | Income Strategies (Intermediate) | Covered calls execution, cash-secured puts execution, rolling, assignment awareness | 5 |
+| 7 | Trade Planning & Strategy Selection | Trend assessment, volatility checks, risk budgets, pre-trade checklists | 5 |
+| 8 | Trade Management & Adjustments | Profit targets, stop-loss placement, rolling trades, defensive adjustments | 6 |
+| 9 | Earnings & Event Awareness | Earnings volatility, IV crush, when to trade earnings, simple earnings strategies | 5 |
+| 10 | Position Sizing & Risk Control | Risk per trade guidelines, managing multiple positions, correlation risk, portfolio overload | 5 |
+| 11 | Screeners & Opportunity Identification | Stock screeners, options liquidity filters, quality setups, building watchlists | 5 |
+| 12 | Trading Psychology for Developing Traders | Managing emotions, avoiding revenge trading, developing patience, confidence through process | 5 |
+| 13 | Journaling, Review & Performance Improvement | Trade journaling basics, reviewing trades, identifying patterns, continuous improvement | 5 |
 
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 3.1 | Delta Beyond Directional Bias | 25 min | Dollar delta, delta as probability proxy |
-| 3.2 | Gamma: The Accelerator | 30 min | Gamma risk, gamma scalping, gamma exposure |
-| 3.3 | Theta: Time Decay Dynamics | 25 min | Non-linear decay curves, theta optimization |
-| 3.4 | Vega: Volatility Sensitivity | 30 min | Vega risk across expirations, vega hedging |
-| 3.5 | Portfolio-Level Greeks Management | 35 min | Aggregating Greeks, portfolio neutralization |
-| 3.6 | Greek Interactions & Trade-offs | 30 min | How Greeks affect each other, practical scenarios |
-| 3.7 | Module 3 Assessment | 15 min | Greeks calculation and interpretation quiz |
+**Total: 13 modules, 68 lessons**
 
-### Module 4: Institutional Technical Analysis
-**Objective**: Apply technical analysis the way professionals do.
+## Technical Implementation
 
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 4.1 | Market Structure & Trend Hierarchy | 30 min | Higher timeframe structure, trend identification |
-| 4.2 | Multi-Timeframe Alignment | 30 min | Top-down analysis for options timing |
-| 4.3 | VWAP: Daily, Weekly & Anchored | 35 min | Institutional use of VWAP, trading around VWAP |
-| 4.4 | Liquidity Zones & Stop Runs | 30 min | Identifying liquidity, avoiding stop hunts |
-| 4.5 | Volume Profile for Options Traders | 30 min | POC, value areas, high-volume nodes |
-| 4.6 | Combining TA with Options Strategy Selection | 25 min | Matching strategy to technical setup |
-| 4.7 | Module 4 Assessment | 15 min | Technical analysis application quiz |
+### Edge Function Creation
 
-### Module 5: Advanced Stock & Options Screeners
-**Objective**: Create repeatable, high-quality trade pipelines.
+Create a new edge function `create-beginner-intermediate-curriculum` that will:
+1. Insert the Beginner Options Trading Academy course
+2. Insert all 13 beginner modules
+3. Insert all 65 beginner lessons with detailed Markdown content and quizzes
+4. Insert the Intermediate Options Trading Academy course
+5. Insert all 13 intermediate modules
+6. Insert all 68 intermediate lessons with detailed Markdown content and quizzes
 
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 5.1 | Screening Philosophy & Workflow Design | 25 min | Building systematic discovery processes |
-| 5.2 | High-Probability Options Setup Screens | 30 min | Criteria for quality setups |
-| 5.3 | LEAPS Candidate Screening | 30 min | Finding ideal LEAPS opportunities |
-| 5.4 | Earnings Volatility Screeners | 25 min | Pre-earnings IV expansion candidates |
-| 5.5 | Trend + Volatility Alignment Filters | 30 min | Multi-factor screening |
-| 5.6 | Building Custom Screeners | 25 min | Using platform-specific tools |
-| 5.7 | Module 5 Assessment | 15 min | Screener design quiz |
-
-### Module 6: Financial & Fundamental Analysis
-**Objective**: Use fundamentals selectively and effectively.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 6.1 | Earnings Analysis Beyond EPS | 30 min | Revenue quality, guidance, whisper numbers |
-| 6.2 | Balance Sheet Strength for Long-Dated Trades | 30 min | Debt ratios, cash position, LEAPS suitability |
-| 6.3 | Sector Rotation & Macro Sensitivity | 25 min | Economic cycles, sector options plays |
-| 6.4 | When Fundamentals Matter (and When They Don't) | 25 min | Time horizon considerations |
-| 6.5 | Integrating Fundamentals with Options Timing | 25 min | Combining F/A with options strategy |
-| 6.6 | Module 6 Assessment | 15 min | Fundamental analysis quiz |
-
-### Module 7: LEAPS & Synthetic Stock Strategies
-**Objective**: Use options as capital-efficient investment tools.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 7.1 | Deep ITM LEAPS vs Stock Ownership | 30 min | Capital efficiency, risk comparison |
-| 7.2 | Selecting Optimal LEAPS Strikes & Expiration | 25 min | Delta targets, time value considerations |
-| 7.3 | Poor Man's Covered Calls (PMCC) | 35 min | Setup, management, profit targets |
-| 7.4 | Rolling LEAPS Over Time | 30 min | When and how to roll, cost analysis |
-| 7.5 | Risk Management During Volatility Expansion | 25 min | Protecting LEAPS positions |
-| 7.6 | Synthetic Stock Positions | 25 min | Creating stock-like exposure with options |
-| 7.7 | Module 7 Assessment | 15 min | LEAPS strategy quiz |
-
-### Module 8: Advanced Credit Strategies
-**Objective**: Generate income with controlled downside risk.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 8.1 | Credit Spreads with Volatility Filters | 30 min | When to sell premium, strike selection |
-| 8.2 | Iron Condors: Structure & Management | 35 min | Setup, adjustment triggers, profit targets |
-| 8.3 | Iron Butterflies: High-Probability Income | 30 min | Pinning strategies, expiration management |
-| 8.4 | Adjustment Techniques for Credit Strategies | 35 min | Rolling, widening, converting positions |
-| 8.5 | When Selling Premium is Unfavorable | 25 min | Low IV environments, trend markets |
-| 8.6 | Module 8 Assessment | 15 min | Credit strategy quiz |
-
-### Module 9: Advanced Debit & Directional Strategies
-**Objective**: Execute precision directional trades.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 9.1 | Debit Spreads vs Outright Options | 30 min | When to use spreads, cost/benefit analysis |
-| 9.2 | Diagonal Spreads | 30 min | Structure, management, profit dynamics |
-| 9.3 | Calendar Spreads | 30 min | Volatility plays, time decay capture |
-| 9.4 | Ratio Spreads | 35 min | Risk/reward profiles, management |
-| 9.5 | Trend Acceleration & Momentum Plays | 25 min | Capturing momentum with defined risk |
-| 9.6 | Module 9 Assessment | 15 min | Directional strategy quiz |
-
-### Module 10: Earnings & Event-Driven Trading
-**Objective**: Trade structured volatility around events.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 10.1 | Understanding Earnings IV Build & Crush | 30 min | The earnings volatility cycle |
-| 10.2 | Pre-Earnings Strategies | 30 min | Buying before IV expansion |
-| 10.3 | Post-Earnings Strategies | 25 min | Selling after IV crush |
-| 10.4 | Straddles & Strangles for Events | 35 min | Breakeven analysis, position sizing |
-| 10.5 | Macro Events: CPI, FOMC, FDA | 30 min | Trading around scheduled events |
-| 10.6 | Risk Management for Event Trades | 25 min | Position sizing, stop strategies |
-| 10.7 | Module 10 Assessment | 15 min | Event trading quiz |
-
-### Module 11: Risk Management & Position Sizing
-**Objective**: Protect capital and ensure longevity.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 11.1 | Risk Per Trade vs Portfolio Risk | 30 min | Account-level risk budgeting |
-| 11.2 | Correlation & Concentration Risk | 30 min | Sector exposure, correlated positions |
-| 11.3 | Volatility-Adjusted Position Sizing | 35 min | Sizing based on IV and expected move |
-| 11.4 | Risk of Ruin Concepts | 25 min | Kelly criterion, survival probability |
-| 11.5 | Portfolio Heat & Buying Power Management | 25 min | Margin efficiency, reserve capital |
-| 11.6 | Module 11 Assessment | 15 min | Risk management quiz |
-
-### Module 12: Trade Management & Exit Engineering
-**Objective**: Master exits and defensive adjustments.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 12.1 | Scaling Out vs Full Exits | 30 min | Partial profit-taking strategies |
-| 12.2 | Time-Based Exits | 25 min | DTE-based exit rules |
-| 12.3 | Trailing Stops vs Profit Targets | 30 min | When to use each approach |
-| 12.4 | Managing Winners | 30 min | Letting profits run, adjustment strategies |
-| 12.5 | Managing Losers | 30 min | Cut losses, roll, or adjust |
-| 12.6 | The Phroureo Exit System | 25 min | Using automated exit strategies |
-| 12.7 | Module 12 Assessment | 15 min | Exit engineering quiz |
-
-### Module 13: Rules-Based Trading Systems
-**Objective**: Build repeatable, improvable systems.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 13.1 | Why Systems Beat Discretion | 25 min | Consistency, measurability, improvement |
-| 13.2 | Strategy Playbooks | 30 min | Documenting your strategies |
-| 13.3 | If/Then Decision Trees | 30 min | Building decision frameworks |
-| 13.4 | Market Regime Classification | 35 min | Trending, ranging, volatile environments |
-| 13.5 | Trade Journaling for Optimization | 30 min | What to track, review process |
-| 13.6 | Backtesting Your Systems | 25 min | Validating strategy effectiveness |
-| 13.7 | Module 13 Assessment | 15 min | Systems trading quiz |
-
-### Module 14: Psychology, Discipline & Professional Mindset
-**Objective**: Develop long-term trader resilience.
-
-| Lesson | Title | Duration | Content Focus |
-|--------|-------|----------|---------------|
-| 14.1 | Overtrading Avoidance | 25 min | Recognizing and preventing overtrading |
-| 14.2 | Loss Normalization | 25 min | Accepting losses as part of the process |
-| 14.3 | Discipline Under Drawdowns | 30 min | Maintaining system adherence |
-| 14.4 | Treating Trading as a Business | 30 min | Professional trader habits |
-| 14.5 | Building a Sustainable Trading Career | 25 min | Long-term perspective, work-life balance |
-| 14.6 | Final Course Assessment | 20 min | Comprehensive course quiz |
-| 14.7 | Certificate & Next Steps | 10 min | Completion celebration, continuing education |
-
-## Implementation Approach
-
-### Phase 1: Create Edge Function for Bulk Curriculum Creation
-
-Create a new edge function `create-advanced-curriculum` that will:
-1. Insert the main course record
-2. Insert all 14 module records
-3. Insert all ~90 lesson records with proper content
-
-This approach is more efficient than manual UI entry for 90+ lessons.
-
-### Phase 2: Lesson Content Templates
+### Sample Lesson Content Format
 
 Each lesson will include:
-- **Title**: Clear, descriptive title
-- **Description**: 2-3 sentence summary
-- **Duration**: Estimated viewing time
-- **Content Markdown**: Detailed lesson content with:
-  - Learning objectives
-  - Key concepts explained
-  - Practical examples
-  - Trading scenarios
-  - Key takeaways
-  - Quick reference summary
-- **Quiz Questions**: 3-5 multiple choice questions per lesson
+- Learning objectives (3-4 bullet points)
+- Key concepts with clear explanations
+- Practical examples with real-world scenarios
+- Step-by-step guidance where applicable
+- Key takeaways section
+- Quick reference summary
+- 3-5 multiple choice quiz questions
 
-### Phase 3: Module Assessments
-
-Each module ends with an assessment lesson containing:
-- 10-15 quiz questions covering module content
-- Passing score required: 70%
-- Tracks completion in user_course_progress
-
-## Files to Create
+### Files to Create
 
 | File | Purpose |
 |------|---------|
-| `supabase/functions/create-advanced-curriculum/index.ts` | Edge function to bulk-insert curriculum |
+| `supabase/functions/create-beginner-intermediate-curriculum/index.ts` | Edge function for bulk insertion |
 
-## Files to Modify
+### Course Ordering (Final)
 
-| File | Changes |
-|------|---------|
-| None required for initial implementation | Edge function handles all DB inserts |
+After implementation, the Academy will show:
 
-## Database Changes
+| Order | Course | Level |
+|-------|--------|-------|
+| 0 | Beginner Options Trading Academy (NEW) | Beginner |
+| 1 | Options Trading Fundamentals (existing) | Beginner |
+| 2 | Understanding Options Greeks (existing) | Intermediate |
+| 3 | Advanced Options Spreads Mastery (existing) | Intermediate |
+| 5 | Intermediate Options Trading Academy (NEW) | Intermediate |
+| 10 | Advanced Options Trading Academy | Advanced |
+| 20 | Expert Options Trading Academy | Expert |
 
-**No schema changes required** - the existing `courses`, `course_modules`, and `course_lessons` tables support all required fields.
+## Lesson Content Examples
 
-**Data Inserts** (via edge function):
-- 1 course record
-- 14 module records  
-- ~90 lesson records
-
-## Execution Plan
-
-1. Create edge function with complete curriculum data
-2. Deploy edge function
-3. Execute edge function to populate database
-4. Verify content appears in Academy under "Advanced" filter
-5. Review and adjust lesson content as needed via Admin panel
-
-## Sample Lesson Content (Lesson 1.1)
+### Beginner Lesson 1.1: What Are Financial Markets?
 
 ```markdown
-# Introduction to Market Microstructure
+# What Are Financial Markets?
 
 ## Learning Objectives
-By the end of this lesson, you will:
-- Understand how options orders flow through the market
-- Know the key participants in options markets
-- Recognize the difference between exchange-traded and OTC options
-- Understand the role of the Options Clearing Corporation (OCC)
+- Understand what financial markets are and why they exist
+- Know the main types of financial markets
+- Recognize where options trading fits in the broader market
+- Understand how retail traders participate
 
-## Key Concepts
+## What Is a Financial Market?
 
-### Order Flow in Options Markets
-When you place an options order, it travels through several layers before execution:
-1. Your broker receives the order
-2. Order is routed to an options exchange (CBOE, NYSE Arca, etc.)
-3. Market makers compete to fill your order
-4. The OCC guarantees the trade
+A financial market is simply a place where buyers and sellers 
+come together to trade financial assets. Think of it like a 
+farmer's market, but instead of vegetables, people buy and 
+sell things like:
 
-### Market Participants
-- **Retail Traders**: Individual investors like you
-- **Market Makers**: Provide liquidity, profit from bid-ask spread
-- **Institutional Traders**: Hedge funds, pension funds, insurance companies
-- **Proprietary Traders**: Trade firm capital
+- **Stocks**: Ownership pieces of companies
+- **Bonds**: Loans to governments or companies
+- **Options**: Contracts that give you rights to buy/sell stocks
+- **Currencies**: Money from different countries
 
-### Why This Matters for Your Trading
-Understanding market structure helps you:
-- Time entries for better fills
-- Avoid low-liquidity options
-- Understand why prices move the way they do
-- Recognize when large players are active
+## Why Do Financial Markets Exist?
 
-## Practical Example
-Imagine you want to buy 10 contracts of AAPL $150 calls. The current market shows:
-- Bid: $2.45 (10 contracts)
-- Ask: $2.50 (25 contracts)
-
-If you place a market order, you'll pay $2.50. But if you place a limit order at $2.47, a market maker might fill you in between to earn the spread.
+Financial markets serve important purposes:
+1. **Raise Capital**: Companies sell stocks to get money to grow
+2. **Transfer Risk**: Investors can protect themselves with options
+3. **Price Discovery**: Markets help determine fair prices
+4. **Liquidity**: Make it easy to buy and sell quickly
 
 ## Key Takeaways
-1. Options markets have multiple participants with different goals
-2. Market makers provide liquidity but profit from the spread
-3. Order routing and execution quality matter
-4. Understanding structure = better execution
-
-## Quick Reference
-- **Bid**: Price buyers are willing to pay
-- **Ask**: Price sellers are asking
-- **Spread**: Difference between bid and ask
-- **OCC**: Options Clearing Corporation (guarantees all trades)
+1. Financial markets connect buyers and sellers of financial assets
+2. Options are contracts traded in the options market
+3. The stock market is where we find stocks to trade options on
+4. Retail traders access markets through brokerage accounts
 ```
 
-## Quiz Sample (Module 1)
+### Intermediate Lesson 3.1: Understanding Implied Volatility Levels
+
+```markdown
+# Understanding Implied Volatility Levels
+
+## Learning Objectives
+- Interpret IV levels in practical terms
+- Use IV Rank to assess current volatility
+- Recognize high vs low IV environments
+- Match volatility conditions to strategy selection
+
+## What Is Implied Volatility?
+
+Implied volatility (IV) tells you how much the market expects 
+a stock to move in the future. It's derived from option prices:
+
+- **High IV**: Market expects big moves, options are expensive
+- **Low IV**: Market expects small moves, options are cheap
+
+## IV Rank: Your Volatility Context Tool
+
+IV Rank tells you where current IV stands compared to the past year:
+
+| IV Rank | Interpretation | Strategy Implication |
+|---------|----------------|---------------------|
+| 0-30% | Low volatility | Consider buying premium |
+| 30-50% | Normal range | Flexible approach |
+| 50-100% | High volatility | Consider selling premium |
+
+## Practical Example
+
+AAPL has an IV of 25%. Is that high or low?
+
+Without context, you can't know! But if IV Rank is 85%, that 
+means 25% is higher than 85% of the past year - so it's 
+relatively HIGH volatility, favoring premium selling.
+
+## Key Takeaways
+1. IV alone doesn't tell you if volatility is high or low
+2. IV Rank provides crucial context
+3. High IV Rank favors selling strategies
+4. Low IV Rank favors buying strategies
+```
+
+## Quiz Structure
+
+Each lesson includes 3-5 quiz questions:
 
 ```json
-[
-  {
-    "question": "What is the primary role of market makers in options markets?",
-    "options": [
-      "To profit from directional moves",
-      "To provide liquidity and earn the bid-ask spread",
-      "To manipulate prices",
-      "To execute only large institutional orders"
-    ],
-    "correct_answer": 1,
-    "explanation": "Market makers provide liquidity by continuously quoting bid and ask prices, profiting from the spread between them while remaining delta-neutral."
-  },
-  {
-    "question": "When open interest increases while price decreases, what does this typically indicate?",
-    "options": [
-      "Buyers are accumulating positions",
-      "Sellers are closing positions",
-      "New short positions are being opened",
-      "The market is highly liquid"
-    ],
-    "correct_answer": 2,
-    "explanation": "Rising open interest with falling prices suggests new short positions are being established, as both a new buyer and seller are needed to increase OI."
-  }
-]
+{
+  "question": "If a stock has an IV of 30% and an IV Rank of 15%, what does this tell you?",
+  "options": [
+    "Volatility is extremely high - sell premium",
+    "Volatility is relatively low compared to the past year",
+    "The stock never moves much",
+    "You should avoid trading this stock"
+  ],
+  "correct_answer": 1,
+  "explanation": "An IV Rank of 15% means the current IV is lower than 85% of readings over the past year, indicating relatively low volatility."
+}
 ```
 
 ## Program Completion Outcomes
 
-Upon completing this curriculum, students will be able to:
-- Design and execute advanced options strategies
-- Use volatility, Greeks, and structure intentionally
-- Integrate technical and financial analysis
-- Invest using LEAPS and synthetic positions
-- Manage risk professionally across portfolios
-- Build systematic, rules-based trading approaches
+### Beginner Academy Graduates Will:
+- Understand how options work mechanically
+- Place basic options trades correctly
+- Manage risk responsibly from day one
+- Read charts at a foundational level
+- Have practiced in paper trading before risking capital
+- Be prepared for intermediate-level training
 
-## Estimated Timeline
+### Intermediate Academy Graduates Will:
+- Trade defined-risk option strategies
+- Select strategies based on volatility and trend
+- Manage trades effectively after entry
+- Control risk across multiple positions
+- Use screeners to find opportunities systematically
+- Be prepared for advanced-level training
 
-- Edge function creation: 1 message
-- Lesson content population: Automatically via edge function
-- Total lessons: ~90 lessons
-- Total content: 40+ hours of material
+## Execution Summary
 
-This curriculum transforms the Academy's "Advanced" section into a comprehensive, professional-grade options trading program.
+1. Create edge function with complete curriculum data for both levels
+2. Deploy edge function
+3. Execute to populate database
+4. Verify content appears in Academy under "Beginner" and "Intermediate" filters
+5. Total new content: 26 modules, 133 lessons, 40+ hours of material
+
