@@ -46,7 +46,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { userId, customSymbols, minConfidence = 90 } = await req.json();
+    const { userId, customSymbols, minConfidence = 85 } = await req.json();
 
     if (!userId) {
       return new Response(
@@ -158,11 +158,11 @@ serve(async (req) => {
           }
 
           let recommendation = "no_trade";
-          if (matchScore >= 90) {
+          if (matchScore >= 85) {
             recommendation = "strong_opportunity";
-          } else if (matchScore >= 75) {
+          } else if (matchScore >= 70) {
             recommendation = "moderate_opportunity";
-          } else if (matchScore >= 60) {
+          } else if (matchScore >= 55) {
             recommendation = "watchlist";
           }
 
@@ -188,9 +188,9 @@ serve(async (req) => {
 
     // Filter for minimum confidence
     const qualifiedOpportunities = results.filter(r => r.matchScore >= minConfidence);
-    const watchlistOpportunities = results.filter(r => r.matchScore >= 60 && r.matchScore < minConfidence);
+    const watchlistOpportunities = results.filter(r => r.matchScore >= 55 && r.matchScore < minConfidence);
 
-    console.log(`[Bot Screener] Found ${qualifiedOpportunities.length} qualified (90%+) and ${watchlistOpportunities.length} watchlist opportunities`);
+    console.log(`[Bot Screener] Found ${qualifiedOpportunities.length} qualified (${minConfidence}%+) and ${watchlistOpportunities.length} watchlist opportunities`);
 
     return new Response(
       JSON.stringify({
