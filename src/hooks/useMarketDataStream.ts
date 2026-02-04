@@ -80,6 +80,18 @@ export const useMarketDataStream = ({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRealDataRef = useRef(false);
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const isNotFoundError = useCallback((err: any) => {
+    return (
+      err?.code === "NOT_FOUND" ||
+      /requested function was not found/i.test(String(err?.message ?? ""))
+    );
+  }, []);
+
+  // Memoized symbols key to prevent unnecessary reconnections
+  const symbolsKey = symbols.slice().sort().join(',');
+
   const toFiniteNumber = useCallback((value: unknown, fallback = 0): number => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
     if (typeof value === "string") {
@@ -95,12 +107,37 @@ export const useMarketDataStream = ({
   const fetchRealData = useCallback(async () => {
     if (symbols.length === 0) return false;
 
-    try {
-      const { data, error: fetchError } = await supabase.functions.invoke('market-data-stream', {
-        body: { action: 'get_quotes', symbols },
-      });
+     // Normalize and de-dupe to avoid duplicate fetches (e.g., ["SPY","SPY","QQQ"])
+     const normalizedSymbols = Array.from(
+       new Set(
+         symbols
+           .map((s) => String(s || "").trim().toUpperCase())
+           .filter(Boolean)
+       )
+     );
 
-      if (fetchError) throw fetchError;
+     if (normalizedSymbols.length === 0) return false;
+
+    try {
+      // The gateway can briefly return a NOT_FOUND during deployments/propagation.
+      // Retry a couple times before we fall back to simulated data.
+      let data: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const resp = await supabase.functions.invoke('market-data-stream', {
+          body: { action: 'get_quotes', symbols: normalizedSymbols },
+        });
+
+        if (resp.error) {
+          if (isNotFoundError(resp.error) && attempt < 2) {
+            await sleep(250 * (attempt + 1));
+            continue;
+          }
+          throw resp.error;
+        }
+
+        data = resp.data;
+        break;
+      }
       
       if (data?.mock) {
         // Silent fallback to simulated data
@@ -164,10 +201,13 @@ export const useMarketDataStream = ({
       }
       return false;
     } catch (err: any) {
-      console.error('Error fetching real data:', err);
+      // Avoid spamming logs for transient NOT_FOUNDs (usually during deploy propagation)
+      if (!isNotFoundError(err)) {
+        console.error('Error fetching real data:', err);
+      }
       return false;
     }
-  }, [symbols.length, onPriceUpdate]);
+  }, [symbolsKey, symbols.length, isNotFoundError, onPriceUpdate, toFiniteNumber]);
 
   // Start simulated data stream - reduced frequency
   const startSimulatedStream = useCallback(() => {
@@ -249,8 +289,6 @@ export const useMarketDataStream = ({
     });
   }, []);
 
-  // Memoized symbols key to prevent unnecessary reconnections
-  const symbolsKey = symbols.slice().sort().join(',');
   const symbolsKeyRef = useRef(symbolsKey);
   const isInitializedRef = useRef(false);
 
