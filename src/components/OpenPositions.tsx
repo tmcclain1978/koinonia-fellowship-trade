@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { TrendingUp, TrendingDown, X, Minus, Plus, Edit } from "lucide-react";
+import { TrendingUp, TrendingDown, X, Minus, Plus, Edit, Shield } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { EditableExitStrategy, ExitStrategy } from "@/components/options/EditableExitStrategy";
+import { PhroureoStrategyBuilder, PhroureoPositionCard, PhroureoExitStrategy, PhroureoStrategyInput, STATE_BADGES } from "@/components/phroureo";
+import { usePhroureoStrategy } from "@/hooks/usePhroureoStrategy";
 
 interface Position {
   symbol: string;
@@ -45,9 +47,50 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
   const [closeQuantity, setCloseQuantity] = useState(1);
   const [closing, setClosing] = useState(false);
   
-  // Exit strategy editing
+  // Exit strategy editing (legacy)
   const [exitStrategyDialogOpen, setExitStrategyDialogOpen] = useState(false);
   const [exitStrategyPosition, setExitStrategyPosition] = useState<Position | null>(null);
+  
+  // Phroureo exit strategy
+  const [phroureoDialogOpen, setPhroureoDialogOpen] = useState(false);
+  const [phroureoPosition, setPhroureoPosition] = useState<Position | null>(null);
+  const [phroureoViewDialogOpen, setPhroureoViewDialogOpen] = useState(false);
+  const [selectedPhroureoStrategy, setSelectedPhroureoStrategy] = useState<PhroureoExitStrategy | null>(null);
+  
+  // Fetch all strategies for current user
+  const { strategies: allStrategies, createStrategy, refresh: refreshStrategies } = usePhroureoStrategy();
+  
+  // Map strategies by symbol for quick lookup
+  const strategyBySymbol: Record<string, PhroureoExitStrategy> = {};
+  allStrategies.forEach(s => {
+    strategyBySymbol[s.symbol] = s;
+  });
+  
+  const handleOpenPhroureoDialog = (e: React.MouseEvent, position: Position) => {
+    e.stopPropagation();
+    setPhroureoPosition(position);
+    setPhroureoDialogOpen(true);
+  };
+  
+  const handleViewPhroureoStrategy = (e: React.MouseEvent, strategy: PhroureoExitStrategy) => {
+    e.stopPropagation();
+    setSelectedPhroureoStrategy(strategy);
+    setPhroureoViewDialogOpen(true);
+  };
+  
+  const handleSavePhroureoStrategy = async (config: PhroureoStrategyInput) => {
+    if (!phroureoPosition) return;
+    
+    await createStrategy(config, undefined, 'paper');
+    setPhroureoDialogOpen(false);
+    setPhroureoPosition(null);
+    refreshStrategies();
+    
+    toast({
+      title: "Phroureo Strategy Created",
+      description: `Exit strategy for ${config.symbol} is now active`,
+    });
+  };
   
   const handleOpenExitStrategyDialog = (e: React.MouseEvent, position: Position) => {
     e.stopPropagation();
@@ -141,6 +184,7 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
             {positions.map((position, index) => {
               const pl = position.unrealizedPL;
               const plPercentage = ((pl / position.totalCost) * 100).toFixed(2);
+              const phroureoStrategy = strategyBySymbol[position.symbol];
               
               return (
                 <div
@@ -158,10 +202,32 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
                         <Badge variant="outline" className="text-xs">
                           {position.quantity} contract{position.quantity > 1 ? 's' : ''}
                         </Badge>
+                        {/* Phroureo Status Badge */}
+                        {phroureoStrategy && (
+                          <Badge 
+                            variant={STATE_BADGES[phroureoStrategy.state]?.variant || 'secondary'}
+                            className="text-xs cursor-pointer"
+                            onClick={(e) => handleViewPhroureoStrategy(e, phroureoStrategy)}
+                          >
+                            <Shield className="w-3 h-3 mr-1" />
+                            {STATE_BADGES[phroureoStrategy.state]?.label || phroureoStrategy.state}
+                          </Badge>
+                        )}
                       </div>
                       {position.strike && (
                         <p className="text-sm text-muted-foreground">
                           ${position.strike} Strike • {position.expiration}
+                        </p>
+                      )}
+                      {/* Show current stop if Phroureo is active */}
+                      {phroureoStrategy?.current_stop_price && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Stop: ${phroureoStrategy.current_stop_price.toFixed(2)}
+                          {phroureoStrategy.reference_price && (
+                            <span className="ml-2">
+                              | Ref: ${phroureoStrategy.reference_price.toFixed(2)}
+                            </span>
+                          )}
                         </p>
                       )}
                     </div>
@@ -175,6 +241,29 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
                           {pl >= 0 ? '+' : ''}{plPercentage}%
                         </p>
                       </div>
+                      {/* Phroureo Protection Button */}
+                      {!phroureoStrategy ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => handleOpenPhroureoDialog(e, position)}
+                          className="shrink-0"
+                          title="Add Phroureo Protection"
+                        >
+                          <Shield className="w-4 h-4 mr-1" />
+                          Protect
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => handleViewPhroureoStrategy(e, phroureoStrategy)}
+                          className="shrink-0"
+                          title="View Phroureo Strategy"
+                        >
+                          <Shield className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -389,6 +478,54 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
           onSave={handleSaveExitStrategy}
         />
       )}
+
+      {/* Phroureo Strategy Builder Dialog */}
+      <Dialog open={phroureoDialogOpen} onOpenChange={setPhroureoDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5" />
+              Phroureo Protection - {phroureoPosition?.symbol}
+            </DialogTitle>
+            <DialogDescription>
+              Configure an automated exit strategy with profit triggers, stop-loss management, and trailing stops.
+            </DialogDescription>
+          </DialogHeader>
+          {phroureoPosition && (
+            <PhroureoStrategyBuilder
+              symbol={phroureoPosition.symbol}
+              side={phroureoPosition.side === 'CALL' ? 'long' : 'short'}
+              entryPrice={phroureoPosition.entryPrice}
+              quantity={phroureoPosition.quantity}
+              currentPrice={phroureoPosition.currentPrice}
+              onSave={handleSavePhroureoStrategy}
+              onCancel={() => setPhroureoDialogOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Phroureo Strategy View Dialog */}
+      <Dialog open={phroureoViewDialogOpen} onOpenChange={setPhroureoViewDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5" />
+              Phroureo Strategy Details
+            </DialogTitle>
+          </DialogHeader>
+          {selectedPhroureoStrategy && (
+            <PhroureoPositionCard
+              strategy={selectedPhroureoStrategy}
+              currentPrice={positions.find(p => p.symbol === selectedPhroureoStrategy.symbol)?.currentPrice}
+              onUpdate={() => {
+                refreshStrategies();
+                setPhroureoViewDialogOpen(false);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
