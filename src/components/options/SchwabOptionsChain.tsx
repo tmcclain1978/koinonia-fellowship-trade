@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { safeToFixed } from "@/lib/safeNumber";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -322,44 +323,44 @@ export const SchwabOptionsChain = ({
                           className="text-right font-mono text-sm cursor-pointer hover:bg-green-500/20"
                           onClick={() => call && handleOptionClick(call, true)}
                         >
-                          {call?.bid?.toFixed(2) || '-'}
+                          {safeToFixed(call?.bid, 2, '-')}
                         </TableCell>
                         <TableCell 
                           className="text-right font-mono text-sm cursor-pointer hover:bg-green-500/20"
                           onClick={() => call && handleOptionClick(call, false)}
                         >
-                          {call?.ask?.toFixed(2) || '-'}
+                          {safeToFixed(call?.ask, 2, '-')}
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
-                          {call?.volume?.toLocaleString() || '-'}
+                          {typeof call?.volume === 'number' ? call.volume.toLocaleString() : '-'}
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
-                          {call?.delta?.toFixed(2) || '-'}
+                          {safeToFixed(call?.delta, 2, '-')}
                         </TableCell>
                         
                         {/* Strike */}
                         <TableCell className={`text-center font-bold font-mono bg-muted/50 ${isATM ? 'text-primary' : ''}`}>
-                          ${strike.toFixed(0)}
+                          ${safeToFixed(strike, 0, '-')}
                         </TableCell>
                         
                         {/* PUT Side */}
                         <TableCell className="text-right text-xs text-muted-foreground">
-                          {put?.delta?.toFixed(2) || '-'}
+                          {safeToFixed(put?.delta, 2, '-')}
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
-                          {put?.volume?.toLocaleString() || '-'}
+                          {typeof put?.volume === 'number' ? put.volume.toLocaleString() : '-'}
                         </TableCell>
                         <TableCell 
                           className="text-right font-mono text-sm cursor-pointer hover:bg-red-500/20"
                           onClick={() => put && handleOptionClick(put, true)}
                         >
-                          {put?.bid?.toFixed(2) || '-'}
+                          {safeToFixed(put?.bid, 2, '-')}
                         </TableCell>
                         <TableCell 
                           className="text-right font-mono text-sm cursor-pointer hover:bg-red-500/20"
                           onClick={() => put && handleOptionClick(put, false)}
                         >
-                          {put?.ask?.toFixed(2) || '-'}
+                          {safeToFixed(put?.ask, 2, '-')}
                         </TableCell>
                       </TableRow>
                     );
