@@ -63,16 +63,43 @@ export const usePolygonWebSocket = ({
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const isNotFoundError = useCallback((err: any) => {
+    return (
+      err?.code === 'NOT_FOUND' ||
+      /requested function was not found/i.test(String(err?.message ?? ''))
+    );
+  }, []);
+
   // Fetch quotes via REST API (polling fallback)
   const fetchQuotes = useCallback(async () => {
     if (symbols.length === 0) return;
 
-    try {
-      const { data, error: fetchError } = await supabase.functions.invoke('market-data-stream', {
-        body: { action: 'get_quotes', symbols },
-      });
+    const normalizedSymbols = Array.from(
+      new Set(symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean))
+    );
 
-      if (fetchError) throw fetchError;
+    if (normalizedSymbols.length === 0) return;
+
+    try {
+      let data: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const resp = await supabase.functions.invoke('market-data-stream', {
+          body: { action: 'get_quotes', symbols: normalizedSymbols },
+        });
+
+        if (resp.error) {
+          if (isNotFoundError(resp.error) && attempt < 2) {
+            await sleep(250 * (attempt + 1));
+            continue;
+          }
+          throw resp.error;
+        }
+
+        data = resp.data;
+        break;
+      }
 
       if (data?.quotes) {
         const newPrices = new Map<string, StreamingPrice>();
@@ -112,10 +139,13 @@ export const usePolygonWebSocket = ({
         setError(null);
       }
     } catch (err: any) {
-      console.error('Error fetching quotes:', err);
-      setError(err.message);
+      // Transient NOT_FOUNDs can happen during deploy propagation; don't hard-fail the UI.
+      if (!isNotFoundError(err)) {
+        console.error('Error fetching quotes:', err);
+        setError(err.message);
+      }
     }
-  }, [symbols, onPriceUpdate]);
+  }, [symbols, onPriceUpdate, isNotFoundError]);
 
   // Connect to Polygon WebSocket
   const connectWebSocket = useCallback(async () => {
