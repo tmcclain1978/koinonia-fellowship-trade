@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { safeToFixed } from "@/lib/safeNumber";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,6 @@ import {
   AlertCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
 interface LivePrice {
   bid: number;
   ask: number;
@@ -117,13 +117,16 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
     }
   };
 
-  const fetchAnalysis = useCallback(async () => {
+  const fetchAnalysis = useCallback(async (retryCount = 0) => {
     if (symbols.length === 0) return;
     
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        setLoading(false);
+        return;
+      }
 
       const response = await supabase.functions.invoke("enhanced-bot-analysis", {
         body: { userId: session.user.id, symbols }
@@ -137,13 +140,31 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
       }
     } catch (error: any) {
       console.error("Error fetching analysis:", error);
-      toast({
-        title: "Error fetching analysis",
-        description: error.message || "Failed to load analysis data",
-        variant: "destructive",
-      });
+      
+      // Retry up to 2 times on network errors
+      const isNetworkError = error.message?.includes("Failed to fetch") || 
+                             error.context?.message?.includes("Failed to fetch");
+      
+      if (isNetworkError && retryCount < 2) {
+        console.log(`Retrying analysis fetch (attempt ${retryCount + 2})...`);
+        setTimeout(() => fetchAnalysis(retryCount + 1), 2000);
+        return;
+      }
+      
+      // Only show toast if we've exhausted retries or it's not a network error
+      if (!isNetworkError || retryCount >= 2) {
+        toast({
+          title: "Error fetching analysis",
+          description: isNetworkError 
+            ? "Network issue - please check your connection and try again" 
+            : (error.message || "Failed to load analysis data"),
+          variant: "destructive",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || retryCount >= 2) {
+        setLoading(false);
+      }
     }
   }, [symbols, toast]);
 
@@ -253,7 +274,7 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={fetchAnalysis}
+            onClick={() => fetchAnalysis()}
             disabled={loading}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -284,14 +305,14 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
                       <span className="text-xl font-bold">{analysis.symbol}</span>
                       {analysis.livePrice && (
                         <span className="text-lg font-semibold text-foreground">
-                          ${analysis.livePrice.last.toFixed(2)}
+                          ${safeToFixed(analysis.livePrice.last, 2, 'N/A')}
                         </span>
                       )}
                       {getDirectionIcon(analysis.koinoniaSignal?.direction || analysis.chartAnalysis?.predictedDirection || "")}
                     </div>
                     <div className="flex items-center gap-3">
                       <div className={`px-3 py-1 rounded-full font-bold ${getScoreColor(analysis.compositeScore)}`}>
-                        {analysis.compositeScore.toFixed(0)}%
+                        {safeToFixed(analysis.compositeScore, 0, '0')}%
                       </div>
                       {getRecommendationBadge(analysis.recommendation)}
                     </div>
@@ -317,9 +338,9 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
                       </div>
                       {analysis.livePrice ? (
                         <div className="text-sm">
-                          <div className="font-semibold">${analysis.livePrice.last.toFixed(2)}</div>
+                          <div className="font-semibold">${safeToFixed(analysis.livePrice.last, 2, 'N/A')}</div>
                           <div className="text-xs text-muted-foreground">
-                            Vol: {(analysis.livePrice.volume / 1000000).toFixed(1)}M
+                            Vol: {safeToFixed((analysis.livePrice.volume || 0) / 1000000, 1, '0')}M
                           </div>
                         </div>
                       ) : (
@@ -342,10 +363,10 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
                         <div className="text-sm">
                           <div className="font-semibold capitalize flex items-center gap-1">
                             {getDirectionIcon(analysis.koinoniaSignal.direction)}
-                            {analysis.koinoniaSignal.direction}
+                            {analysis.koinoniaSignal.direction || 'N/A'}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            RSI: {analysis.koinoniaSignal.rsi?.toFixed(0) || "N/A"}
+                            RSI: {safeToFixed(analysis.koinoniaSignal.rsi, 0, 'N/A')}
                           </div>
                         </div>
                       ) : (
@@ -371,7 +392,7 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
                             {analysis.chartAnalysis.predictedDirection}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Key: ${analysis.chartAnalysis.keyLevel?.toFixed(2) || "N/A"}
+                            Key: ${safeToFixed(analysis.chartAnalysis.keyLevel, 2, 'N/A')}
                           </div>
                         </div>
                       ) : (
@@ -397,7 +418,7 @@ const RealTimeAnalysisDashboard = ({ watchlistSymbols }: RealTimeAnalysisDashboa
                             {analysis.koinoniaSignal.sentiment}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Score: {analysis.koinoniaSignal.sentimentScore?.toFixed(0) || "0"}
+                            Score: {safeToFixed(analysis.koinoniaSignal.sentimentScore, 0, '0')}
                           </div>
                         </div>
                       ) : (
