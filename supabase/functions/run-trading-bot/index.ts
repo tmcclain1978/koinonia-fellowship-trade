@@ -160,7 +160,7 @@ serve(async (req) => {
           body: {
             userId: settings.user_id,
             customSymbols: settings.allowed_symbols,
-            minConfidence: 90
+            minConfidence: 85
           },
         });
 
