@@ -54,6 +54,32 @@ const PaperTrading = () => {
     loadTrades();
   }, []);
 
+  // Subscribe to real-time balance updates
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('paper-account-balance')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'paper_trading_accounts',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('Balance updated via realtime:', payload.new);
+          setAccount(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
   // Persist symbol to localStorage
   useEffect(() => {
     if (symbol && symbol.length >= 1) {

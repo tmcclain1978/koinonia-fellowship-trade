@@ -27,7 +27,7 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { symbol, action, quantity, price, strike, side, expiration, notes } = await req.json();
+    const { symbol, action, quantity, price, strike, side, expiration, notes, isStock } = await req.json();
 
     if (!symbol || !action || !quantity || !price) {
       throw new Error('Missing required fields');
@@ -52,7 +52,14 @@ serve(async (req) => {
       account = newAccount;
     }
 
-    const totalValue = Number(quantity) * Number(price) * 100; // Options contract multiplier
+    // Detect if this is an options trade based on strike/side or explicit isStock flag
+    const isOptionsTradeDetected = !isStock && strike && strike !== '0' && strike !== 0 && side;
+    const multiplier = isOptionsTradeDetected ? 100 : 1;
+    
+    // Build contract key for matching (only for options)
+    const contractKey = isOptionsTradeDetected ? `${side} ${strike} ${expiration || ''}`.trim() : null;
+    
+    const totalValue = Number(quantity) * Number(price) * multiplier;
     let profitLoss = null;
 
     // Check if user has enough balance for buy
@@ -60,21 +67,65 @@ serve(async (req) => {
       throw new Error('Insufficient balance');
     }
 
-    // Calculate profit/loss for sell orders
+    // Calculate profit/loss for sell orders using FIFO matching
     if (action === 'sell') {
-      // Get most recent unclosed buy position for this symbol
-      const { data: recentBuy } = await supabase
+      let matchQuery = supabase
         .from('paper_trades')
         .select('*')
         .eq('user_id', user.id)
         .eq('symbol', symbol)
         .eq('action', 'buy')
-        .order('executed_at', { ascending: false })
-        .limit(1)
-        .single();
+        .order('executed_at', { ascending: true }); // FIFO ordering
 
-      if (recentBuy) {
-        profitLoss = (Number(price) - Number(recentBuy.price)) * Number(quantity) * 100;
+      // For options, match by exact contract specification
+      if (isOptionsTradeDetected && contractKey) {
+        matchQuery = matchQuery.eq('notes', contractKey);
+      }
+
+      const { data: matchingBuys, error: matchError } = await matchQuery;
+
+      if (matchError) {
+        console.error('Error finding matching buys:', matchError);
+      }
+
+      if (matchingBuys && matchingBuys.length > 0) {
+        // Calculate weighted average entry price using FIFO
+        let remainingQtyToSell = Number(quantity);
+        let totalCostBasis = 0;
+        let qtyMatched = 0;
+
+        for (const buy of matchingBuys) {
+          if (remainingQtyToSell <= 0) break;
+          
+          const buyQty = Number(buy.quantity);
+          const qtyToUse = Math.min(buyQty, remainingQtyToSell);
+          
+          totalCostBasis += Number(buy.price) * qtyToUse;
+          qtyMatched += qtyToUse;
+          remainingQtyToSell -= qtyToUse;
+        }
+
+        if (qtyMatched > 0) {
+          const avgEntryPrice = totalCostBasis / qtyMatched;
+          // P/L = (sell price - avg entry price) * quantity * multiplier
+          profitLoss = (Number(price) - avgEntryPrice) * Number(quantity) * multiplier;
+          
+          console.log('P/L Calculation:', {
+            symbol,
+            contractKey,
+            avgEntryPrice,
+            sellPrice: Number(price),
+            quantity: Number(quantity),
+            multiplier,
+            profitLoss,
+            matchedBuys: matchingBuys.length,
+          });
+        }
+      } else {
+        console.log('No matching buy trades found for:', { symbol, contractKey });
+        // If no matching buys found, calculate P/L as just the sell value
+        // This handles edge cases where buy trades may have been deleted or not tracked
+        profitLoss = 0;
       }
     }
 
@@ -85,8 +136,11 @@ serve(async (req) => {
 
     await supabase
       .from('paper_trading_accounts')
-      .update({ balance: newBalance })
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
       .eq('id', account.id);
+
+    // Build notes for trade record
+    const tradeNotes = notes || contractKey || symbol;
 
     // Insert trade record
     const { data: trade, error: tradeError } = await supabase
@@ -100,7 +154,7 @@ serve(async (req) => {
         price: Number(price),
         total_value: totalValue,
         profit_loss: profitLoss,
-        notes: notes || `${side} ${strike} ${expiration}`
+        notes: tradeNotes,
       })
       .select()
       .single();
@@ -108,8 +162,7 @@ serve(async (req) => {
     if (tradeError) throw tradeError;
 
     // Log to bot performance for learning (both opens and closes)
-    // This helps train the bot with real user trading behavior
-    const performanceLog: any = {
+    const performanceLog: Record<string, unknown> = {
       user_id: user.id,
       trade_id: trade.id,
       symbol,
@@ -124,7 +177,7 @@ serve(async (req) => {
       performanceLog.exit_price = Number(price);
       performanceLog.trade_closed_at = new Date().toISOString();
       performanceLog.profit_factor = profitLoss > 0 ? (profitLoss / totalValue) * 100 : null;
-      performanceLog.actual_rr = profitLoss / totalValue; // Risk-reward ratio
+      performanceLog.actual_rr = totalValue > 0 ? profitLoss / totalValue : null;
       
       // Simple execution quality score based on profit
       performanceLog.execution_quality_score = profitLoss > 0 ? 85 : 50;
@@ -138,8 +191,8 @@ serve(async (req) => {
 
     // Auto-create trading journal entry
     const journalContent = action === 'buy' 
-      ? `Opened position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. ${notes || ''}`
-      : `Closed position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. P&L: ${profitLoss !== null ? (profitLoss >= 0 ? '+' : '') + '$' + profitLoss.toFixed(2) : 'N/A'}. ${notes || ''}`;
+      ? `Opened position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. ${tradeNotes}`
+      : `Closed position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. P&L: ${profitLoss !== null ? (profitLoss >= 0 ? '+' : '') + '$' + profitLoss.toFixed(2) : 'N/A'}. ${tradeNotes}`;
     
     await supabase
       .from('trading_journal')
@@ -152,7 +205,7 @@ serve(async (req) => {
         entry_date: new Date().toISOString().split('T')[0],
       });
 
-    console.log('Auto-logged paper trade to journal:', symbol, action);
+    console.log('Paper trade executed:', { symbol, action, quantity, price, profitLoss, newBalance });
 
     return new Response(
       JSON.stringify({ 
@@ -160,7 +213,9 @@ serve(async (req) => {
         trade,
         newBalance,
         profitLoss,
-        journalLogged: true
+        journalLogged: true,
+        multiplierUsed: multiplier,
+        isOptions: isOptionsTradeDetected,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

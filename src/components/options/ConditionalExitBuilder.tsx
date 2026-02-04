@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { 
   Plus, 
   Trash2, 
@@ -16,8 +17,11 @@ import {
   TrendingDown, 
   Percent,
   DollarSign,
-  Clock
+  Clock,
+  Save,
+  Loader2
 } from "lucide-react";
+import { useExitPreferences, ExitConditionPreset, SavedPreset } from "@/hooks/useExitPreferences";
 
 interface ExitCondition {
   id: string;
@@ -43,9 +47,44 @@ export const ConditionalExitBuilder = ({
   onStrategyChange,
   positionValue = 1000,
 }: ConditionalExitBuilderProps) => {
+  const { 
+    preferences, 
+    loading: prefsLoading, 
+    saving, 
+    savePreferences, 
+    savePreset, 
+    deletePreset 
+  } = useExitPreferences();
+  
   const [enabled, setEnabled] = useState(false);
   const [strategyType, setStrategyType] = useState<'oco' | 'bracket' | 'custom'>('oco');
   const [conditions, setConditions] = useState<ExitCondition[]>([]);
+  
+  // Stop loss settings
+  const [stopLossEnabled, setStopLossEnabled] = useState(false);
+  const [stopLossType, setStopLossType] = useState<'PERCENT' | 'DOLLAR'>('PERCENT');
+  const [stopLossValue, setStopLossValue] = useState(20);
+  
+  // Trailing stop settings
+  const [trailingEnabled, setTrailingEnabled] = useState(false);
+  const [trailingType, setTrailingType] = useState<'PERCENT' | 'DOLLAR'>('PERCENT');
+  const [trailingValue, setTrailingValue] = useState(10);
+  
+  // New preset name input
+  const [newPresetName, setNewPresetName] = useState('');
+  const [showSavePreset, setShowSavePreset] = useState(false);
+
+  // Load preferences on mount
+  useEffect(() => {
+    if (preferences) {
+      setStopLossEnabled(preferences.default_stop_loss_enabled);
+      setStopLossType(preferences.default_stop_loss_type);
+      setStopLossValue(preferences.default_stop_loss_value);
+      setTrailingEnabled(preferences.default_trailing_enabled);
+      setTrailingType(preferences.default_trailing_type);
+      setTrailingValue(preferences.default_trailing_value);
+    }
+  }, [preferences]);
 
   // Quick presets
   const applyPreset = (preset: 'conservative' | 'aggressive' | 'balanced') => {
@@ -74,6 +113,18 @@ export const ConditionalExitBuilder = ({
         break;
     }
 
+    setConditions(newConditions);
+    setEnabled(true);
+    setStrategyType('custom');
+    notifyChange(true, 'custom', newConditions);
+  };
+
+  // Apply saved preset
+  const applySavedPreset = (preset: SavedPreset) => {
+    const newConditions = preset.conditions.map(c => ({
+      ...c,
+      id: crypto.randomUUID(),
+    }));
     setConditions(newConditions);
     setEnabled(true);
     setStrategyType('custom');
@@ -121,6 +172,38 @@ export const ConditionalExitBuilder = ({
       strategyType: st,
       conditions: conds,
     });
+  };
+
+  // Save current settings as default
+  const saveAsDefault = async () => {
+    await savePreferences({
+      default_stop_loss_enabled: stopLossEnabled,
+      default_stop_loss_type: stopLossType,
+      default_stop_loss_value: stopLossValue,
+      default_trailing_enabled: trailingEnabled,
+      default_trailing_type: trailingType,
+      default_trailing_value: trailingValue,
+    });
+  };
+
+  // Save current conditions as a new preset
+  const handleSavePreset = async () => {
+    if (!newPresetName.trim()) return;
+    
+    const conditionsToSave: ExitConditionPreset[] = conditions.map(c => ({
+      id: c.id,
+      type: c.type,
+      value: c.value,
+      action: c.action,
+      orderType: c.orderType,
+      limitOffset: c.limitOffset,
+    }));
+    
+    const success = await savePreset(newPresetName.trim(), conditionsToSave);
+    if (success) {
+      setNewPresetName('');
+      setShowSavePreset(false);
+    }
   };
 
   // Calculate exit prices based on conditions
@@ -178,6 +261,16 @@ export const ConditionalExitBuilder = ({
     }
   };
 
+  if (prefsLoading) {
+    return (
+      <Card className="border-border/50">
+        <CardContent className="py-8 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="border-border/50">
       <CardHeader className="pb-3">
@@ -198,6 +291,132 @@ export const ConditionalExitBuilder = ({
 
         {enabled && (
           <>
+            {/* Default Stop Loss & Trailing Settings */}
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Default Protection Settings</Label>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={saveAsDefault}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                  Save as Default
+                </Button>
+              </div>
+              
+              {/* Stop Loss */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                    Stop Loss
+                  </Label>
+                  <Switch 
+                    checked={stopLossEnabled} 
+                    onCheckedChange={setStopLossEnabled} 
+                  />
+                </div>
+                
+                {stopLossEnabled && (
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Type</Label>
+                      <RadioGroup 
+                        value={stopLossType} 
+                        onValueChange={(v) => setStopLossType(v as 'PERCENT' | 'DOLLAR')}
+                        className="flex gap-4"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="PERCENT" id="sl-percent" />
+                          <Label htmlFor="sl-percent" className="text-sm flex items-center gap-1">
+                            <Percent className="h-3 w-3" /> Percent
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="DOLLAR" id="sl-dollar" />
+                          <Label htmlFor="sl-dollar" className="text-sm flex items-center gap-1">
+                            <DollarSign className="h-3 w-3" /> Dollar
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Value</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          value={stopLossValue}
+                          onChange={(e) => setStopLossValue(parseFloat(e.target.value) || 0)}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                          {stopLossType === 'PERCENT' ? '%' : '$'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Trailing Stop */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm flex items-center gap-2">
+                    <Target className="h-4 w-4 text-green-500" />
+                    Trailing Stop
+                  </Label>
+                  <Switch 
+                    checked={trailingEnabled} 
+                    onCheckedChange={setTrailingEnabled} 
+                  />
+                </div>
+                
+                {trailingEnabled && (
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Type</Label>
+                      <RadioGroup 
+                        value={trailingType} 
+                        onValueChange={(v) => setTrailingType(v as 'PERCENT' | 'DOLLAR')}
+                        className="flex gap-4"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="PERCENT" id="ts-percent" />
+                          <Label htmlFor="ts-percent" className="text-sm flex items-center gap-1">
+                            <Percent className="h-3 w-3" /> Percent
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="DOLLAR" id="ts-dollar" />
+                          <Label htmlFor="ts-dollar" className="text-sm flex items-center gap-1">
+                            <DollarSign className="h-3 w-3" /> Dollar
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Trail Amount</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          value={trailingValue}
+                          onChange={(e) => setTrailingValue(parseFloat(e.target.value) || 0)}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                          {trailingType === 'PERCENT' ? '%' : '$'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
             {/* Quick Presets */}
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Quick Presets</Label>
@@ -217,14 +436,48 @@ export const ConditionalExitBuilder = ({
               </div>
             </div>
 
+            {/* Saved Presets */}
+            {preferences && preferences.saved_exit_presets.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">My Saved Presets</Label>
+                <div className="space-y-2">
+                  {preferences.saved_exit_presets.map((preset) => (
+                    <div 
+                      key={preset.id} 
+                      className="flex items-center justify-between p-2 border rounded bg-muted/30"
+                    >
+                      <span className="text-sm font-medium">{preset.name}</span>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => applySavedPreset(preset)}
+                        >
+                          Apply
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => deletePreset(preset.id)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <Separator />
 
             {/* Strategy Type */}
             <div className="space-y-2">
               <Label>Order Strategy</Label>
               <Select value={strategyType} onValueChange={(v) => {
-                setStrategyType(v as any);
-                notifyChange(enabled, v as any, conditions);
+                setStrategyType(v as 'oco' | 'bracket' | 'custom');
+                notifyChange(enabled, v as 'oco' | 'bracket' | 'custom', conditions);
               }}>
                 <SelectTrigger>
                   <SelectValue />
@@ -246,10 +499,39 @@ export const ConditionalExitBuilder = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Exit Conditions</Label>
-                <Button variant="ghost" size="sm" onClick={addCondition}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Condition
-                </Button>
+                <div className="flex gap-2">
+                  {conditions.length > 0 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowSavePreset(!showSavePreset)}
+                    >
+                      <Save className="h-4 w-4 mr-1" /> Save Preset
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={addCondition}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Condition
+                  </Button>
+                </div>
               </div>
+
+              {/* Save Preset Input */}
+              {showSavePreset && (
+                <div className="flex gap-2 p-2 border rounded bg-muted/30">
+                  <Input
+                    placeholder="Preset name..."
+                    value={newPresetName}
+                    onChange={(e) => setNewPresetName(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button size="sm" onClick={handleSavePreset} disabled={!newPresetName.trim() || saving}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowSavePreset(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
 
               {conditions.length === 0 && (
                 <div className="text-center py-4 text-muted-foreground text-sm border rounded-lg border-dashed">
@@ -274,7 +556,7 @@ export const ConditionalExitBuilder = ({
                   <div className="grid grid-cols-2 gap-2">
                     <Select 
                       value={condition.type} 
-                      onValueChange={(v) => updateCondition(condition.id, { type: v as any })}
+                      onValueChange={(v) => updateCondition(condition.id, { type: v as ExitCondition['type'] })}
                     >
                       <SelectTrigger className="text-xs">
                         <SelectValue />
@@ -300,7 +582,7 @@ export const ConditionalExitBuilder = ({
                   <div className="grid grid-cols-2 gap-2">
                     <Select 
                       value={condition.action} 
-                      onValueChange={(v) => updateCondition(condition.id, { action: v as any })}
+                      onValueChange={(v) => updateCondition(condition.id, { action: v as ExitCondition['action'] })}
                     >
                       <SelectTrigger className="text-xs">
                         <SelectValue />
@@ -314,7 +596,7 @@ export const ConditionalExitBuilder = ({
 
                     <Select 
                       value={condition.orderType} 
-                      onValueChange={(v) => updateCondition(condition.id, { orderType: v as any })}
+                      onValueChange={(v) => updateCondition(condition.id, { orderType: v as 'MARKET' | 'LIMIT' })}
                     >
                       <SelectTrigger className="text-xs">
                         <SelectValue />

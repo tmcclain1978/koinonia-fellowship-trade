@@ -2131,6 +2131,51 @@ export type Database = {
           },
         ]
       }
+      user_exit_preferences: {
+        Row: {
+          created_at: string | null
+          default_phroureo_preset: string | null
+          default_stop_loss_enabled: boolean | null
+          default_stop_loss_type: string | null
+          default_stop_loss_value: number | null
+          default_trailing_enabled: boolean | null
+          default_trailing_type: string | null
+          default_trailing_value: number | null
+          id: string
+          saved_exit_presets: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          default_phroureo_preset?: string | null
+          default_stop_loss_enabled?: boolean | null
+          default_stop_loss_type?: string | null
+          default_stop_loss_value?: number | null
+          default_trailing_enabled?: boolean | null
+          default_trailing_type?: string | null
+          default_trailing_value?: number | null
+          id?: string
+          saved_exit_presets?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          default_phroureo_preset?: string | null
+          default_stop_loss_enabled?: boolean | null
+          default_stop_loss_type?: string | null
+          default_stop_loss_value?: number | null
+          default_trailing_enabled?: boolean | null
+          default_trailing_type?: string | null
+          default_trailing_value?: number | null
+          id?: string
+          saved_exit_presets?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
