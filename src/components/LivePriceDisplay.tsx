@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TrendingUp, TrendingDown, Minus, Wifi, WifiOff, Plus, X, Activity, Zap } from "lucide-react";
 import { useMarketDataStream, StreamingPrice } from "@/hooks/useMarketDataStream";
-
+import { safeNumber, safeToFixed } from "@/lib/safeNumber";
 interface LivePriceDisplayProps {
   initialSymbols?: string[];
   onPriceUpdate?: (symbol: string, price: number) => void;
@@ -165,22 +165,22 @@ export const LivePriceDisplay = ({
                 </div>
                 
                 <div className="text-2xl font-mono font-bold">
-                  ${price.price.toFixed(2)}
+                  ${safeToFixed(price.price, 2)}
                 </div>
                 
-                <div className={`text-sm font-medium ${price.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {price.change >= 0 ? '+' : ''}{price.change.toFixed(2)} ({price.changePercent.toFixed(2)}%)
+                <div className={`text-sm font-medium ${safeNumber(price.change) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {safeNumber(price.change) >= 0 ? '+' : ''}{safeToFixed(price.change, 2)} ({safeToFixed(price.changePercent, 2)}%)
                 </div>
                 
                 <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                  <span>Bid: ${price.bid.toFixed(2)}</span>
-                  <span>Ask: ${price.ask.toFixed(2)}</span>
+                  <span>Bid: ${safeToFixed(price.bid, 2)}</span>
+                  <span>Ask: ${safeToFixed(price.ask, 2)}</span>
                 </div>
                 
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Vol: {(price.volume / 1000).toFixed(0)}K</span>
-                  <span>H: ${price.high.toFixed(2)}</span>
-                  <span>L: ${price.low.toFixed(2)}</span>
+                  <span>Vol: {safeToFixed(safeNumber(price.volume) / 1000, 0)}K</span>
+                  <span>H: ${safeToFixed(price.high, 2)}</span>
+                  <span>L: ${safeToFixed(price.low, 2)}</span>
                 </div>
               </div>
             );

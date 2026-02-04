@@ -25,9 +25,21 @@ interface MarketDataStreamOptions {
   onConnectionChange?: (connected: boolean) => void;
 }
 
+// Helper to safely convert to finite number
+const toSafeNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+};
+
 // Simulated market data generator for demo/fallback
 const generateMarketData = (symbol: string, previousPrice?: number): StreamingPrice => {
-  const basePrice = previousPrice || getBasePrice(symbol);
+  const basePrice = toSafeNumber(previousPrice) || getBasePrice(symbol);
   const volatility = 0.001;
   const randomChange = (Math.random() - 0.5) * 2 * volatility;
   const newPrice = basePrice * (1 + randomChange);
@@ -35,20 +47,25 @@ const generateMarketData = (symbol: string, previousPrice?: number): StreamingPr
   const spread = newPrice * 0.0005;
   const dailyChange = (Math.random() - 0.3) * 2;
   
+  // Ensure all values are finite numbers before calling toFixed
+  const safeNewPrice = toSafeNumber(newPrice, 100);
+  const safeDailyChange = toSafeNumber(dailyChange, 0);
+  const safeSpread = toSafeNumber(spread, 0.05);
+  
   return {
     symbol,
-    price: Number(newPrice.toFixed(2)),
-    bid: Number((newPrice - spread).toFixed(2)),
-    ask: Number((newPrice + spread).toFixed(2)),
+    price: Number(safeNewPrice.toFixed(2)),
+    bid: Number((safeNewPrice - safeSpread).toFixed(2)),
+    ask: Number((safeNewPrice + safeSpread).toFixed(2)),
     volume: Math.floor(Math.random() * 100000) + 50000,
-    change: Number(dailyChange.toFixed(2)),
-    changePercent: Number((dailyChange / newPrice * 100).toFixed(2)),
-    high: Number((newPrice * 1.02).toFixed(2)),
-    low: Number((newPrice * 0.98).toFixed(2)),
-    open: Number((newPrice * 0.995).toFixed(2)),
+    change: Number(safeDailyChange.toFixed(2)),
+    changePercent: Number(((safeDailyChange / safeNewPrice) * 100).toFixed(2)),
+    high: Number((safeNewPrice * 1.02).toFixed(2)),
+    low: Number((safeNewPrice * 0.98).toFixed(2)),
+    open: Number((safeNewPrice * 0.995).toFixed(2)),
     timestamp: new Date(),
     direction: previousPrice 
-      ? (newPrice > previousPrice ? 'up' : newPrice < previousPrice ? 'down' : 'unchanged')
+      ? (safeNewPrice > previousPrice ? 'up' : safeNewPrice < previousPrice ? 'down' : 'unchanged')
       : 'unchanged',
     source: 'simulated',
   };
@@ -70,6 +87,7 @@ export const useMarketDataStream = ({
   onPriceUpdate,
   onConnectionChange,
 }: MarketDataStreamOptions) => {
+  // All hooks must be called unconditionally at the top level
   const [prices, setPrices] = useState<Map<string, StreamingPrice>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,8 +97,14 @@ export const useMarketDataStream = ({
   const previousPricesRef = useRef<Map<string, number>>(new Map());
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRealDataRef = useRef(false);
+  
+  // Memoized symbols key to prevent unnecessary reconnections - compute before callbacks
+  const symbolsKey = symbols.slice().sort().join(',');
+  const symbolsKeyRef = useRef(symbolsKey);
+  const isInitializedRef = useRef(false);
 
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  // All useCallback hooks must be defined in consistent order
+  const sleep = useCallback((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)), []);
 
   const isNotFoundError = useCallback((err: any) => {
     return (
@@ -88,9 +112,6 @@ export const useMarketDataStream = ({
       /requested function was not found/i.test(String(err?.message ?? ""))
     );
   }, []);
-
-  // Memoized symbols key to prevent unnecessary reconnections
-  const symbolsKey = symbols.slice().sort().join(',');
 
   const toFiniteNumber = useCallback((value: unknown, fallback = 0): number => {
     if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -289,8 +310,7 @@ export const useMarketDataStream = ({
     });
   }, []);
 
-  const symbolsKeyRef = useRef(symbolsKey);
-  const isInitializedRef = useRef(false);
+  // Note: symbolsKeyRef and isInitializedRef are now defined at the top with other refs
 
   // Auto-connect when enabled and symbols change - debounced
   useEffect(() => {
