@@ -424,16 +424,25 @@ serve(async (req) => {
       console.log('[koinonia] No price data available for symbol:', symbol, '- cannot provide accurate analysis');
       usingFallbackData = true;
       
-      // Return error instead of using stale fallback data
+      // Check if symbol looks valid (basic validation)
+      const symbolUpper = symbol.toUpperCase().trim();
+      const isLikelyInvalidSymbol = symbolUpper.length < 1 || symbolUpper.length > 5 || !/^[A-Z]+$/.test(symbolUpper);
+      
+      // Return user-friendly error with suggestion if symbol looks wrong
+      const errorMessage = isLikelyInvalidSymbol
+        ? `"${symbol}" doesn't appear to be a valid stock ticker. Please enter a valid symbol like AAPL, SPY, or TSLA.`
+        : `Unable to fetch market data for "${symbol}". The symbol may be invalid or market data is temporarily unavailable. Please verify the ticker and try again.`;
+      
       return new Response(
         JSON.stringify({
-          error: 'Unable to fetch current price data',
+          error: 'Symbol not found or data unavailable',
           symbol,
-          message: 'Market data is temporarily unavailable. Please try again in a moment.',
-          usingFallbackData: true
+          message: errorMessage,
+          usingFallbackData: true,
+          suggestion: symbolUpper === 'SP' ? 'Did you mean SPY?' : null
         }),
         {
-          status: 503,
+          status: 400, // Use 400 for invalid input rather than 503
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );

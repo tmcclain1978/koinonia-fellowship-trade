@@ -126,9 +126,20 @@ export const KoinoniaIndicator = ({ symbol, onSignalGenerated }: KoinoniaIndicat
       });
     } catch (error: any) {
       console.error('Error generating signal:', error);
+      // Try to extract better error message from response
+      let errorMessage = error.message || "Failed to generate signal";
+      if (error?.context?.body) {
+        try {
+          const body = typeof error.context.body === 'string' 
+            ? JSON.parse(error.context.body) 
+            : error.context.body;
+          if (body?.message) errorMessage = body.message;
+          if (body?.suggestion) errorMessage += ` ${body.suggestion}`;
+        } catch {}
+      }
       toast({
-        title: "Error",
-        description: error.message || "Failed to generate signal",
+        title: "Signal Error",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
