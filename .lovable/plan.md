@@ -1,132 +1,117 @@
 
-
-# Fix PocketOption WebSocket Connection
+# Fix PocketOption Connection: Regional Endpoint Support
 
 ## Problem Identified
 
-The WebSocket connection fails immediately (`readyState: 3` = CLOSED) because of two critical issues:
+Based on the edge function logs and your input, I found the root cause:
 
-1. **JWT Verification Timing**: The edge function has `verify_jwt = true`, but WebSocket clients cannot send Authorization headers. The token is passed via query parameter, but Supabase's built-in JWT verification rejects the request before the function even runs.
+**The edge function uses hardcoded endpoints that don't include your regional server:**
+- Current endpoints tried: `demo-api-v2.po.market`, `api-v2.po.market`, `demo.pocketoption.com`, `pocketoption.com`
+- Your actual endpoint: `wss://api-eu.po.market/socket.io/?EIO=4&transport=websocket` (EU regional)
 
-2. **Authentication Location**: The current code tries to authenticate AFTER `Deno.upgradeWebSocket()` inside `socket.onopen`. This is too late - authentication must happen BEFORE the upgrade.
+PocketOption routes users to different regional servers (api-eu, api-in, api-us, etc.) based on location. Our static endpoint list misses these.
 
 ## Solution
 
-Fix the WebSocket edge function to follow Supabase's official WebSocket relay pattern:
+### 1. Update Endpoint Discovery
 
-### Changes Required
+Instead of hardcoding endpoints, extract the correct endpoint from the user's SSID or allow dynamic endpoint configuration.
 
-**File: `supabase/config.toml`**
-- Change `verify_jwt = false` for `pocketoption-websocket` function (we'll verify manually)
+### 2. Add Regional Endpoints
 
-**File: `supabase/functions/pocketoption-websocket/index.ts`**
-- Move authentication BEFORE `Deno.upgradeWebSocket()`
-- Use `supabase.auth.getUser(jwt)` to verify the token synchronously
-- Return 403 if authentication fails BEFORE upgrading
-- Use service role key for database queries
+Add all known PocketOption regional endpoints to the fallback list:
+- `api-eu.po.market` (Europe)
+- `api-in.po.market` (India/Asia)
+- `api-us.po.market` (Americas)
+- `api-v2.po.market` (Generic)
+- `platform44.po2.capital` (Alternative)
 
-### Updated Edge Function Flow
+### 3. Fix Demo Mode Detection
 
-```text
-Current (Broken):
-┌──────────────┐     ┌───────────────────────┐
-│ Browser      │────▶│ Edge Function         │
-│ WebSocket    │     │ 1. Upgrade WebSocket  │ ← Supabase rejects (verify_jwt=true)
-│              │     │ 2. Auth in onopen     │
-└──────────────┘     └───────────────────────┘
-                            ❌ FAILS
+Since you're connecting to a **real** account, ensure the `isDemo: 0` flag is correctly parsed and sent in the auth message.
 
-Fixed:
-┌──────────────┐     ┌───────────────────────┐
-│ Browser      │────▶│ Edge Function         │
-│ WebSocket    │     │ 1. Check JWT from URL │
-│ ?token=xxx   │     │ 2. Verify with Supabase│
-│              │     │ 3. Return 403 if bad  │
-│              │     │ 4. Upgrade WebSocket  │ ← Only if auth succeeds
-│              │     │ 5. Connect to PO      │
-└──────────────┘     └───────────────────────┘
-                            ✅ WORKS
-```
+## Implementation Details
 
-### Implementation Details
+### Changes to `supabase/functions/pocketoption-websocket/index.ts`
 
-**Edge Function Changes:**
+**Updated endpoint list:**
 ```javascript
-Deno.serve(async (req) => {
-  // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const upgrade = req.headers.get('upgrade') || '';
-  if (upgrade.toLowerCase() !== 'websocket') {
-    return new Response('Expected WebSocket', { status: 400 });
-  }
-
-  // CRITICAL: Authenticate BEFORE upgrading
-  const url = new URL(req.url);
-  const jwt = url.searchParams.get('token');
-  
-  if (!jwt) {
-    return new Response('Auth token not provided', { status: 403 });
-  }
-
-  // Use service role to verify user and fetch credentials
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  );
-
-  const { data: { user }, error } = await supabase.auth.getUser(jwt);
-  if (error || !user) {
-    return new Response('Invalid token', { status: 403 });
-  }
-
-  // Fetch credentials BEFORE upgrade
-  const { data: creds } = await supabase
-    .from('user_api_credentials')
-    .select('pocketoption_ssid')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!creds?.pocketoption_ssid) {
-    return new Response('PocketOption credentials not found', { status: 400 });
-  }
-
-  // NOW safe to upgrade
-  const { socket, response } = Deno.upgradeWebSocket(req);
-  
-  // Pass credentials to socket handlers via closure
-  setupWebSocketHandlers(socket, creds.pocketoption_ssid);
-
-  return response;
-});
+const PO_ENDPOINTS = [
+  // Regional endpoints (prioritize based on common usage)
+  "wss://api-eu.po.market/socket.io/?EIO=4&transport=websocket",
+  "wss://api-in.po.market/socket.io/?EIO=4&transport=websocket", 
+  "wss://api-us.po.market/socket.io/?EIO=4&transport=websocket",
+  "wss://api-v2.po.market/socket.io/?EIO=4&transport=websocket",
+  // Demo endpoints
+  "wss://demo-api-v2.po.market/socket.io/?EIO=4&transport=websocket",
+  // Alternative hosts
+  "wss://platform44.po2.capital/socket.io/?EIO=4&transport=websocket",
+  "wss://platform32.po2.capital/socket.io/?EIO=4&transport=websocket",
+  // Legacy endpoints
+  "wss://pocketoption.com/socket.io/?EIO=4&transport=websocket",
+];
 ```
 
-### Config Change
-
-In `supabase/config.toml`:
-```toml
-[functions.pocketoption-websocket]
-verify_jwt = false  # Changed from true - we verify manually
-```
-
-### Client-Side Update
-
-The client code in `usePocketOptionWebSocket.ts` is already correct - it passes the token via query parameter:
+**Improved SSID parsing** to correctly extract `isDemo` flag:
 ```javascript
-const wsUrl = `wss://${projectRef}.supabase.co/functions/v1/pocketoption-websocket?token=${session.access_token}`;
+const parseSSID = (ssidString) => {
+  // Handle 42["auth", {...}] format
+  // Handle 42["user_init", {...}] format
+  // Correctly parse isDemo as 0 for real, 1 for demo
+  // Extract session, uid from multiple formats
+};
 ```
 
----
+**Add connection retry with exponential backoff:**
+```javascript
+// Instead of immediate retry on failure, add delays:
+// Attempt 1: immediate
+// Attempt 2: 500ms delay
+// Attempt 3: 1000ms delay
+// etc.
+```
+
+**Add verbose logging** to diagnose which endpoint works:
+```javascript
+console.log(`Trying endpoint: ${endpoint}`);
+console.log(`Auth data being sent:`, { session: '...redacted...', isDemo, uid });
+```
+
+### Changes to `src/hooks/usePocketOptionWebSocket.ts`
+
+**Improve reconnection logic:**
+- Add exponential backoff (start 2s, max 30s)
+- Track connection attempts
+- Show connection status in UI
+
+**Handle new message types:**
+- `po_authenticated` - successful auth with PocketOption
+- Better error messages with specific failure reasons
+
+### Changes to `src/components/PocketOptionConnection.tsx`
+
+**Add endpoint field (optional):**
+- Allow users to paste their WebSocket URL from DevTools
+- Auto-detect endpoint from SSID if possible
+- Store preferred endpoint for faster reconnection
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `supabase/functions/pocketoption-websocket/index.ts` | Add EU/regional endpoints, improve SSID parsing, add exponential backoff |
+| `src/hooks/usePocketOptionWebSocket.ts` | Better reconnection logic with backoff, handle more message types |
+| `src/components/PocketOptionConnection.tsx` | Optional: Add endpoint input field for troubleshooting |
+
+## Database Changes
+
+None required.
 
 ## Summary
 
-| Change | File | Description |
-|--------|------|-------------|
-| Disable built-in JWT | `supabase/config.toml` | Set `verify_jwt = false` |
-| Move auth before upgrade | `pocketoption-websocket/index.ts` | Authenticate synchronously before `Deno.upgradeWebSocket()` |
-| Use service role key | `pocketoption-websocket/index.ts` | Use `SUPABASE_SERVICE_ROLE_KEY` for database access |
-| Pre-fetch credentials | `pocketoption-websocket/index.ts` | Get SSID before upgrading WebSocket |
+The connection fails because PocketOption routes users to regional servers (like `api-eu.po.market`) that aren't in our endpoint list. The fix adds:
 
-This follows the official Supabase pattern for authenticated WebSocket connections.
+1. All known regional endpoints to the fallback list
+2. Proper handling of real vs demo account mode
+3. Better retry logic with exponential backoff
+4. Improved logging to diagnose future issues
