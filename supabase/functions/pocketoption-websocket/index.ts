@@ -5,12 +5,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, upgrade, connection',
 };
 
-// PocketOption WebSocket endpoints by region
+// PocketOption WebSocket endpoints - prioritize regional endpoints
 const PO_ENDPOINTS = [
-  "wss://demo-api-v2.po.market/socket.io/?EIO=4&transport=websocket",
+  // Regional endpoints (most common)
+  "wss://api-eu.po.market/socket.io/?EIO=4&transport=websocket",
+  "wss://api-in.po.market/socket.io/?EIO=4&transport=websocket",
+  "wss://api-us.po.market/socket.io/?EIO=4&transport=websocket",
   "wss://api-v2.po.market/socket.io/?EIO=4&transport=websocket",
-  "wss://demo.pocketoption.com/socket.io/?EIO=4&transport=websocket",
+  // Demo endpoints
+  "wss://demo-api-v2.po.market/socket.io/?EIO=4&transport=websocket",
+  "wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket",
+  // Platform endpoints (alternative routing)
+  "wss://platform44.po2.capital/socket.io/?EIO=4&transport=websocket",
+  "wss://platform32.po2.capital/socket.io/?EIO=4&transport=websocket",
+  // Legacy endpoints
   "wss://pocketoption.com/socket.io/?EIO=4&transport=websocket",
+  "wss://demo.pocketoption.com/socket.io/?EIO=4&transport=websocket",
 ];
 
 Deno.serve(async (req) => {
@@ -83,34 +93,62 @@ Deno.serve(async (req) => {
   // Set up WebSocket handlers with credentials available via closure
   let poSocket: WebSocket | null = null;
   let isConnected = false;
+  let isAuthenticated = false;
   let heartbeatInterval: number | null = null;
   let currentEndpointIndex = 0;
+  let connectionAttempts = 0;
   const ssid = creds.pocketoption_ssid;
 
-  // Parse SSID to extract auth data
+  // Parse SSID to extract auth data - improved to handle all formats
   const parseSSID = (ssidString: string): { session: string; isDemo: number; uid: string } | null => {
     try {
-      // SSID format: 42["auth",{"session":"...","isDemo":1,"uid":"123"}]
-      // Or just the session string
-      if (ssidString.startsWith('42["auth",')) {
-        const jsonPart = ssidString.substring(10, ssidString.length - 1);
-        return JSON.parse(jsonPart);
-      } else if (ssidString.startsWith('42["user_init",')) {
-        const jsonPart = ssidString.substring(15, ssidString.length - 1);
-        const data = JSON.parse(jsonPart);
+      console.log("Parsing SSID format...");
+      
+      // Remove whitespace
+      const trimmed = ssidString.trim();
+      
+      // Format 1: 42["auth",{"session":"...","isDemo":0,"uid":"123"}]
+      if (trimmed.startsWith('42["auth",')) {
+        const jsonPart = trimmed.substring(10, trimmed.length - 1);
+        const parsed = JSON.parse(jsonPart);
+        console.log("Parsed auth format - isDemo:", parsed.isDemo, "uid:", parsed.uid);
         return {
-          session: data.secret || data.session || ssidString,
-          isDemo: data.isDemo ? 1 : 0,
-          uid: String(data.id || data.uid || "")
-        };
-      } else {
-        // Assume it's a raw session token
-        return {
-          session: ssidString,
-          isDemo: 1, // Default to demo
-          uid: ""
+          session: parsed.session || parsed.secret || "",
+          isDemo: typeof parsed.isDemo === 'number' ? parsed.isDemo : (parsed.isDemo ? 1 : 0),
+          uid: String(parsed.uid || parsed.id || "")
         };
       }
+      
+      // Format 2: 42["user_init",{"secret":"...","isDemo":false,"id":123}]
+      if (trimmed.startsWith('42["user_init",')) {
+        const jsonPart = trimmed.substring(15, trimmed.length - 1);
+        const parsed = JSON.parse(jsonPart);
+        console.log("Parsed user_init format - isDemo:", parsed.isDemo, "id:", parsed.id);
+        return {
+          session: parsed.secret || parsed.session || "",
+          isDemo: parsed.isDemo === true || parsed.isDemo === 1 ? 1 : 0,
+          uid: String(parsed.id || parsed.uid || "")
+        };
+      }
+      
+      // Format 3: Just the JSON object {"session":"...","isDemo":0}
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed);
+        console.log("Parsed JSON object format");
+        return {
+          session: parsed.session || parsed.secret || "",
+          isDemo: typeof parsed.isDemo === 'number' ? parsed.isDemo : (parsed.isDemo ? 1 : 0),
+          uid: String(parsed.uid || parsed.id || "")
+        };
+      }
+      
+      // Format 4: Raw session token string
+      console.log("Treating as raw session token");
+      return {
+        session: trimmed,
+        isDemo: 0, // Default to REAL for raw tokens
+        uid: ""
+      };
     } catch (e) {
       console.error("Failed to parse SSID:", e);
       return null;
@@ -127,7 +165,7 @@ Deno.serve(async (req) => {
     }));
   };
 
-  // Connect to PocketOption WebSocket with retry logic
+  // Connect to PocketOption WebSocket with improved retry logic
   const connectToPocketOption = () => {
     const authData = parseSSID(ssid);
     if (!authData) {
@@ -138,29 +176,50 @@ Deno.serve(async (req) => {
       return;
     }
 
+    console.log("Auth data parsed - isDemo:", authData.isDemo, "uid:", authData.uid ? "present" : "empty");
+
     const tryConnect = (endpointIndex: number) => {
+      connectionAttempts++;
+      
       if (endpointIndex >= PO_ENDPOINTS.length) {
-        console.error("All PocketOption endpoints failed");
+        console.error("All PocketOption endpoints failed after", connectionAttempts, "attempts");
         socket.send(JSON.stringify({ 
           type: 'error',
-          message: 'Could not connect to PocketOption. All endpoints failed.'
+          message: `Could not connect to PocketOption. Tried ${PO_ENDPOINTS.length} endpoints. Your region may use a different server.`,
+          details: {
+            attemptedEndpoints: PO_ENDPOINTS.length,
+            suggestion: "Check your browser DevTools Network tab for the WebSocket URL and report it."
+          }
         }));
         return;
       }
 
       const endpoint = PO_ENDPOINTS[endpointIndex];
-      console.log(`Trying PocketOption endpoint ${endpointIndex + 1}/${PO_ENDPOINTS.length}: ${endpoint}`);
+      console.log(`[Attempt ${connectionAttempts}] Trying endpoint ${endpointIndex + 1}/${PO_ENDPOINTS.length}: ${endpoint}`);
+
+      // Notify client of connection attempt
+      socket.send(JSON.stringify({
+        type: 'connection_attempt',
+        endpoint: endpoint.replace(/wss?:\/\/([^\/]+).*/, '$1'),
+        attemptNumber: endpointIndex + 1,
+        totalEndpoints: PO_ENDPOINTS.length
+      }));
 
       try {
         poSocket = new WebSocket(endpoint);
 
+        // Increase timeout for slower connections
         const connectionTimeout = setTimeout(() => {
           if (poSocket && poSocket.readyState !== WebSocket.OPEN) {
-            console.log("Connection timeout, trying next endpoint...");
+            console.log("Connection timeout on endpoint", endpointIndex + 1);
             poSocket.close();
-            tryConnect(endpointIndex + 1);
+            
+            // Exponential backoff delay before next attempt
+            const delay = Math.min(500 * Math.pow(1.5, endpointIndex), 3000);
+            console.log(`Waiting ${delay}ms before next endpoint...`);
+            setTimeout(() => tryConnect(endpointIndex + 1), delay);
           }
-        }, 5000);
+        }, 8000); // Increased from 5s to 8s
 
         poSocket.onopen = () => {
           clearTimeout(connectionTimeout);
@@ -173,13 +232,14 @@ Deno.serve(async (req) => {
 
         poSocket.onmessage = (event) => {
           const data = event.data;
-          console.log("PO message:", typeof data === 'string' ? data.substring(0, 100) : 'binary');
+          const preview = typeof data === 'string' ? data.substring(0, 150) : 'binary';
+          console.log("PO message:", preview);
           
           if (typeof data === 'string') {
             // Socket.io v4 protocol
             if (data.startsWith('0{')) {
-              // Server handshake - respond with session upgrade
-              console.log("Received Socket.io handshake");
+              // Server handshake - respond with namespace connection
+              console.log("Received Socket.io handshake, sending namespace connection...");
               poSocket?.send('40');
             } else if (data === '2') {
               // Ping - respond with pong
@@ -187,21 +247,21 @@ Deno.serve(async (req) => {
             } else if (data === '40') {
               // Connected to namespace, now authenticate
               console.log("Connected to Socket.io namespace, sending auth...");
+              isConnected = true;
               
-              // Send authentication
-              const authMessage = `42["auth",${JSON.stringify({
+              // Send authentication with correct isDemo value
+              const authPayload = {
                 session: authData.session,
                 isDemo: authData.isDemo,
                 uid: authData.uid,
                 platform: 2
-              })}]`;
+              };
               
-              console.log("Sending auth message");
+              const authMessage = `42["auth",${JSON.stringify(authPayload)}]`;
+              console.log("Sending auth - isDemo:", authData.isDemo);
               poSocket?.send(authMessage);
               
-              isConnected = true;
-              
-              // Start heartbeat (ping every 25 seconds)
+              // Start heartbeat (ping every 25 seconds to match Socket.io default)
               heartbeatInterval = setInterval(() => {
                 if (poSocket?.readyState === WebSocket.OPEN) {
                   poSocket.send('2');
@@ -211,7 +271,8 @@ Deno.serve(async (req) => {
               socket.send(JSON.stringify({ 
                 type: 'connection', 
                 status: 'connected',
-                message: 'Connected to PocketOption'
+                endpoint: endpoint.replace(/wss?:\/\/([^\/]+).*/, '$1'),
+                message: 'Connected to PocketOption, authenticating...'
               }));
             } else if (data.startsWith('42')) {
               // Data message
@@ -222,10 +283,18 @@ Deno.serve(async (req) => {
                 const eventData = parsed[1];
                 
                 if (eventName === 'successauth') {
-                  console.log("Successfully authenticated with PocketOption");
+                  console.log("Successfully authenticated with PocketOption!");
+                  isAuthenticated = true;
                   socket.send(JSON.stringify({ 
                     type: 'po_authenticated',
                     data: eventData
+                  }));
+                } else if (eventName === 'failauth' || eventName === 'authFail') {
+                  console.error("Authentication failed with PocketOption:", eventData);
+                  socket.send(JSON.stringify({ 
+                    type: 'error',
+                    message: 'PocketOption authentication failed. Your SSID may be expired.',
+                    code: 'AUTH_FAILED'
                   }));
                 } else if (eventName === 'updateStream' || eventName === 'candles') {
                   // Forward candle/price data
@@ -243,6 +312,11 @@ Deno.serve(async (req) => {
                     type: 'po_deals',
                     data: eventData
                   }));
+                } else if (eventName === 'openOrder') {
+                  socket.send(JSON.stringify({ 
+                    type: 'po_order',
+                    data: eventData
+                  }));
                 } else {
                   // Forward other events
                   socket.send(JSON.stringify({ 
@@ -255,23 +329,22 @@ Deno.serve(async (req) => {
                 console.error("Failed to parse PO message:", e);
               }
             } else if (data === '3') {
-              // Pong response - ignore
+              // Pong response - connection is alive
+              console.log("Heartbeat pong received");
             } else if (data.startsWith('44')) {
               // Error message from server
               console.error("PocketOption error:", data);
               socket.send(JSON.stringify({ 
                 type: 'error',
-                message: 'PocketOption rejected the request'
+                message: 'PocketOption rejected the request',
+                raw: data
               }));
+            } else if (data === '41') {
+              // Namespace disconnect
+              console.log("PocketOption namespace disconnected");
+              isConnected = false;
+              isAuthenticated = false;
             }
-          }
-
-          // Forward to client if open
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ 
-              type: 'po_raw',
-              data: data
-            }));
           }
         };
 
@@ -279,21 +352,25 @@ Deno.serve(async (req) => {
           clearTimeout(connectionTimeout);
           console.error("PocketOption WebSocket error on endpoint", endpoint);
           
-          // Try next endpoint
+          // Try next endpoint if not yet connected
           if (!isConnected) {
-            tryConnect(endpointIndex + 1);
+            const delay = Math.min(300 * Math.pow(1.5, endpointIndex), 2000);
+            setTimeout(() => tryConnect(endpointIndex + 1), delay);
           } else {
             socket.send(JSON.stringify({ 
               type: 'error',
-              message: 'PocketOption connection error'
+              message: 'PocketOption connection error after initial connect'
             }));
           }
         };
 
-        poSocket.onclose = () => {
+        poSocket.onclose = (event) => {
           clearTimeout(connectionTimeout);
-          console.log("PocketOption WebSocket closed");
+          console.log("PocketOption WebSocket closed - code:", event.code, "reason:", event.reason);
+          
+          const wasConnected = isConnected;
           isConnected = false;
+          isAuthenticated = false;
           
           if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
@@ -304,13 +381,16 @@ Deno.serve(async (req) => {
             socket.send(JSON.stringify({ 
               type: 'connection',
               status: 'disconnected',
-              message: 'Disconnected from PocketOption'
+              message: 'Disconnected from PocketOption',
+              closeCode: event.code,
+              wasAuthenticated: wasConnected
             }));
           }
         };
       } catch (error) {
         console.error("Error creating WebSocket:", error);
-        tryConnect(endpointIndex + 1);
+        const delay = Math.min(300 * Math.pow(1.5, endpointIndex), 2000);
+        setTimeout(() => tryConnect(endpointIndex + 1), delay);
       }
     };
 
@@ -327,22 +407,23 @@ Deno.serve(async (req) => {
         connectToPocketOption();
       } else if (message.type === 'trade') {
         // Forward trade command to PocketOption
-        if (poSocket && isConnected) {
-          const tradeMessage = `42["openOrder",${JSON.stringify({
+        if (poSocket && isConnected && isAuthenticated) {
+          const tradePayload = {
             asset: message.asset,
             amount: message.amount,
             action: message.action, // "call" or "put"
-            isDemo: message.isDemo ?? 1,
+            isDemo: message.isDemo ?? 0, // Default to REAL
             optionType: 100, // turbo option
             time: message.duration || 60
-          })}]`;
+          };
           
+          const tradeMessage = `42["openOrder",${JSON.stringify(tradePayload)}]`;
+          console.log("Sending trade command:", tradePayload.asset, tradePayload.action, tradePayload.amount);
           poSocket.send(tradeMessage);
-          console.log("Sent trade command");
         } else {
           socket.send(JSON.stringify({ 
             type: 'error',
-            message: 'Not connected to PocketOption'
+            message: isConnected ? 'Not authenticated with PocketOption' : 'Not connected to PocketOption'
           }));
         }
       } else if (message.type === 'get_balance') {
@@ -351,20 +432,23 @@ Deno.serve(async (req) => {
         }
       } else if (message.type === 'change_balance') {
         if (poSocket && isConnected) {
-          poSocket.send(`42["changeSymbol",${JSON.stringify({
-            isDemo: message.mode === 'demo' ? 1 : 0
-          })}]`);
+          const isDemo = message.mode === 'demo' ? 1 : 0;
+          poSocket.send(`42["changeSymbol",${JSON.stringify({ isDemo })}]`);
         }
       } else if (message.type === 'subscribe_candles') {
         if (poSocket && isConnected) {
           // Subscribe to asset updates
           const asset = message.asset || 'EURUSD_otc';
+          console.log("Subscribing to candles for:", asset);
           poSocket.send(`42["subscribeSymbol","${asset}"]`);
           poSocket.send(`42["changeSymbol",${JSON.stringify({
             asset: asset,
             period: 60
           })}]`);
         }
+      } else if (message.type === 'ping') {
+        // Keep-alive ping from client
+        socket.send(JSON.stringify({ type: 'pong' }));
       }
     } catch (error) {
       console.error("Error handling client message:", error);

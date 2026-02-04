@@ -7,6 +7,11 @@ interface WebSocketMessage {
   data?: any;
   status?: string;
   message?: string;
+  event?: string;
+  endpoint?: string;
+  attemptNumber?: number;
+  totalEndpoints?: number;
+  code?: string;
 }
 
 export interface Trade {
@@ -14,24 +19,52 @@ export interface Trade {
   action: 'call' | 'put';
   amount: number;
   duration: number;
+  isDemo?: number;
+}
+
+export interface ConnectionStatus {
+  state: 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'error';
+  endpoint?: string;
+  attempt?: number;
+  totalAttempts?: number;
+  errorMessage?: string;
 }
 
 export const usePocketOptionWebSocket = () => {
-  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ state: 'disconnected' });
   const [balance, setBalance] = useState<number | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [deals, setDeals] = useState<any[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const keepAliveRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+
+  // Computed property for backward compatibility
+  const isConnected = connectionStatus.state === 'connected' || connectionStatus.state === 'authenticated';
+
+  const clearTimers = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(async () => {
     try {
+      clearTimers();
+      
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Not authenticated');
       }
 
-      console.log('Session token:', session.access_token ? 'Present' : 'Missing');
+      setConnectionStatus({ state: 'connecting' });
 
       // Get Supabase project details from environment
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -40,67 +73,154 @@ export const usePocketOptionWebSocket = () => {
       // Construct WebSocket URL with auth token as query parameter
       const wsUrl = `wss://${projectRef}.supabase.co/functions/v1/pocketoption-websocket?token=${session.access_token}`;
       
-      console.log('Connecting to WebSocket...');
+      console.log('Connecting to WebSocket bridge...');
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connection opened successfully');
-        setIsConnected(true);
+        console.log('WebSocket bridge opened, initiating PocketOption connection...');
+        reconnectAttemptRef.current = 0;
+        
         // Send connect message to initiate PocketOption connection
         ws.send(JSON.stringify({ type: 'connect' }));
-        toast({
-          title: 'WebSocket Connected',
-          description: 'Establishing connection to PocketOption...',
-        });
+        
+        // Start keep-alive pings every 30 seconds
+        keepAliveRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30000);
       };
 
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          console.log('Received WebSocket message:', message);
-
+          
           switch (message.type) {
+            case 'authenticated':
+              console.log('Bridge authenticated, connecting to PocketOption...');
+              break;
+              
+            case 'connection_attempt':
+              setConnectionStatus({
+                state: 'connecting',
+                endpoint: message.endpoint,
+                attempt: message.attemptNumber,
+                totalAttempts: message.totalEndpoints
+              });
+              break;
+
             case 'connection':
               if (message.status === 'connected') {
-                setIsConnected(true);
+                setConnectionStatus({
+                  state: 'connected',
+                  endpoint: message.endpoint
+                });
                 toast({
                   title: 'Connected',
-                  description: 'Successfully connected to PocketOption',
+                  description: `Connected to ${message.endpoint || 'PocketOption'}`,
                 });
               } else if (message.status === 'disconnected') {
-                setIsConnected(false);
+                setConnectionStatus({ 
+                  state: 'disconnected',
+                  errorMessage: message.message
+                });
+              }
+              break;
+
+            case 'po_authenticated':
+              console.log('Successfully authenticated with PocketOption');
+              setConnectionStatus(prev => ({
+                ...prev,
+                state: 'authenticated'
+              }));
+              toast({
+                title: 'Authenticated',
+                description: 'Successfully authenticated with PocketOption',
+              });
+              // Request initial balance
+              ws.send(JSON.stringify({ type: 'get_balance' }));
+              break;
+
+            case 'po_balance':
+              if (message.data && typeof message.data.balance === 'number') {
+                setBalance(message.data.balance);
+                console.log('Balance updated:', message.data.balance);
+              } else if (message.data && typeof message.data === 'number') {
+                setBalance(message.data);
+              }
+              break;
+
+            case 'po_candles':
+              if (message.data) {
+                const candle = message.data;
+                if (candle.asset && typeof candle.close === 'number') {
+                  setPrices(prev => ({
+                    ...prev,
+                    [candle.asset]: candle.close,
+                  }));
+                }
+              }
+              break;
+
+            case 'po_deals':
+              if (message.data) {
+                setDeals(message.data);
+              }
+              break;
+
+            case 'po_order':
+              console.log('Order result:', message.data);
+              if (message.data?.profit !== undefined) {
+                const profit = message.data.profit;
+                if (profit > 0) {
+                  toast({
+                    title: 'Trade Won!',
+                    description: `Profit: $${profit.toFixed(2)}`,
+                  });
+                } else if (profit < 0) {
+                  toast({
+                    title: 'Trade Lost',
+                    description: `Loss: $${Math.abs(profit).toFixed(2)}`,
+                    variant: 'destructive',
+                  });
+                }
+              }
+              break;
+
+            case 'po_data':
+              console.log('PocketOption event:', message.event, message.data);
+              break;
+
+            case 'error':
+              console.error('WebSocket error:', message.message);
+              setConnectionStatus({
+                state: 'error',
+                errorMessage: message.message
+              });
+              
+              if (message.code === 'AUTH_FAILED') {
                 toast({
-                  title: 'Disconnected',
-                  description: 'Connection to PocketOption lost',
+                  title: 'Authentication Failed',
+                  description: 'Your SSID may be expired. Please update your credentials.',
+                  variant: 'destructive',
+                });
+              } else {
+                toast({
+                  title: 'Connection Error',
+                  description: message.message || 'Unknown error occurred',
                   variant: 'destructive',
                 });
               }
               break;
 
-            case 'po_ready':
-              console.log('PocketOption ready for commands');
-              // Request initial balance
-              ws.send(JSON.stringify({ type: 'get_balance' }));
-              break;
-
-            case 'po_data':
-              // Handle structured data from PocketOption
-              handlePocketOptionData(message.data);
-              break;
-
-            case 'error':
-              console.error('WebSocket error:', message.message);
-              toast({
-                title: 'Connection Error',
-                description: message.message || 'Unknown error occurred',
-                variant: 'destructive',
-              });
+            case 'pong':
+              // Keep-alive response received
               break;
 
             default:
-              console.log('Unhandled message type:', message.type);
+              console.log('Unhandled message type:', message.type, message);
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -108,58 +228,75 @@ export const usePocketOptionWebSocket = () => {
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error details:', {
-          error,
-          readyState: ws.readyState,
-          url: wsUrl,
-        });
-        toast({
-          title: 'WebSocket Error',
-          description: 'Failed to connect. Check console for details.',
-          variant: 'destructive',
+        console.error('WebSocket error:', error);
+        setConnectionStatus({
+          state: 'error',
+          errorMessage: 'WebSocket connection error'
         });
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket connection closed');
-        setIsConnected(false);
+      ws.onclose = (event) => {
+        console.log('WebSocket closed - code:', event.code);
+        clearTimers();
         wsRef.current = null;
+        
+        setConnectionStatus(prev => ({
+          ...prev,
+          state: 'disconnected'
+        }));
 
-        // Attempt to reconnect after 5 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          connect();
-        }, 5000);
+        // Exponential backoff reconnection (2s, 4s, 8s, 16s, max 30s)
+        const baseDelay = 2000;
+        const maxDelay = 30000;
+        const delay = Math.min(baseDelay * Math.pow(2, reconnectAttemptRef.current), maxDelay);
+        reconnectAttemptRef.current++;
+
+        if (reconnectAttemptRef.current <= 5) {
+          console.log(`Reconnecting in ${delay / 1000}s (attempt ${reconnectAttemptRef.current})...`);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        } else {
+          toast({
+            title: 'Connection Lost',
+            description: 'Max reconnection attempts reached. Click Connect to try again.',
+            variant: 'destructive',
+          });
+        }
       };
     } catch (error: any) {
       console.error('Error connecting to WebSocket:', error);
+      setConnectionStatus({
+        state: 'error',
+        errorMessage: error.message
+      });
       toast({
         title: 'Connection Failed',
         description: error.message,
         variant: 'destructive',
       });
     }
-  }, [toast]);
+  }, [toast, clearTimers]);
 
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
+    clearTimers();
+    reconnectAttemptRef.current = 10; // Prevent auto-reconnect
 
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
 
-    setIsConnected(false);
-  }, []);
+    setConnectionStatus({ state: 'disconnected' });
+  }, [clearTimers]);
 
   const executeTrade = useCallback((trade: Trade) => {
-    if (!wsRef.current || !isConnected) {
+    if (!wsRef.current || connectionStatus.state !== 'authenticated') {
       toast({
-        title: 'Not Connected',
-        description: 'Please connect to PocketOption first',
+        title: 'Not Ready',
+        description: connectionStatus.state === 'connected' 
+          ? 'Waiting for authentication...' 
+          : 'Please connect to PocketOption first',
         variant: 'destructive',
       });
       return;
@@ -170,7 +307,7 @@ export const usePocketOptionWebSocket = () => {
       type: 'trade',
       ...trade,
     }));
-  }, [isConnected, toast]);
+  }, [connectionStatus.state, toast]);
 
   const changeBalanceMode = useCallback((mode: 'demo' | 'real') => {
     if (!wsRef.current || !isConnected) {
@@ -199,59 +336,21 @@ export const usePocketOptionWebSocket = () => {
     }));
   }, [isConnected]);
 
-  const handlePocketOptionData = (data: any) => {
-    if (!data || !Array.isArray(data)) return;
-
-    const [event, payload] = data;
-
-    switch (event) {
-      case 'balance':
-        if (payload && typeof payload.balance === 'number') {
-          setBalance(payload.balance);
-          console.log('Balance updated:', payload.balance);
-        }
-        break;
-
-      case 'candle':
-        if (payload && payload.asset && typeof payload.close === 'number') {
-          setPrices(prev => ({
-            ...prev,
-            [payload.asset]: payload.close,
-          }));
-        }
-        break;
-
-      case 'trade':
-        console.log('Trade result:', payload);
-        if (payload && payload.status === 'win') {
-          toast({
-            title: 'Trade Won!',
-            description: `Profit: $${payload.profit?.toFixed(2) || '0.00'}`,
-          });
-        } else if (payload && payload.status === 'loss') {
-          toast({
-            title: 'Trade Lost',
-            description: `Loss: $${Math.abs(payload.profit || 0).toFixed(2)}`,
-            variant: 'destructive',
-          });
-        }
-        break;
-
-      default:
-        console.log('Unhandled PocketOption event:', event, payload);
-    }
-  };
-
   useEffect(() => {
     return () => {
-      disconnect();
+      clearTimers();
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
     };
-  }, [disconnect]);
+  }, [clearTimers]);
 
   return {
     isConnected,
+    connectionStatus,
     balance,
     prices,
+    deals,
     connect,
     disconnect,
     executeTrade,
