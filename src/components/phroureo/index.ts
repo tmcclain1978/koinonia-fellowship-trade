@@ -6,3 +6,5 @@ export { PhroureoStrategyBuilder } from './PhroureoStrategyBuilder';
 export { PhroureoPositionCard } from './PhroureoPositionCard';
 export { PhroureoPreview } from './PhroureoPreview';
 export { PhroureoAuditLog } from './PhroureoAuditLog';
+export { PhroureoHelpModal } from './PhroureoHelpModal';
+export { PhroureoHelpButton } from './PhroureoHelpButton';

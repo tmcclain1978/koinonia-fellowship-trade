@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarIcon, TrendingUp, Activity, BarChart2, Wallet, Search, LineChart, LayoutGrid, Shield, Clock, BookOpen } from "lucide-react";
+import { PhroureoHelpButton } from "@/components/phroureo";
 import { QuickJournalButton } from "@/components/journal/QuickJournalButton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -635,6 +636,10 @@ const Trading = () => {
 
             {/* Risk Management Tab */}
             <TabsContent value="risk" className="space-y-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Risk Management</h3>
+                <PhroureoHelpButton variant="text" />
+              </div>
               <div className="grid lg:grid-cols-2 gap-6">
                 <DailyLossGuardSettings />
                 <DailyLossGuardStatus />

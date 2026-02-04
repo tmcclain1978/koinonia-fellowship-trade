@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart2, TrendingUp, ChevronDown, ChevronUp, Wallet, LineChart, Activity, Search, Shield } from "lucide-react";
+import { PhroureoHelpButton } from "@/components/phroureo";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
 import { QuickJournalButton } from "@/components/journal/QuickJournalButton";
@@ -562,6 +563,10 @@ const PaperTrading = () => {
 
             {/* Risk Tab */}
             <TabsContent value="risk" className="space-y-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Risk Management</h3>
+                <PhroureoHelpButton variant="text" />
+              </div>
               <PositionsRiskModule />
               <PaperTradingAnalytics />
             </TabsContent>
