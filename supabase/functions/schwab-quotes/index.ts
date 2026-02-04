@@ -263,22 +263,16 @@ serve(async (req) => {
 async function returnMockQuotes(symbols: string | string[]) {
   const symbolList = Array.isArray(symbols) ? symbols : symbols.split(',');
   const POLYGON_API_KEY = Deno.env.get('POLYGON_API_KEY');
+  const FMP_API_KEY = Deno.env.get('FMP_API_KEY');
   
-  // Try to get real prices from Polygon first
+  // Try to get real prices from Polygon first, then FMP as secondary fallback
   const mockQuotes = await Promise.all(symbolList.map(async (symbol) => {
     const sym = symbol.trim().toUpperCase();
-    let basePrice = sym === 'AAPL' ? 250 : 
-                    sym === 'MSFT' ? 430 : 
-                    sym === 'GOOGL' ? 190 :
-                    sym === 'AMZN' ? 220 :
-                    sym === 'TSLA' ? 420 :
-                    sym === 'SPY' ? 600 :
-                    sym === 'QQQ' ? 520 :
-                    sym === 'NVDA' ? 140 :
-                    100 + Math.random() * 200;
+    let basePrice: number | null = null;
+    let source = 'mock';
     
-    // Try to get real price from Polygon
-    if (POLYGON_API_KEY) {
+    // Try Polygon first (preferred source)
+    if (POLYGON_API_KEY && basePrice === null) {
       try {
         const prevResponse = await fetch(
           `https://api.polygon.io/v2/aggs/ticker/${sym}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`
@@ -286,11 +280,36 @@ async function returnMockQuotes(symbols: string | string[]) {
         const prevData = await prevResponse.json();
         if (prevData.results?.[0]?.c) {
           basePrice = prevData.results[0].c;
+          source = 'polygon-fallback';
           console.log(`[schwab-quotes] Got ${sym} price from Polygon: $${basePrice}`);
         }
       } catch (e) {
         console.log(`[schwab-quotes] Could not fetch ${sym} from Polygon`);
       }
+    }
+    
+    // Try FMP as secondary fallback
+    if (FMP_API_KEY && basePrice === null) {
+      try {
+        const fmpResponse = await fetch(
+          `https://financialmodelingprep.com/api/v3/quote/${sym}?apikey=${FMP_API_KEY}`
+        );
+        const fmpData = await fmpResponse.json();
+        if (Array.isArray(fmpData) && fmpData[0]?.price) {
+          basePrice = fmpData[0].price;
+          source = 'fmp-fallback';
+          console.log(`[schwab-quotes] Got ${sym} price from FMP: $${basePrice}`);
+        }
+      } catch (e) {
+        console.log(`[schwab-quotes] Could not fetch ${sym} from FMP`);
+      }
+    }
+    
+    // Last resort: use a reasonable placeholder (only if all APIs fail)
+    if (basePrice === null) {
+      basePrice = 100;
+      source = 'mock';
+      console.log(`[schwab-quotes] Using placeholder price for ${sym} - all APIs unavailable`);
     }
     
     const change = (Math.random() - 0.5) * (basePrice * 0.02); // 2% max change
@@ -314,15 +333,20 @@ async function returnMockQuotes(symbols: string | string[]) {
       mark: parseFloat(basePrice.toFixed(2)),
       description: `${sym} Inc.`,
       exchange: 'NASDAQ',
-      source: POLYGON_API_KEY ? 'polygon-fallback' : 'mock',
+      source,
     };
   }));
+
+  // Determine overall source for the response
+  const sources = mockQuotes.map(q => q.source);
+  const primarySource = sources.includes('polygon-fallback') ? 'polygon-fallback' : 
+                        sources.includes('fmp-fallback') ? 'fmp-fallback' : 'mock';
 
   return new Response(
     JSON.stringify({ 
       success: true,
       quotes: mockQuotes,
-      source: POLYGON_API_KEY ? 'polygon-fallback' : 'mock',
+      source: primarySource,
       note: 'Using fallback data - complete Schwab OAuth in Settings for live streaming',
     }),
     { 
