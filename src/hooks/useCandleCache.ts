@@ -1,5 +1,38 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { KLineData } from 'klinecharts';
+import { safeNumber } from '@/lib/safeNumber';
+
+const sanitizeCandle = (candle: any): KLineData | null => {
+  if (!candle) return null;
+
+  let timestamp = safeNumber(candle.timestamp ?? candle.time ?? candle.t, NaN);
+  if (Number.isFinite(timestamp) && timestamp < 1e12) {
+    // Convert seconds to ms if needed
+    timestamp = timestamp * 1000;
+  }
+  if (!Number.isFinite(timestamp)) return null;
+
+  const open = safeNumber(candle.open, NaN);
+  const high = safeNumber(candle.high, NaN);
+  const low = safeNumber(candle.low, NaN);
+  const close = safeNumber(candle.close, NaN);
+  if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+    return null;
+  }
+
+  const volumeRaw = safeNumber(candle.volume, 0);
+  const volume = Number.isFinite(volumeRaw) ? volumeRaw : 0;
+
+  return { timestamp, open, high, low, close, volume };
+};
+
+const sanitizeCandles = (candles: any[]): KLineData[] => {
+  if (!Array.isArray(candles)) return [];
+  return candles
+    .map(sanitizeCandle)
+    .filter((c): c is KLineData => Boolean(c))
+    .sort((a, b) => a.timestamp - b.timestamp);
+};
 
 interface CacheEntry {
   candles: KLineData[];
@@ -184,15 +217,37 @@ export const useCandleCache = ({
       const stored = localStorage.getItem(cacheKey);
       if (stored) {
         const entry: CacheEntry = JSON.parse(stored);
+        const sanitizedCandles = sanitizeCandles(entry.candles);
         const expiryMs = getCacheExpiryMs(interval);
         const age = Date.now() - entry.lastFetch;
         
         if (age < expiryMs) {
-          setCachedData(entry.candles);
+          if (sanitizedCandles.length > 0) {
+            setCachedData(sanitizedCandles);
+          } else {
+            // Corrupt/invalid cache; ignore it.
+            isCacheValidRef.current = false;
+            return;
+          }
           setLastCacheUpdate(entry.lastFetch);
           setCacheSource(entry.source);
           isCacheValidRef.current = true;
-          console.log(`[CandleCache] Loaded ${entry.candles.length} cached candles for ${symbol} (${interval}), age: ${Math.round(age/1000)}s`);
+
+          // If we had to sanitize, overwrite the stored cache to prevent recurring runtime crashes.
+          if (sanitizedCandles.length !== (entry.candles?.length ?? 0)) {
+            try {
+              const nextEntry: CacheEntry = {
+                candles: sanitizedCandles,
+                lastFetch: entry.lastFetch,
+                source: entry.source,
+              };
+              localStorage.setItem(cacheKey, JSON.stringify(nextEntry));
+            } catch {
+              // Ignore
+            }
+          }
+
+          console.log(`[CandleCache] Loaded ${sanitizedCandles.length} cached candles for ${symbol} (${interval}), age: ${Math.round(age/1000)}s`);
         } else {
           console.log(`[CandleCache] Cache expired for ${symbol} (${interval}), age: ${Math.round(age/1000)}s`);
           isCacheValidRef.current = false;
@@ -208,19 +263,22 @@ export const useCandleCache = ({
     if (!enabled || candles.length === 0) return;
     
     try {
+      const sanitizedCandles = sanitizeCandles(candles);
+      if (sanitizedCandles.length === 0) return;
+
       const entry: CacheEntry = {
-        candles,
+        candles: sanitizedCandles,
         lastFetch: Date.now(),
         source,
       };
       
       localStorage.setItem(cacheKey, JSON.stringify(entry));
-      setCachedData(candles);
+      setCachedData(sanitizedCandles);
       setLastCacheUpdate(entry.lastFetch);
       setCacheSource(source);
       isCacheValidRef.current = true;
       
-      console.log(`[CandleCache] Saved ${candles.length} candles for ${symbol} (${interval}) from ${source}`);
+      console.log(`[CandleCache] Saved ${sanitizedCandles.length} candles for ${symbol} (${interval}) from ${source}`);
     } catch (error) {
       console.error('[CandleCache] Error saving cache:', error);
     }
@@ -229,18 +287,21 @@ export const useCandleCache = ({
   // Update last candle in cache (for streaming updates)
   const updateLastCandle = useCallback((candle: KLineData) => {
     if (!enabled || cachedData.length === 0) return;
+
+    const safeCandle = sanitizeCandle(candle);
+    if (!safeCandle) return;
     
     setCachedData(prev => {
       const updated = [...prev];
       const lastIdx = updated.length - 1;
       
       if (lastIdx >= 0) {
-        if (updated[lastIdx].timestamp === candle.timestamp) {
+        if (updated[lastIdx].timestamp === safeCandle.timestamp) {
           // Update existing candle
-          updated[lastIdx] = candle;
-        } else if (candle.timestamp > updated[lastIdx].timestamp) {
+          updated[lastIdx] = safeCandle;
+        } else if (safeCandle.timestamp > updated[lastIdx].timestamp) {
           // New candle
-          updated.push(candle);
+          updated.push(safeCandle);
         }
       }
       

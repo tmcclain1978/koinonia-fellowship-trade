@@ -1210,6 +1210,52 @@ export const ProChartKit = ({
   }, [replayIndex, replayMode, allCandleData]);
 
   // Fetch market data
+  // Ensure all candle fields are finite numbers before passing to klinecharts.
+  // klinecharts may call toFixed internally; strings/undefined here can crash the app.
+  const normalizeCandle = (candle: any): KLineData | null => {
+    if (!candle) return null;
+
+    // Timestamp normalization
+    let timestamp = NaN;
+    if (candle.time !== undefined && candle.time !== null) {
+      const t = safeNumber(candle.time, NaN);
+      if (Number.isFinite(t)) timestamp = t * 1000; // edge fn returns seconds
+    } else if (candle.timestamp !== undefined && candle.timestamp !== null) {
+      const t = safeNumber(candle.timestamp, NaN);
+      if (Number.isFinite(t)) {
+        timestamp = t < 1e12 ? t * 1000 : t; // handle seconds vs ms
+      }
+    } else if (candle.datetime !== undefined && candle.datetime !== null) {
+      if (typeof candle.datetime === "number" && Number.isFinite(candle.datetime)) {
+        timestamp = candle.datetime;
+      } else if (typeof candle.datetime === "string") {
+        const parsed = Date.parse(candle.datetime);
+        if (Number.isFinite(parsed)) {
+          timestamp = parsed;
+        } else {
+          const t = safeNumber(candle.datetime, NaN);
+          if (Number.isFinite(t)) timestamp = t < 1e12 ? t * 1000 : t;
+        }
+      }
+    }
+
+    if (!Number.isFinite(timestamp)) return null;
+
+    // OHLC normalization
+    const open = safeNumber(candle.open, NaN);
+    const high = safeNumber(candle.high, NaN);
+    const low = safeNumber(candle.low, NaN);
+    const close = safeNumber(candle.close, NaN);
+    if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+      return null;
+    }
+
+    const volumeRaw = safeNumber(candle.volume, 0);
+    const volume = Number.isFinite(volumeRaw) ? volumeRaw : 0;
+
+    return { timestamp, open, high, low, close, volume };
+  };
+
   const fetchAndLoadData = async (isUpdate = false) => {
     if (!chartRef.current) {
       console.log("⚠️ Chart ref not ready");
@@ -1243,14 +1289,15 @@ export const ProChartKit = ({
       const candles = data?.data || data?.candles;
       
       if (candles && Array.isArray(candles) && candles.length > 0) {
-        const klineData: KLineData[] = candles.map((candle: any) => ({
-          timestamp: candle.time ? candle.time * 1000 : new Date(candle.datetime).getTime(),
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume || 0
-        }));
+        const klineData: KLineData[] = candles
+          .map(normalizeCandle)
+          .filter((c): c is KLineData => Boolean(c))
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        if (klineData.length === 0) {
+          console.error("❌ All returned candles were invalid after normalization");
+          return;
+        }
 
         // Get the latest candle timestamp
         const latestTimestamp = klineData[klineData.length - 1]?.timestamp;
@@ -1390,14 +1437,15 @@ export const ProChartKit = ({
       const candles = data?.data || data?.candles;
       
       if (candles && Array.isArray(candles) && candles.length > 0) {
-        const klineData: KLineData[] = candles.map((candle: any) => ({
-          timestamp: candle.time ? candle.time * 1000 : new Date(candle.datetime).getTime(),
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume || 0
-        }));
+        const klineData: KLineData[] = candles
+          .map(normalizeCandle)
+          .filter((c): c is KLineData => Boolean(c))
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        if (klineData.length === 0) {
+          console.warn("⚠️ Historical candles were returned but all were invalid after normalization");
+          return;
+        }
 
         console.log("✅ Loaded", klineData.length, "historical candles from", data?.source || "unknown");
         setAllCandleData(klineData);
