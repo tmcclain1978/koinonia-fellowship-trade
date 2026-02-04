@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Wifi, WifiOff } from "lucide-react";
+import { usePocketOptionWebSocket, ConnectionStatus } from "@/hooks/usePocketOptionWebSocket";
 
 interface PocketOptionConnectionProps {
   onConnectionChange: (connected: boolean) => void;
@@ -16,8 +18,19 @@ interface PocketOptionConnectionProps {
 const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptionConnectionProps) => {
   const [ssid, setSsid] = useState("");
   const [loading, setLoading] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
   const { toast } = useToast();
+  
+  const { 
+    connectionStatus, 
+    connect: wsConnect, 
+    disconnect: wsDisconnect,
+    isConnected: wsIsConnected 
+  } = usePocketOptionWebSocket();
+
+  // Sync connection state with parent
+  useEffect(() => {
+    onConnectionChange(wsIsConnected);
+  }, [wsIsConnected, onConnectionChange]);
 
   useEffect(() => {
     loadCredentials();
@@ -46,62 +59,17 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
   };
 
   const testConnection = async () => {
-    if (!ssid) {
-      toast({
-        title: "Missing SSID",
-        description: "Please enter your SSID",
-        variant: "destructive",
-      });
+    if (!ssid || ssid === "••••••••••••") {
+      // Use saved credentials - just connect via WebSocket
+      wsConnect();
       return;
     }
 
-    setTestingConnection(true);
-    try {
-      let testSsid = ssid;
-      
-      // If showing masked value, fetch the real SSID from database
-      if (ssid === "••••••••••••") {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error("Not authenticated");
-
-        const { data, error } = await supabase
-          .from("user_api_credentials")
-          .select("pocketoption_ssid")
-          .eq("user_id", session.user.id)
-          .single();
-
-        if (error) throw error;
-        if (!data?.pocketoption_ssid) throw new Error("No saved SSID found");
-        
-        testSsid = data.pocketoption_ssid;
-      }
-
-      // Test connection via edge function
-      const { data, error } = await supabase.functions.invoke("test-pocketoption-connection", {
-        body: { ssid: testSsid },
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        toast({
-          title: "Connection successful",
-          description: "PocketOption credentials are valid",
-        });
-        onConnectionChange(true);
-      } else {
-        throw new Error(data.message || "Connection failed");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Connection failed",
-        description: error.message,
-        variant: "destructive",
-      });
-      onConnectionChange(false);
-    } finally {
-      setTestingConnection(false);
-    }
+    toast({
+      title: "Save First",
+      description: "Please save your credentials before testing",
+      variant: "destructive",
+    });
   };
 
   const saveCredentials = async () => {
@@ -184,13 +152,60 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
     }
   };
 
+  const getConnectionBadge = () => {
+    switch (connectionStatus.state) {
+      case 'connecting':
+        return (
+          <Badge variant="outline" className="gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Connecting{connectionStatus.attempt ? ` (${connectionStatus.attempt}/${connectionStatus.totalAttempts})` : '...'}
+          </Badge>
+        );
+      case 'connected':
+        return (
+          <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600">
+            <Wifi className="h-3 w-3" />
+            Connected - Authenticating...
+          </Badge>
+        );
+      case 'authenticated':
+        return (
+          <Badge variant="default" className="gap-1 bg-green-600">
+            <Wifi className="h-3 w-3" />
+            Authenticated
+          </Badge>
+        );
+      case 'error':
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <WifiOff className="h-3 w-3" />
+            Error
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <WifiOff className="h-3 w-3" />
+            Disconnected
+          </Badge>
+        );
+    }
+  };
+
+  const isTestingOrConnecting = connectionStatus.state === 'connecting' || connectionStatus.state === 'connected';
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>PocketOption Connection</CardTitle>
-        <CardDescription>
-          Connect your PocketOption account to enable automated trading
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>PocketOption Connection</CardTitle>
+            <CardDescription>
+              Connect your PocketOption account to enable automated trading
+            </CardDescription>
+          </div>
+          {getConnectionBadge()}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         <Alert>
@@ -201,11 +216,21 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
           </AlertDescription>
         </Alert>
 
-        {isConnected && (
-          <Alert className="border-primary/50 bg-primary/10">
-            <CheckCircle2 className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-primary">
-              Connected to PocketOption
+        {connectionStatus.state === 'authenticated' && (
+          <Alert className="border-green-500/50 bg-green-500/10">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-700 dark:text-green-400">
+              Connected and authenticated with PocketOption
+              {connectionStatus.endpoint && ` via ${connectionStatus.endpoint}`}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {connectionStatus.state === 'error' && connectionStatus.errorMessage && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {connectionStatus.errorMessage}
             </AlertDescription>
           </Alert>
         )}
@@ -229,20 +254,29 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
           <div className="flex gap-3">
             <Button
               onClick={saveCredentials}
-              disabled={loading || testingConnection}
+              disabled={loading || isTestingOrConnecting}
               className="flex-1"
             >
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Save Credentials
             </Button>
-            <Button
-              onClick={testConnection}
-              disabled={loading || testingConnection || !ssid}
-              variant="outline"
-            >
-              {testingConnection && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Test Connection
-            </Button>
+            {connectionStatus.state === 'authenticated' ? (
+              <Button
+                onClick={wsDisconnect}
+                variant="outline"
+              >
+                Disconnect
+              </Button>
+            ) : (
+              <Button
+                onClick={testConnection}
+                disabled={loading || isTestingOrConnecting || (!ssid && ssid !== "••••••••••••")}
+                variant="outline"
+              >
+                {isTestingOrConnecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {isTestingOrConnecting ? 'Connecting...' : 'Connect'}
+              </Button>
+            )}
           </div>
         </div>
 
