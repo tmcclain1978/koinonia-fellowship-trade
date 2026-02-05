@@ -19,8 +19,15 @@ import {
   DollarSign,
   Clock,
   Save,
-  Loader2
+  Loader2,
+  HelpCircle
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useExitPreferences, ExitConditionPreset, SavedPreset } from "@/hooks/useExitPreferences";
 
 interface ExitCondition {
@@ -312,6 +319,22 @@ export const ConditionalExitBuilder = ({
                   <Label className="text-sm flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-red-500" />
                     Stop Loss
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-sm">
+                            <strong>Activates protection when your profit reaches this threshold.</strong>
+                            <br /><br />
+                            • <strong>Dollar:</strong> When you're up $X in profit (e.g., $50 = activate when profit hits $50)
+                            <br />
+                            • <strong>Percent:</strong> When your position is up X% (e.g., 10% = activate when position gains 10%)
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </Label>
                   <Switch 
                     checked={stopLossEnabled} 
@@ -343,7 +366,9 @@ export const ConditionalExitBuilder = ({
                       </RadioGroup>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Value</Label>
+                      <Label className="text-xs text-muted-foreground">
+                        {stopLossType === 'DOLLAR' ? 'Profit Trigger ($)' : 'Profit Trigger (%)'}
+                      </Label>
                       <div className="relative">
                         <Input
                           type="number"
@@ -355,6 +380,11 @@ export const ConditionalExitBuilder = ({
                           {stopLossType === 'PERCENT' ? '%' : '$'}
                         </span>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        {stopLossType === 'DOLLAR' 
+                          ? `Activate when profit reaches $${stopLossValue}` 
+                          : `Activate when position is up ${stopLossValue}%`}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -366,6 +396,22 @@ export const ConditionalExitBuilder = ({
                   <Label className="text-sm flex items-center gap-2">
                     <Target className="h-4 w-4 text-green-500" />
                     Trailing Stop
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-sm">
+                            <strong>How far back the trailing stop follows from the highest profit.</strong>
+                            <br /><br />
+                            • <strong>Dollar:</strong> Trail $X behind peak (e.g., $20 = stop trails $20 behind highest profit)
+                            <br />
+                            • <strong>Percent:</strong> Trail X% behind peak (e.g., 5% = stop trails 5% behind peak)
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </Label>
                   <Switch 
                     checked={trailingEnabled} 
@@ -397,7 +443,9 @@ export const ConditionalExitBuilder = ({
                       </RadioGroup>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Trail Amount</Label>
+                      <Label className="text-xs text-muted-foreground">
+                        {trailingType === 'DOLLAR' ? 'Trail Distance ($)' : 'Trail Distance (%)'}
+                      </Label>
                       <div className="relative">
                         <Input
                           type="number"
@@ -409,6 +457,11 @@ export const ConditionalExitBuilder = ({
                           {trailingType === 'PERCENT' ? '%' : '$'}
                         </span>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        {trailingType === 'DOLLAR' 
+                          ? `Stop trails $${trailingValue} behind peak profit` 
+                          : `Stop trails ${trailingValue}% behind peak`}
+                      </p>
                     </div>
                   </div>
                 )}
