@@ -444,7 +444,7 @@ export const ConditionalExitBuilder = ({
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">
-                        {trailingType === 'DOLLAR' ? 'Trail Distance ($)' : 'Trail Distance (%)'}
+                       {trailingType === 'DOLLAR' ? 'Profit Trail Distance ($)' : 'Profit Trail Distance (%)'}
                       </Label>
                       <div className="relative">
                         <Input
@@ -460,7 +460,7 @@ export const ConditionalExitBuilder = ({
                       <p className="text-xs text-muted-foreground">
                         {trailingType === 'DOLLAR' 
                           ? `Stop trails $${trailingValue} behind peak profit` 
-                          : `Stop trails ${trailingValue}% behind peak`}
+                         : `Stop trails ${trailingValue}% behind peak profit`}
                       </p>
                     </div>
                   </div>
