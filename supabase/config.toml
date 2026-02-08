@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.predict-pocketoption-candle]
 verify_jwt = true
+
+[functions.penny-stock-engine]
+verify_jwt = false
