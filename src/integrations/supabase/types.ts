@@ -1083,6 +1083,135 @@ export type Database = {
         }
         Relationships: []
       }
+      penny_stock_predictions: {
+        Row: {
+          actual_outcome: string | null
+          breakout_probability: number
+          catalyst_headline: string | null
+          catalyst_type: string | null
+          confidence_rank: string | null
+          created_at: string | null
+          float_shares: number | null
+          id: string
+          key_factors: Json | null
+          market_cap: number | null
+          max_gain_5d: number | null
+          momentum_5d: number | null
+          near_52w_high: boolean | null
+          news_sentiment_score: number | null
+          pattern_detected: string | null
+          predicted_direction: string | null
+          prediction_date: string
+          price_after_5d: number | null
+          price_at_prediction: number | null
+          reasoning: string | null
+          relative_volume: number | null
+          risk_flags: Json | null
+          rsi: number | null
+          short_interest: number | null
+          sma_20: number | null
+          symbol: string
+          updated_at: string | null
+          user_id: string
+          volume_at_prediction: number | null
+          vwap: number | null
+          was_accurate: boolean | null
+        }
+        Insert: {
+          actual_outcome?: string | null
+          breakout_probability: number
+          catalyst_headline?: string | null
+          catalyst_type?: string | null
+          confidence_rank?: string | null
+          created_at?: string | null
+          float_shares?: number | null
+          id?: string
+          key_factors?: Json | null
+          market_cap?: number | null
+          max_gain_5d?: number | null
+          momentum_5d?: number | null
+          near_52w_high?: boolean | null
+          news_sentiment_score?: number | null
+          pattern_detected?: string | null
+          predicted_direction?: string | null
+          prediction_date?: string
+          price_after_5d?: number | null
+          price_at_prediction?: number | null
+          reasoning?: string | null
+          relative_volume?: number | null
+          risk_flags?: Json | null
+          rsi?: number | null
+          short_interest?: number | null
+          sma_20?: number | null
+          symbol: string
+          updated_at?: string | null
+          user_id: string
+          volume_at_prediction?: number | null
+          vwap?: number | null
+          was_accurate?: boolean | null
+        }
+        Update: {
+          actual_outcome?: string | null
+          breakout_probability?: number
+          catalyst_headline?: string | null
+          catalyst_type?: string | null
+          confidence_rank?: string | null
+          created_at?: string | null
+          float_shares?: number | null
+          id?: string
+          key_factors?: Json | null
+          market_cap?: number | null
+          max_gain_5d?: number | null
+          momentum_5d?: number | null
+          near_52w_high?: boolean | null
+          news_sentiment_score?: number | null
+          pattern_detected?: string | null
+          predicted_direction?: string | null
+          prediction_date?: string
+          price_after_5d?: number | null
+          price_at_prediction?: number | null
+          reasoning?: string | null
+          relative_volume?: number | null
+          risk_flags?: Json | null
+          rsi?: number | null
+          short_interest?: number | null
+          sma_20?: number | null
+          symbol?: string
+          updated_at?: string | null
+          user_id?: string
+          volume_at_prediction?: number | null
+          vwap?: number | null
+          was_accurate?: boolean | null
+        }
+        Relationships: []
+      }
+      penny_stock_watchlist: {
+        Row: {
+          added_at: string | null
+          alert_enabled: boolean | null
+          id: string
+          notes: string | null
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          alert_enabled?: boolean | null
+          id?: string
+          notes?: string | null
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string | null
+          alert_enabled?: boolean | null
+          id?: string
+          notes?: string | null
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       phroureo_exit_strategies: {
         Row: {
           allow_after_hours: boolean

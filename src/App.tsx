@@ -29,6 +29,7 @@ import TradingBot from "./pages/TradingBot";
 import BotLearning from "./pages/BotLearning";
 import BotTesting from "./pages/BotTesting";
 import PocketOption from "./pages/PocketOption";
+import PennyStocks from "./pages/PennyStocks";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -69,6 +70,7 @@ const App = () => (
             <Route path="/bot-learning" element={<BotLearning />} />
             <Route path="/bot-testing" element={<BotTesting />} />
             <Route path="/pocketoption" element={<PocketOption />} />
+            <Route path="/penny-stocks" element={<PennyStocks />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/advanced-analytics" element={<AdvancedAnalytics />} />
             <Route path="/education" element={<Education />} />

@@ -110,6 +110,16 @@ const Navigation = () => {
                 Bot Testing
               </Link>
               <Link 
+                to="/penny-stocks" 
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/penny-stocks" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Penny Stocks
+              </Link>
+              <Link 
                 to="/pocketoption" 
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/pocketoption" 
@@ -248,6 +258,17 @@ const Navigation = () => {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Bot Testing
+                </Link>
+                <Link 
+                  to="/penny-stocks" 
+                  className={`text-sm font-medium ${
+                    location.pathname === "/penny-stocks" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Penny Stocks
                 </Link>
                 <Link 
                   to="/pocketoption" 
