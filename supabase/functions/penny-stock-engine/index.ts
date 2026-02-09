@@ -58,501 +58,336 @@ interface PennyStockCandidate {
   totalScore: number
 }
 
-// Calculate RSI from price data
-function calculateRSI(closes: number[], period: number = 14): number {
+// ── Technical indicator helpers ──
+
+function calculateRSI(closes: number[], period = 14): number {
   if (closes.length < period + 1) return 50
-  
-  let gains = 0
-  let losses = 0
-  
+  let gains = 0, losses = 0
   for (let i = 1; i <= period; i++) {
     const change = closes[i] - closes[i - 1]
-    if (change > 0) gains += change
-    else losses -= change
+    if (change > 0) gains += change; else losses -= change
   }
-  
-  let avgGain = gains / period
-  let avgLoss = losses / period
-  
+  let avgGain = gains / period, avgLoss = losses / period
   for (let i = period + 1; i < closes.length; i++) {
     const change = closes[i] - closes[i - 1]
-    if (change > 0) {
-      avgGain = (avgGain * (period - 1) + change) / period
-      avgLoss = (avgLoss * (period - 1)) / period
-    } else {
-      avgGain = (avgGain * (period - 1)) / period
-      avgLoss = (avgLoss * (period - 1) - change) / period
-    }
+    if (change > 0) { avgGain = (avgGain * (period - 1) + change) / period; avgLoss = (avgLoss * (period - 1)) / period }
+    else { avgGain = (avgGain * (period - 1)) / period; avgLoss = (avgLoss * (period - 1) - change) / period }
   }
-  
   if (avgLoss === 0) return 100
-  const rs = avgGain / avgLoss
-  return 100 - (100 / (1 + rs))
+  return 100 - (100 / (1 + avgGain / avgLoss))
 }
 
-// Calculate EMA
 function calculateEMA(data: number[], period: number): number {
   if (data.length < period) return data[data.length - 1] || 0
-  
-  const multiplier = 2 / (period + 1)
+  const m = 2 / (period + 1)
   let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period
-  
-  for (let i = period; i < data.length; i++) {
-    ema = (data[i] - ema) * multiplier + ema
-  }
-  
+  for (let i = period; i < data.length; i++) ema = (data[i] - ema) * m + ema
   return ema
 }
 
-// Calculate SMA
 function calculateSMA(data: number[], period: number): number {
   if (data.length < period) return data[data.length - 1] || 0
   return data.slice(-period).reduce((a, b) => a + b, 0) / period
 }
 
-// Calculate VWAP (simplified - uses typical price * volume)
 function calculateVWAP(highs: number[], lows: number[], closes: number[], volumes: number[]): number {
-  if (highs.length === 0) return 0
-  
-  let cumulativeTPV = 0
-  let cumulativeVolume = 0
-  
-  for (let i = 0; i < highs.length; i++) {
-    const typicalPrice = (highs[i] + lows[i] + closes[i]) / 3
-    cumulativeTPV += typicalPrice * volumes[i]
-    cumulativeVolume += volumes[i]
-  }
-  
-  return cumulativeVolume > 0 ? cumulativeTPV / cumulativeVolume : 0
+  let tpv = 0, vol = 0
+  for (let i = 0; i < highs.length; i++) { tpv += ((highs[i] + lows[i] + closes[i]) / 3) * volumes[i]; vol += volumes[i] }
+  return vol > 0 ? tpv / vol : 0
 }
 
-// Detect chart patterns
-function detectPatterns(
-  opens: number[], 
-  highs: number[], 
-  lows: number[], 
-  closes: number[],
-  volumes: number[]
-): { bullFlag: boolean; flatTopBreakout: boolean; pennant: boolean; fishHook: boolean; gapUp: boolean } {
-  const patterns = {
-    bullFlag: false,
-    flatTopBreakout: false,
-    pennant: false,
-    fishHook: false,
-    gapUp: false
-  }
-  
-  if (closes.length < 10) return patterns
-  
-  const recent = closes.slice(-10)
-  const recentHighs = highs.slice(-10)
-  const recentLows = lows.slice(-10)
-  
-  // Bull Flag: Strong move up followed by consolidation
-  const initialMove = (closes[closes.length - 10] - closes[closes.length - 15]) / closes[closes.length - 15]
-  const consolidationRange = (Math.max(...recent) - Math.min(...recent)) / Math.min(...recent)
-  if (initialMove > 0.1 && consolidationRange < 0.05) {
-    patterns.bullFlag = true
-  }
-  
-  // Flat Top Breakout: Multiple touches at resistance
-  const maxHigh = Math.max(...recentHighs)
-  const touchCount = recentHighs.filter(h => Math.abs(h - maxHigh) / maxHigh < 0.02).length
-  if (touchCount >= 3 && closes[closes.length - 1] >= maxHigh * 0.98) {
-    patterns.flatTopBreakout = true
-  }
-  
-  // Pennant: Converging highs and lows
-  const highsTrend = (recentHighs[recentHighs.length - 1] - recentHighs[0]) / recentHighs[0]
-  const lowsTrend = (recentLows[recentLows.length - 1] - recentLows[0]) / recentLows[0]
-  if (highsTrend < 0 && lowsTrend > 0) {
-    patterns.pennant = true
-  }
-  
-  // Fish Hook: Sharp drop followed by recovery (Jason Bond pattern)
-  const midPoint = Math.floor(recent.length / 2)
-  const firstHalf = recent.slice(0, midPoint)
-  const secondHalf = recent.slice(midPoint)
-  const drop = (Math.min(...firstHalf) - firstHalf[0]) / firstHalf[0]
-  const recovery = (secondHalf[secondHalf.length - 1] - Math.min(...firstHalf)) / Math.min(...firstHalf)
-  if (drop < -0.1 && recovery > 0.08) {
-    patterns.fishHook = true
-  }
-  
-  // Gap Up: Today's open significantly above yesterday's close
-  if (opens.length >= 2) {
-    const gapPercent = (opens[opens.length - 1] - closes[closes.length - 2]) / closes[closes.length - 2]
-    if (gapPercent > 0.03) {
-      patterns.gapUp = true
-    }
-  }
-  
+function detectPatterns(opens: number[], highs: number[], lows: number[], closes: number[], volumes: number[]) {
+  const patterns = { bullFlag: false, flatTopBreakout: false, pennant: false, fishHook: false, gapUp: false }
+  if (closes.length < 15) return patterns
+  const recent = closes.slice(-10), recentHighs = highs.slice(-10), recentLows = lows.slice(-10)
+  // Bull Flag
+  const initMove = closes.length >= 15 ? (closes[closes.length - 10] - closes[closes.length - 15]) / closes[closes.length - 15] : 0
+  const consRange = (Math.max(...recent) - Math.min(...recent)) / Math.min(...recent)
+  if (initMove > 0.1 && consRange < 0.05) patterns.bullFlag = true
+  // Flat Top
+  const maxH = Math.max(...recentHighs)
+  if (recentHighs.filter(h => Math.abs(h - maxH) / maxH < 0.02).length >= 3 && closes[closes.length - 1] >= maxH * 0.98) patterns.flatTopBreakout = true
+  // Pennant
+  if ((recentHighs[recentHighs.length - 1] - recentHighs[0]) / recentHighs[0] < 0 && (recentLows[recentLows.length - 1] - recentLows[0]) / recentLows[0] > 0) patterns.pennant = true
+  // Fish Hook
+  const mid = Math.floor(recent.length / 2), fh = recent.slice(0, mid), sh = recent.slice(mid)
+  if ((Math.min(...fh) - fh[0]) / fh[0] < -0.1 && (sh[sh.length - 1] - Math.min(...fh)) / Math.min(...fh) > 0.08) patterns.fishHook = true
+  // Gap Up
+  if (opens.length >= 2 && (opens[opens.length - 1] - closes[closes.length - 2]) / closes[closes.length - 2] > 0.03) patterns.gapUp = true
   return patterns
 }
 
-// Calculate feature score based on PDF research methodology
-function calculateFeatureScore(candidate: Partial<PennyStockCandidate>): number {
-  let score = 0
-  
-  // Volume Score (max 20)
-  const rvol = candidate.relativeVolume || 1
-  if (rvol >= 2) score += 20
-  else if (rvol >= 1.5) score += 15
-  else if (rvol >= 1.2) score += 10
-  else score += 5
-  
-  // Momentum Score (max 20)
-  const momentum = candidate.technicals?.momentum5d || 0
-  if (momentum >= 10) score += 20
-  else if (momentum >= 5) score += 15
-  else if (momentum >= 2) score += 10
-  else score += 5
-  
-  // RSI Score (max 15)
-  const rsi = candidate.technicals?.rsi || 50
-  if (rsi >= 40 && rsi <= 70) score += 15
-  else if (rsi >= 30 && rsi <= 80) score += 10
-  else score += 5
-  
-  // Pattern Score (max 15)
-  const patterns = candidate.patterns
-  if (patterns?.bullFlag || patterns?.pennant) score += 15
-  else if (patterns?.flatTopBreakout || patterns?.fishHook) score += 12
-  else if (patterns?.gapUp) score += 8
-  else score += 3
-  
-  // Sentiment Score (max 15)
-  const sentimentScore = candidate.sentiment?.score || 0
-  const hasCatalyst = candidate.sentiment?.catalystType != null
-  if (sentimentScore > 0.3 && hasCatalyst) score += 15
-  else if (sentimentScore > 0.1) score += 10
-  else if (sentimentScore >= 0) score += 5
-  else score += 2
-  
-  // Float/Short Score (max 10)
-  const floatShares = candidate.floatShares || 100000000
-  const shortInterest = candidate.shortInterest || 0
-  const lowFloat = floatShares < 20000000
-  const highShort = shortInterest > 15
-  if (lowFloat && highShort) score += 10
-  else if (lowFloat || highShort) score += 5
-  else score += 2
-  
-  // Near High Score (max 5)
-  if (candidate.technicals?.nearHigh52w) score += 5
-  
-  return score
+function calculateFeatureScore(c: Partial<PennyStockCandidate>): number {
+  let s = 0
+  const rvol = c.relativeVolume || 1
+  s += rvol >= 2 ? 20 : rvol >= 1.5 ? 15 : rvol >= 1.2 ? 10 : 5
+  const mom = c.technicals?.momentum5d || 0
+  s += mom >= 10 ? 20 : mom >= 5 ? 15 : mom >= 2 ? 10 : 5
+  const rsi = c.technicals?.rsi || 50
+  s += (rsi >= 40 && rsi <= 70) ? 15 : (rsi >= 30 && rsi <= 80) ? 10 : 5
+  const p = c.patterns
+  s += (p?.bullFlag || p?.pennant) ? 15 : (p?.flatTopBreakout || p?.fishHook) ? 12 : p?.gapUp ? 8 : 3
+  const sent = c.sentiment?.score || 0
+  s += (sent > 0.3 && c.sentiment?.catalystType) ? 15 : sent > 0.1 ? 10 : sent >= 0 ? 5 : 2
+  const fl = c.floatShares || 100000000, si = c.shortInterest || 0
+  s += (fl < 20000000 && si > 15) ? 10 : (fl < 20000000 || si > 15) ? 5 : 2
+  if (c.technicals?.nearHigh52w) s += 5
+  return s
 }
 
-// Get confidence rank from score
 function getConfidenceRank(score: number): 'High' | 'Moderate' | 'Low' {
-  if (score >= 75) return 'High'
-  if (score >= 55) return 'Moderate'
-  return 'Low'
+  return score >= 75 ? 'High' : score >= 55 ? 'Moderate' : 'Low'
 }
 
-// Use Lovable AI for prediction analysis
-async function getAIPrediction(
-  candidate: Partial<PennyStockCandidate>
-): Promise<{ reasoning: string; keyFactors: string[]; riskFlags: string[] }> {
-  try {
-    const prompt = `You are an expert penny stock analyst combining methods from:
-- Timothy Sykes (momentum, pre-spike patterns, avoiding pump-and-dumps)
-- Ross Cameron (bull flags, first pullback entries, VWAP breaks)
-- Humbled Trader (VWAP analysis, market cycles, risk management)
-- Jason Bond (pennants, rockets, fishhooks patterns)
+// ── Data fetching: FMP primary, Polygon fallback ──
 
-Analyze this penny stock for breakout potential:
+async function fetchScreenedStocks(filters: ScannerFilters, fmpKey: string): Promise<any[]> {
+  const allStocks: any[] = []
+  const seen = new Set<string>()
 
-Symbol: ${candidate.symbol}
-Price: $${candidate.price?.toFixed(2)}
-Change: ${candidate.changePercent?.toFixed(2)}%
-Volume: ${candidate.volume?.toLocaleString()} (${candidate.relativeVolume?.toFixed(1)}x avg)
-Float: ${candidate.floatShares ? (candidate.floatShares / 1000000).toFixed(1) + 'M' : 'Unknown'}
-Short Interest: ${candidate.shortInterest?.toFixed(1) || 0}%
-
-Technical Indicators:
-- RSI: ${candidate.technicals?.rsi?.toFixed(1)}
-- Above VWAP: ${candidate.technicals?.aboveVwap ? 'Yes' : 'No'}
-- EMA Crossover: ${candidate.technicals?.emaCrossover ? 'Yes' : 'No'}
-- 5-Day Momentum: ${candidate.technicals?.momentum5d?.toFixed(1)}%
-- Near 52W High: ${candidate.technicals?.nearHigh52w ? 'Yes' : 'No'}
-
-Patterns Detected:
-${candidate.patterns?.bullFlag ? '- Bull Flag ✓' : ''}
-${candidate.patterns?.flatTopBreakout ? '- Flat Top Breakout ✓' : ''}
-${candidate.patterns?.pennant ? '- Pennant ✓' : ''}
-${candidate.patterns?.fishHook ? '- Fish Hook ✓' : ''}
-${candidate.patterns?.gapUp ? '- Gap Up ✓' : ''}
-
-Sentiment: ${candidate.sentiment?.label} (Score: ${candidate.sentiment?.score?.toFixed(2)})
-${candidate.sentiment?.catalystType ? `Catalyst: ${candidate.sentiment.catalystType}` : 'No catalyst detected'}
-${candidate.sentiment?.headline ? `News: "${candidate.sentiment.headline}"` : ''}
-
-Provide a concise analysis in JSON format with:
-1. "reasoning": 2-3 sentence explanation of breakout potential
-2. "keyFactors": Array of top 3 contributing factors
-3. "riskFlags": Array of any warnings (dilution risk, pump-and-dump signs, overextended, etc.)
-
-Return ONLY valid JSON.`
-
-    // Use Lovable AI endpoint
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
-    const aiUrl = lovableApiKey 
-      ? 'https://ai.lovable.dev/api/v1/chat/completions'
-      : null
-    
-    if (!aiUrl || !lovableApiKey) {
-      return {
-        reasoning: 'AI analysis not available - using rule-based scoring',
-        keyFactors: ['Technical indicators', 'Volume patterns'],
-        riskFlags: ['Manual review recommended']
+  const addStocks = (stocks: any[]) => {
+    for (const s of stocks) {
+      if (!s.symbol || seen.has(s.symbol)) continue
+      // Basic price filter
+      const price = s.price || s.changesPercentage ? s.price : 0
+      if (price >= filters.minPrice && price <= filters.maxPrice) {
+        seen.add(s.symbol)
+        allStocks.push(s)
       }
     }
+  }
 
-    const response = await fetch(aiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${lovableApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 500
-      })
-    })
+  // Strategy: combine multiple free-tier FMP endpoints to build a penny stock universe
 
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    const text = data.choices?.[0]?.message?.content || ''
-    
-    // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0])
-      return {
-        reasoning: parsed.reasoning || 'Analysis pending',
-        keyFactors: parsed.keyFactors || [],
-        riskFlags: parsed.riskFlags || []
+  // 1. Gainers (free)
+  try {
+    console.log('Fetching FMP gainers...')
+    const res = await fetch(`https://financialmodelingprep.com/stable/biggest-gainers?apikey=${fmpKey}`)
+    if (res.ok) {
+      const data = await res.json()
+      console.log('Gainers response type:', typeof data, 'isArray:', Array.isArray(data), 'length:', Array.isArray(data) ? data.length : 'N/A')
+      if (Array.isArray(data) && data.length > 0) {
+        console.log('Sample gainer:', JSON.stringify(data[0]).slice(0, 200))
+        addStocks(data)
+        console.log(`Gainers: ${data.length} total, ${allStocks.length} match price filter`)
       }
+    } else {
+      console.error('Gainers HTTP error:', res.status, await res.text().catch(() => ''))
     }
-    
-    return {
-      reasoning: 'Unable to generate detailed analysis',
-      keyFactors: ['Volume spike', 'Price momentum'],
-      riskFlags: ['Conduct additional due diligence']
-    }
-  } catch (error) {
-    console.error('AI prediction error:', error)
-    return {
-      reasoning: 'AI analysis temporarily unavailable',
-      keyFactors: ['Technical indicators', 'Volume patterns'],
-      riskFlags: ['Manual review recommended']
-    }
-  }
+  } catch (e) { console.error('Gainers error:', e) }
+
+  // 2. Most active (free)
+  try {
+    console.log('Fetching FMP most active...')
+    const res = await fetch(`https://financialmodelingprep.com/stable/most-actives?apikey=${fmpKey}`)
+    if (res.ok) { const data = await res.json(); if (Array.isArray(data)) { addStocks(data); console.log(`After actives: ${allStocks.length} match price filter`) } }
+  } catch (e) { console.error('Actives error:', e) }
+
+  // 3. Losers (free) - some penny stocks have sharp reversals
+  try {
+    console.log('Fetching FMP losers...')
+    const res = await fetch(`https://financialmodelingprep.com/stable/biggest-losers?apikey=${fmpKey}`)
+    if (res.ok) { const data = await res.json(); if (Array.isArray(data)) { addStocks(data); console.log(`After losers: ${allStocks.length} match price filter`) } }
+  } catch (e) { console.error('Losers error:', e) }
+
+  console.log(`Total unique penny stocks found: ${allStocks.length}`)
+  return allStocks
 }
 
-// Fetch stock data from Polygon.io
-async function fetchStockData(
-  symbols: string[],
-  polygonApiKey: string
-): Promise<Map<string, any>> {
-  const results = new Map()
-  
-  // Batch fetch snapshots for all symbols
-  try {
-    const response = await fetch(
-      `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?apiKey=${polygonApiKey}`
-    )
-    
-    if (!response.ok) {
-      console.error('Polygon snapshot error:', response.status)
-      return results
-    }
-    
-    const data = await response.json()
-    const tickers = data.tickers || []
-    
-    for (const ticker of tickers) {
-      if (symbols.length === 0 || symbols.includes(ticker.ticker)) {
-        results.set(ticker.ticker, ticker)
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching stock data:', error)
+async function fetchFMPQuoteBatch(symbols: string[], fmpKey: string): Promise<Map<string, any>> {
+  const map = new Map()
+  // FMP supports comma-separated batch quotes
+  const batches: string[][] = []
+  for (let i = 0; i < symbols.length; i += 50) batches.push(symbols.slice(i, i + 50))
+
+  for (const batch of batches) {
+    try {
+      const res = await fetch(`https://financialmodelingprep.com/stable/quote?symbol=${batch.join(',')}&apikey=${fmpKey}`)
+      if (!res.ok) continue
+      const data = await res.json()
+      if (Array.isArray(data)) data.forEach((q: any) => map.set(q.symbol, q))
+    } catch (e) { console.error('FMP quote batch error:', e) }
   }
-  
-  return results
+  return map
 }
 
-// Fetch historical bars for technical analysis
-async function fetchHistoricalBars(
-  symbol: string,
-  polygonApiKey: string,
-  days: number = 30
-): Promise<{ opens: number[]; highs: number[]; lows: number[]; closes: number[]; volumes: number[] }> {
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - days)
-  
-  try {
-    const response = await fetch(
-      `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${startDate.toISOString().split('T')[0]}/${endDate.toISOString().split('T')[0]}?adjusted=true&sort=asc&apiKey=${polygonApiKey}`
-    )
-    
-    if (!response.ok) {
-      return { opens: [], highs: [], lows: [], closes: [], volumes: [] }
-    }
-    
-    const data = await response.json()
-    const results = data.results || []
-    
-    return {
-      opens: results.map((r: any) => r.o),
-      highs: results.map((r: any) => r.h),
-      lows: results.map((r: any) => r.l),
-      closes: results.map((r: any) => r.c),
-      volumes: results.map((r: any) => r.v)
-    }
-  } catch (error) {
-    console.error(`Error fetching bars for ${symbol}:`, error)
-    return { opens: [], highs: [], lows: [], closes: [], volumes: [] }
-  }
-}
+async function fetchHistoricalBars(symbol: string, fmpKey: string, polygonKey: string | null): Promise<{ opens: number[]; highs: number[]; lows: number[]; closes: number[]; volumes: number[] }> {
+  const empty = { opens: [], highs: [], lows: [], closes: [], volumes: [] }
 
-// Fetch news sentiment for a symbol
-async function fetchNewsSentiment(
-  symbol: string,
-  polygonApiKey: string
-): Promise<{ score: number; label: 'Bullish' | 'Bearish' | 'Neutral'; catalystType: string | null; headline: string | null }> {
+  // Try FMP first
   try {
-    const response = await fetch(
-      `https://api.polygon.io/v2/reference/news?ticker=${symbol}&limit=5&apiKey=${polygonApiKey}`
-    )
-    
-    if (!response.ok) {
-      return { score: 0, label: 'Neutral', catalystType: null, headline: null }
-    }
-    
-    const data = await response.json()
-    const articles = data.results || []
-    
-    if (articles.length === 0) {
-      return { score: 0, label: 'Neutral', catalystType: null, headline: null }
-    }
-    
-    // Calculate average sentiment from insights
-    let totalSentiment = 0
-    let count = 0
-    let latestHeadline = articles[0]?.title || null
-    let catalystType: string | null = null
-    
-    for (const article of articles) {
-      const insights = article.insights || []
-      for (const insight of insights) {
-        if (insight.ticker === symbol) {
-          if (insight.sentiment === 'positive') totalSentiment += 1
-          else if (insight.sentiment === 'negative') totalSentiment -= 1
-          count++
+    const res = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${symbol}&timeseries=30&apikey=${fmpKey}`)
+    if (res.ok) {
+      const data = await res.json()
+      const hist = (data.historical || []).reverse() // oldest first
+      if (hist.length >= 5) {
+        return {
+          opens: hist.map((r: any) => r.open),
+          highs: hist.map((r: any) => r.high),
+          lows: hist.map((r: any) => r.low),
+          closes: hist.map((r: any) => r.close),
+          volumes: hist.map((r: any) => r.volume),
         }
       }
-      
-      // Detect catalyst type from keywords
-      const text = (article.title + ' ' + (article.description || '')).toLowerCase()
-      if (text.includes('fda') || text.includes('approval')) catalystType = 'FDA'
-      else if (text.includes('earnings') || text.includes('revenue')) catalystType = 'Earnings'
-      else if (text.includes('partnership') || text.includes('deal')) catalystType = 'Partnership'
-      else if (text.includes('contract') || text.includes('award')) catalystType = 'Contract'
-      else if (text.includes('merger') || text.includes('acquisition')) catalystType = 'M&A'
     }
-    
-    const avgSentiment = count > 0 ? totalSentiment / count : 0
-    const label = avgSentiment > 0.2 ? 'Bullish' : avgSentiment < -0.2 ? 'Bearish' : 'Neutral'
-    
-    return { score: avgSentiment, label, catalystType, headline: latestHeadline }
-  } catch (error) {
-    console.error(`Error fetching news for ${symbol}:`, error)
-    return { score: 0, label: 'Neutral', catalystType: null, headline: null }
+  } catch (e) { console.error(`FMP bars error for ${symbol}:`, e) }
+
+  // Fallback to Polygon aggregates (works on free plan)
+  if (polygonKey) {
+    try {
+      const end = new Date(), start = new Date()
+      start.setDate(start.getDate() - 45)
+      const res = await fetch(`https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}?adjusted=true&sort=asc&apiKey=${polygonKey}`)
+      if (res.ok) {
+        const data = await res.json()
+        const results = data.results || []
+        if (results.length >= 5) {
+          return {
+            opens: results.map((r: any) => r.o),
+            highs: results.map((r: any) => r.h),
+            lows: results.map((r: any) => r.l),
+            closes: results.map((r: any) => r.c),
+            volumes: results.map((r: any) => r.v),
+          }
+        }
+      }
+    } catch (e) { console.error(`Polygon bars error for ${symbol}:`, e) }
+  }
+
+  return empty
+}
+
+async function fetchNewsSentiment(symbol: string, fmpKey: string): Promise<{ score: number; label: 'Bullish' | 'Bearish' | 'Neutral'; catalystType: string | null; headline: string | null }> {
+  const neutral = { score: 0, label: 'Neutral' as const, catalystType: null, headline: null }
+  try {
+    const res = await fetch(`https://financialmodelingprep.com/stable/news/stock?tickers=${symbol}&limit=5&apikey=${fmpKey}`)
+    if (!res.ok) return neutral
+    const articles = await res.json()
+    if (!Array.isArray(articles) || articles.length === 0) return neutral
+
+    let sentimentSum = 0
+    let catalystType: string | null = null
+    const headline = articles[0]?.title || null
+
+    for (const a of articles) {
+      const text = ((a.title || '') + ' ' + (a.text || '')).toLowerCase()
+      // Simple keyword sentiment
+      const positiveWords = ['surge', 'breakout', 'soar', 'jump', 'rally', 'gain', 'bullish', 'upgrade', 'beat', 'strong', 'approval', 'partnership', 'deal']
+      const negativeWords = ['crash', 'plunge', 'drop', 'fall', 'bearish', 'downgrade', 'miss', 'weak', 'dilution', 'offering', 'lawsuit']
+      const posCount = positiveWords.filter(w => text.includes(w)).length
+      const negCount = negativeWords.filter(w => text.includes(w)).length
+      sentimentSum += (posCount - negCount) * 0.2
+
+      if (!catalystType) {
+        if (text.includes('fda') || text.includes('approval')) catalystType = 'FDA'
+        else if (text.includes('earnings') || text.includes('revenue')) catalystType = 'Earnings'
+        else if (text.includes('partnership') || text.includes('deal') || text.includes('contract')) catalystType = 'Partnership'
+        else if (text.includes('merger') || text.includes('acquisition')) catalystType = 'M&A'
+        else if (text.includes('offering') || text.includes('dilution')) catalystType = 'Offering'
+      }
+    }
+
+    const avg = sentimentSum / articles.length
+    const label = avg > 0.15 ? 'Bullish' : avg < -0.15 ? 'Bearish' : 'Neutral'
+    return { score: avg, label, catalystType, headline }
+  } catch (e) {
+    console.error(`News error for ${symbol}:`, e)
+    return neutral
   }
 }
 
-// Main scanner function
-async function scanPennyStocks(
-  filters: ScannerFilters,
-  polygonApiKey: string
-): Promise<PennyStockCandidate[]> {
-  const candidates: PennyStockCandidate[] = []
-  
-  // Fetch all penny stock snapshots
-  const allStocks = await fetchStockData([], polygonApiKey)
-  
-  // Filter based on criteria
-  const filteredSymbols: string[] = []
-  const stockDataMap = new Map<string, any>()
-  
-  for (const [symbol, data] of allStocks) {
-    const price = data.day?.c || data.prevDay?.c || 0
-    const volume = data.day?.v || 0
-    const avgVolume = data.prevDay?.v || volume
-    
-    // Apply filters
-    if (price < filters.minPrice || price > filters.maxPrice) continue
-    if (volume < filters.minVolume) continue
-    
-    // Skip very illiquid stocks
-    if (avgVolume < 100000) continue
-    
-    filteredSymbols.push(symbol)
-    stockDataMap.set(symbol, data)
-    
-    // Limit to top 50 candidates for processing
-    if (filteredSymbols.length >= 50) break
+// ── AI prediction ──
+
+async function getAIPrediction(candidate: Partial<PennyStockCandidate>): Promise<{ reasoning: string; keyFactors: string[]; riskFlags: string[] }> {
+  const fallback = { reasoning: 'Score-based analysis', keyFactors: ['Technical indicators', 'Volume patterns'], riskFlags: ['Manual review recommended'] }
+  try {
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
+    if (!lovableApiKey) return fallback
+
+    const prompt = `You are an expert penny stock analyst combining methods from Timothy Sykes, Ross Cameron, Humbled Trader, and Jason Bond.
+
+Analyze this penny stock:
+Symbol: ${candidate.symbol} | Price: $${candidate.price?.toFixed(2)} | Change: ${candidate.changePercent?.toFixed(2)}%
+Volume: ${candidate.volume?.toLocaleString()} (${candidate.relativeVolume?.toFixed(1)}x avg) | Float: ${candidate.floatShares ? (candidate.floatShares / 1e6).toFixed(1) + 'M' : 'Unknown'}
+RSI: ${candidate.technicals?.rsi?.toFixed(1)} | Above VWAP: ${candidate.technicals?.aboveVwap} | EMA Cross: ${candidate.technicals?.emaCrossover}
+Momentum 5d: ${candidate.technicals?.momentum5d?.toFixed(1)}% | Patterns: ${Object.entries(candidate.patterns || {}).filter(([,v]) => v).map(([k]) => k).join(', ') || 'None'}
+Sentiment: ${candidate.sentiment?.label} | Catalyst: ${candidate.sentiment?.catalystType || 'None'}
+
+Return ONLY valid JSON: {"reasoning":"2-3 sentences","keyFactors":["factor1","factor2","factor3"],"riskFlags":["flag1"]}`
+
+    const res = await fetch('https://ai.lovable.dev/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${lovableApiKey}` },
+      body: JSON.stringify({ model: 'google/gemini-2.5-flash-lite', messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: 300 })
+    })
+    if (!res.ok) return fallback
+    const data = await res.json()
+    const text = data.choices?.[0]?.message?.content || ''
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) { const p = JSON.parse(match[0]); return { reasoning: p.reasoning || fallback.reasoning, keyFactors: p.keyFactors || [], riskFlags: p.riskFlags || [] } }
+    return fallback
+  } catch (e) { console.error('AI error:', e); return fallback }
+}
+
+// ── Main scanner ──
+
+async function scanPennyStocks(filters: ScannerFilters, fmpKey: string, polygonKey: string | null): Promise<PennyStockCandidate[]> {
+  const screened = await fetchScreenedStocks(filters, fmpKey)
+  if (screened.length === 0) {
+    console.log('No penny stocks found matching filters')
+    return []
   }
-  
-  console.log(`Found ${filteredSymbols.length} symbols matching initial filters`)
-  
-  // Process each candidate
-  for (const symbol of filteredSymbols.slice(0, 20)) { // Process top 20 for performance
+  return processStocks(screened, filters, fmpKey, polygonKey)
+}
+
+async function processStocks(stocks: any[], filters: ScannerFilters, fmpKey: string, polygonKey: string | null): Promise<PennyStockCandidate[]> {
+  const candidates: PennyStockCandidate[] = []
+
+  // Get batch quotes for richer data
+  const symbols = stocks.slice(0, 60).map((s: any) => s.symbol)
+  const quotes = await fetchFMPQuoteBatch(symbols, fmpKey)
+
+  // Process top 20 with full analysis
+  const toProcess = symbols.slice(0, 20)
+  console.log(`Processing ${toProcess.length} stocks for full analysis...`)
+
+  for (const symbol of toProcess) {
     try {
-      const stockData = stockDataMap.get(symbol)
-      const price = stockData.day?.c || stockData.prevDay?.c || 0
-      const volume = stockData.day?.v || 0
-      const prevVolume = stockData.prevDay?.v || volume
-      const relativeVolume = prevVolume > 0 ? volume / prevVolume : 1
-      const changePercent = stockData.todaysChangePerc || 0
-      
-      // Fetch historical data for technical analysis
-      const bars = await fetchHistoricalBars(symbol, polygonApiKey, 30)
-      
-      if (bars.closes.length < 10) continue
-      
-      // Calculate technical indicators
-      const rsi = calculateRSI(bars.closes)
-      const ema9 = calculateEMA(bars.closes, 9)
-      const ema20 = calculateEMA(bars.closes, 20)
-      const sma20 = calculateSMA(bars.closes, 20)
-      const vwap = calculateVWAP(bars.highs, bars.lows, bars.closes, bars.volumes)
-      
-      // Calculate momentum
-      const momentum5d = bars.closes.length >= 5 
-        ? ((bars.closes[bars.closes.length - 1] - bars.closes[bars.closes.length - 6]) / bars.closes[bars.closes.length - 6]) * 100
-        : 0
-      
-      // Check if near 52-week high (using 20-day high as proxy)
-      const high20d = Math.max(...bars.highs.slice(-20))
-      const nearHigh52w = price >= high20d * 0.95
-      
-      // Detect patterns
-      const patterns = detectPatterns(bars.opens, bars.highs, bars.lows, bars.closes, bars.volumes)
-      
-      // Filter by patterns if specified
+      const screenerData = stocks.find((s: any) => s.symbol === symbol) || {}
+      const quoteData = quotes.get(symbol) || {}
+
+      const price = quoteData.price || screenerData.price || 0
+      if (price < filters.minPrice || price > filters.maxPrice) continue
+
+      const volume = quoteData.volume || screenerData.volume || 0
+      const avgVolume = quoteData.avgVolume || screenerData.avgVolume || volume
+      const relativeVolume = avgVolume > 0 ? volume / avgVolume : 1
+      const changePercent = quoteData.changesPercentage || screenerData.changesPercentage || 0
+      const marketCap = quoteData.marketCap || screenerData.marketCap || 0
+      const floatShares = screenerData.floatShares || screenerData.float || 0
+      const shortInterest = 0 // not available from free FMP
+
+      // Fetch historical bars
+      const bars = await fetchHistoricalBars(symbol, fmpKey, polygonKey)
+
+      let rsi = 50, ema9 = price, ema20 = price, sma20 = price, vwap = price, momentum5d = 0, nearHigh52w = false
+      let patterns = { bullFlag: false, flatTopBreakout: false, pennant: false, fishHook: false, gapUp: false }
+
+      if (bars.closes.length >= 10) {
+        rsi = calculateRSI(bars.closes)
+        ema9 = calculateEMA(bars.closes, 9)
+        ema20 = calculateEMA(bars.closes, 20)
+        sma20 = calculateSMA(bars.closes, 20)
+        vwap = calculateVWAP(bars.highs, bars.lows, bars.closes, bars.volumes)
+        momentum5d = bars.closes.length >= 6 ? ((bars.closes[bars.closes.length - 1] - bars.closes[bars.closes.length - 6]) / bars.closes[bars.closes.length - 6]) * 100 : 0
+        const high20d = Math.max(...bars.highs.slice(-20))
+        nearHigh52w = price >= high20d * 0.95
+        patterns = detectPatterns(bars.opens, bars.highs, bars.lows, bars.closes, bars.volumes)
+      }
+
+      // Filter by patterns if user specified
       if (filters.patterns && filters.patterns.length > 0) {
-        const hasMatchingPattern = filters.patterns.some(p => {
+        const hasMatch = filters.patterns.some(p => {
           switch (p) {
             case 'bull_flag': return patterns.bullFlag
             case 'flat_top': return patterns.flatTopBreakout
@@ -562,144 +397,87 @@ async function scanPennyStocks(
             default: return false
           }
         })
-        if (!hasMatchingPattern) continue
+        if (!hasMatch) continue
       }
-      
-      // Fetch news sentiment
-      const sentiment = await fetchNewsSentiment(symbol, polygonApiKey)
-      
-      // Build partial candidate for scoring
-      const partialCandidate: Partial<PennyStockCandidate> = {
+
+      // Fetch sentiment
+      const sentiment = await fetchNewsSentiment(symbol, fmpKey)
+
+      const partial: Partial<PennyStockCandidate> = {
         symbol,
-        companyName: symbol, // Would need separate lookup for full name
-        price,
-        changePercent,
-        volume,
-        avgVolume: prevVolume,
-        relativeVolume,
-        marketCap: 0, // Would need separate lookup
-        floatShares: 0, // Would need separate lookup
-        shortInterest: 0, // Would need separate lookup
-        technicals: {
-          rsi,
-          vwap,
-          sma20,
-          ema9,
-          ema20,
-          momentum5d,
-          nearHigh52w,
-          aboveVwap: price > vwap,
-          emaCrossover: ema9 > ema20
-        },
-        patterns,
-        sentiment
+        companyName: quoteData.name || screenerData.companyName || symbol,
+        price, changePercent, volume, avgVolume, relativeVolume,
+        marketCap, floatShares, shortInterest,
+        technicals: { rsi, vwap, sma20, ema9, ema20, momentum5d, nearHigh52w, aboveVwap: price > vwap, emaCrossover: ema9 > ema20 },
+        patterns, sentiment,
       }
-      
-      // Calculate feature score
-      const totalScore = calculateFeatureScore(partialCandidate)
+
+      const totalScore = calculateFeatureScore(partial)
       const confidenceRank = getConfidenceRank(totalScore)
-      
-      // Get AI prediction for high-scoring candidates
-      let aiPrediction = {
-        reasoning: 'Score-based analysis',
-        keyFactors: [] as string[],
-        riskFlags: [] as string[]
-      }
-      
-      if (totalScore >= 50) {
-        aiPrediction = await getAIPrediction(partialCandidate)
-      }
-      
-      // Build key factors from analysis
-      const keyFactors = aiPrediction.keyFactors.length > 0 
-        ? aiPrediction.keyFactors
-        : [
-            relativeVolume >= 1.5 ? `${relativeVolume.toFixed(1)}x relative volume` : null,
-            patterns.bullFlag ? 'Bull flag pattern' : null,
-            patterns.flatTopBreakout ? 'Flat top breakout' : null,
-            sentiment.label === 'Bullish' ? 'Bullish sentiment' : null,
-            nearHigh52w ? 'Near 52-week high' : null,
-            momentum5d > 5 ? `${momentum5d.toFixed(1)}% 5-day momentum` : null
-          ].filter(Boolean) as string[]
-      
-      // Build risk flags
-      const riskFlags = aiPrediction.riskFlags.length > 0
-        ? aiPrediction.riskFlags
-        : [
-            rsi > 80 ? 'Overbought (RSI > 80)' : null,
-            relativeVolume > 5 ? 'Unusual volume spike - verify catalyst' : null,
-            changePercent > 30 ? 'Extended - may need pullback' : null
-          ].filter(Boolean) as string[]
-      
-      const candidate: PennyStockCandidate = {
-        ...partialCandidate as PennyStockCandidate,
+
+      let aiPred = { reasoning: 'Score-based analysis', keyFactors: [] as string[], riskFlags: [] as string[] }
+      if (totalScore >= 50) aiPred = await getAIPrediction(partial)
+
+      const keyFactors = aiPred.keyFactors.length > 0 ? aiPred.keyFactors : [
+        relativeVolume >= 1.5 ? `${relativeVolume.toFixed(1)}x relative volume` : null,
+        patterns.bullFlag ? 'Bull flag pattern' : patterns.flatTopBreakout ? 'Flat top breakout' : null,
+        sentiment.label === 'Bullish' ? 'Bullish sentiment' : null,
+        nearHigh52w ? 'Near 52-week high' : null,
+        momentum5d > 5 ? `${momentum5d.toFixed(1)}% 5d momentum` : null,
+      ].filter(Boolean) as string[]
+
+      const riskFlags = aiPred.riskFlags.length > 0 ? aiPred.riskFlags : [
+        rsi > 80 ? 'Overbought (RSI > 80)' : null,
+        relativeVolume > 5 ? 'Unusual volume spike' : null,
+        changePercent > 30 ? 'Extended - may need pullback' : null,
+        sentiment.catalystType === 'Offering' ? 'Dilution risk' : null,
+      ].filter(Boolean) as string[]
+
+      candidates.push({
+        ...(partial as PennyStockCandidate),
         totalScore,
         prediction: {
           breakoutProbability: Math.min(totalScore, 95),
           confidenceRank,
-          reasoning: aiPrediction.reasoning,
+          reasoning: aiPred.reasoning,
           keyFactors: keyFactors.slice(0, 3),
-          riskFlags: riskFlags.slice(0, 3)
-        }
-      }
-      
-      candidates.push(candidate)
-    } catch (error) {
-      console.error(`Error processing ${symbol}:`, error)
-    }
+          riskFlags: riskFlags.slice(0, 3),
+        },
+      })
+    } catch (e) { console.error(`Error processing ${symbol}:`, e) }
   }
-  
-  // Sort by total score descending
+
   candidates.sort((a, b) => b.totalScore - a.totalScore)
-  
   return candidates
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
 
   try {
-    const polygonApiKey = Deno.env.get('POLYGON_API_KEY')
-    
-    if (!polygonApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Polygon API key not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    const fmpKey = Deno.env.get('FMP_API_KEY')
+    const polygonKey = Deno.env.get('POLYGON_API_KEY') || null
+
+    if (!fmpKey) {
+      return new Response(JSON.stringify({ error: 'FMP_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const body = await req.json().catch(() => ({}))
-    
     const filters: ScannerFilters = {
       minPrice: body.minPrice || 0.5,
       maxPrice: body.maxPrice || 10,
       minVolume: body.minVolume || 500000,
       maxFloat: body.maxFloat,
-      patterns: body.patterns
+      patterns: body.patterns,
     }
 
     console.log('Starting penny stock scan with filters:', filters)
-    
-    const candidates = await scanPennyStocks(filters, polygonApiKey)
-    
+    const candidates = await scanPennyStocks(filters, fmpKey, polygonKey)
     console.log(`Scan complete. Found ${candidates.length} candidates`)
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        candidates,
-        scannedAt: new Date().toISOString(),
-        filters
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ success: true, candidates, scannedAt: new Date().toISOString(), filters }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
     console.error('Penny stock engine error:', error)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 })

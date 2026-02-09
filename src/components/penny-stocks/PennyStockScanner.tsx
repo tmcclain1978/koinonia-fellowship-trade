@@ -31,7 +31,7 @@ const patternOptions = [
 
 export function PennyStockScanner({ onScan, isScanning }: PennyStockScannerProps) {
   const [priceRange, setPriceRange] = useState<[number, number]>([0.5, 10]);
-  const [minVolume, setMinVolume] = useState(500000);
+  const [minVolume, setMinVolume] = useState(100000);
   const [maxFloat, setMaxFloat] = useState<number | undefined>(undefined);
   const [selectedPatterns, setSelectedPatterns] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
