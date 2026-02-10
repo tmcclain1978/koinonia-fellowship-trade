@@ -104,7 +104,7 @@ async function fetchFromSchwab(
     }
 
     console.log(`🔵 Schwab fetch started... premarket=${premarket}, needExtendedHoursData=${premarket ? 'true' : 'false'}`);
-    console.log(`🔵 Schwab URL: ${schwabUrl.toString().replace(/Bearer\s+\S+/, 'Bearer ***')}`);
+    const startTime = Date.now();
     
     const schwabResponse = await fetch(schwabUrl.toString(), {
       headers: {
