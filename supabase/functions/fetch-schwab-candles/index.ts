@@ -103,8 +103,8 @@ async function fetchFromSchwab(
       }
     }
 
-    console.log('🔵 Schwab fetch started...');
-    const startTime = Date.now();
+    console.log(`🔵 Schwab fetch started... premarket=${premarket}, needExtendedHoursData=${premarket ? 'true' : 'false'}`);
+    console.log(`🔵 Schwab URL: ${schwabUrl.toString().replace(/Bearer\s+\S+/, 'Bearer ***')}`);
     
     const schwabResponse = await fetch(schwabUrl.toString(), {
       headers: {
@@ -180,7 +180,10 @@ async function fetchFromPolygon(
     
     if (!fromDate || !toDate) {
       const now = new Date();
-      toDate = now.toISOString().split('T')[0];
+      // Use tomorrow as end date to ensure we capture all of today's extended hours
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      toDate = tomorrow.toISOString().split('T')[0];
       
       if (polyConfig.timespan === 'minute') {
         const from = new Date(now);
