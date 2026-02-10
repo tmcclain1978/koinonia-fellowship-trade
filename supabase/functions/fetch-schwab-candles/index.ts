@@ -142,7 +142,8 @@ async function fetchFromPolygon(
   interval: string,
   apiKey: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  premarket?: boolean
 ): Promise<{ data: any[]; source: string } | null> {
   try {
     const polygonIntervalMap: Record<string, { multiplier: number; timespan: string }> = {
@@ -481,7 +482,7 @@ serve(async (req) => {
       : Promise.resolve(null);
     
     const polygonPromise = polygonApiKey
-      ? fetchFromPolygon(symbol, interval, polygonApiKey, startDate, endDate)
+      ? fetchFromPolygon(symbol, interval, polygonApiKey, startDate, endDate, premarket)
       : Promise.resolve(null);
 
     // Race both sources - first successful response wins
