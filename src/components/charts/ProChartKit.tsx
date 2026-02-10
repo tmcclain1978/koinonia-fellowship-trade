@@ -107,7 +107,7 @@ export const ProChartKit = ({
   });
   
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
-  const [showPremarket, setShowPremarket] = useState(false);
+  const [showPremarket, setShowPremarket] = useState(() => isPremarket() || isAfterHours());
   const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
   
   // Session dividers state - show market open/close vertical lines
