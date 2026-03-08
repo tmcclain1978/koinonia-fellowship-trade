@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { encryptText, safeDecrypt } from "../_shared/encryption.ts";
+import { logAudit } from "../_shared/audit.ts";
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,73 +12,6 @@ const corsHeaders = {
 // Prevent hammering Schwab token endpoint when refresh token is invalid
 const REFRESH_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
 const lastRefreshFailureByUser = new Map<string, number>();
-
-// Decryption helper
-async function getEncryptionKey(): Promise<CryptoKey> {
-  const ENCRYPTION_KEY_B64 = Deno.env.get("CREDENTIALS_ENCRYPTION_KEY");
-  let keyData: Uint8Array;
-  
-  if (!ENCRYPTION_KEY_B64) {
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const encoder = new TextEncoder();
-    const data = encoder.encode(serviceKey);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    keyData = new Uint8Array(hashBuffer);
-  } else {
-    try {
-      keyData = Uint8Array.from(atob(ENCRYPTION_KEY_B64), c => c.charCodeAt(0));
-      if (keyData.length !== 32) {
-        throw new Error("Invalid key length");
-      }
-    } catch (error) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(ENCRYPTION_KEY_B64);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      keyData = new Uint8Array(hashBuffer);
-    }
-  }
-  
-  return await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-}
-
-async function decryptText(encrypted: string): Promise<string> {
-  const key = await getEncryptionKey();
-  const combined = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
-  const iv = combined.slice(0, 12);
-  const ciphertext = combined.slice(12);
-  
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    ciphertext
-  );
-  
-  return new TextDecoder().decode(decrypted);
-}
-
-async function encryptText(text: string): Promise<string> {
-  const key = await getEncryptionKey();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoder = new TextEncoder();
-  
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoder.encode(text)
-  );
-  
-  const combined = new Uint8Array(iv.length + encrypted.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(encrypted), iv.length);
-  
-  return btoa(String.fromCharCode(...combined));
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -97,6 +33,12 @@ serve(async (req) => {
 
     if (userError || !user) {
       throw new Error('Invalid user token');
+    }
+
+    // Rate limit: 20 token requests per minute per user
+    const rl = checkRateLimit(`schwab-token:${user.id}`, 20);
+    if (!rl.allowed) {
+      return rateLimitResponse(rl.retryAfterMs!, corsHeaders);
     }
 
     // Get user's Schwab credentials
