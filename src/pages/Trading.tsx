@@ -363,33 +363,33 @@ const Trading = () => {
   return (
     <DailyLossGuardProvider>
       <Navigation />
-      <div className="min-h-screen bg-background pt-16">
-        <div className="container mx-auto px-6 py-8">
+      <div className="min-h-screen bg-background pt-16 pb-20 lg:pb-8">
+        <div className="container mx-auto px-3 sm:px-6 py-4 sm:py-8">
           {/* Header Bar */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3">
             <div className="flex items-center gap-3">
-              <p className="text-muted-foreground">Build, validate, and preview orders.</p>
+              <p className="text-sm sm:text-base text-muted-foreground">Build, validate, and preview orders.</p>
               <QuickJournalButton symbol={symbol} defaultEntryType="during_trade" />
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium flex items-center gap-1.5 ${
                 isMarketOpen ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
               }`}>
-                <span className={`w-2 h-2 rounded-full ${isMarketOpen ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
-                {isMarketOpen ? 'Market Open' : 'Market Closed'}
+                <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${isMarketOpen ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+                {isMarketOpen ? 'Open' : 'Closed'}
               </span>
               
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                 tradingMode === 'live' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
               }`}>
-                {tradingMode === 'live' ? '🔴 Live Trading' : '📝 Paper Trading'}
+                {tradingMode === 'live' ? '🔴 Live' : '📝 Paper'}
               </span>
 
               {accountDetails && (
-                <Card className="p-3">
-                  <div className="text-center min-w-[150px]">
+                <Card className="p-2 sm:p-3 hidden sm:block">
+                  <div className="text-center min-w-[120px]">
                     <p className="text-xs text-muted-foreground">Account Value</p>
-                    <p className="text-lg font-bold text-primary">
+                    <p className="text-base sm:text-lg font-bold text-primary">
                       ${Number(accountDetails.accountValue).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-xs text-muted-foreground capitalize">
@@ -465,7 +465,7 @@ const Trading = () => {
             <CardContent className="p-0">
               <ProChartKit 
                 symbol={symbol}
-                height={500}
+                height={typeof window !== 'undefined' && window.innerWidth < 640 ? 300 : 500}
                 interval={chartInterval}
                 theme="dark"
                 showKoinoniaSignals={true}
@@ -501,7 +501,7 @@ const Trading = () => {
 
           {/* Tab Navigation */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-8 mb-4">
+            <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 mb-4">
               <TabsTrigger value="orders" className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
                 <span className="hidden sm:inline">Orders</span>
