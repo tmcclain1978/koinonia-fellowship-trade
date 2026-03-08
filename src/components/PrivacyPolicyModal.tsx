@@ -97,7 +97,7 @@ export const PrivacyPolicyModal = ({ trigger }: { trigger?: React.ReactNode }) =
             </section>
 
             <p className="text-xs text-muted-foreground mt-6 pt-4 border-t">
-              Last Updated: October 2025
+              Last Updated: March 2026
             </p>
           </div>
         </ScrollArea>

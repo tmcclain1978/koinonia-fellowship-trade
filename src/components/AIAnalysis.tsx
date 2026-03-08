@@ -72,10 +72,10 @@ const AIAnalysis = () => {
           </div>
           <div>
             <h3 className="font-display text-xl font-semibold text-foreground">
-              AI Stock Analysis
+              AI Educational Analysis
             </h3>
             <p className="text-sm text-muted-foreground">
-              Get real-time AI-powered trading recommendations
+              Study AI-generated market analysis for educational purposes only
             </p>
           </div>
         </div>
@@ -122,8 +122,9 @@ const AIAnalysis = () => {
           
           <div className="mt-6 p-4 bg-warning/10 rounded-lg border border-warning/20">
             <p className="text-sm text-warning">
-              <strong>Disclaimer:</strong> This analysis is AI-generated and for educational purposes only. 
-              Always do your own research before making trading decisions.
+              <strong>Educational Use Only:</strong> This analysis is AI-generated for educational and informational 
+              purposes only. It is not investment advice. Always conduct your own research and consult a qualified 
+              financial advisor before making any trading decisions. Past performance does not guarantee future results.
             </p>
           </div>
         </div>
