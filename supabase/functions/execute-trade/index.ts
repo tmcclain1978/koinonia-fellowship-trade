@@ -34,6 +34,12 @@ serve(async (req) => {
 
     const userId = user.id;
 
+    // Rate limit: 10 trade executions per minute per user
+    const rl = checkRateLimit(`trade:${userId}`, 10);
+    if (!rl.allowed) {
+      return rateLimitResponse(rl.retryAfterMs!, corsHeaders);
+    }
+
     // Get trade parameters from request body
     const { symbol, action, quantity, price } = await req.json();
 
