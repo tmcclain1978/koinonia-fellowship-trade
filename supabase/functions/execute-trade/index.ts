@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-
+import { logAudit } from "../_shared/audit.ts";
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limiter.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -32,6 +33,12 @@ serve(async (req) => {
     }
 
     const userId = user.id;
+
+    // Rate limit: 10 trade executions per minute per user
+    const rl = checkRateLimit(`trade:${userId}`, 10);
+    if (!rl.allowed) {
+      return rateLimitResponse(rl.retryAfterMs!, corsHeaders);
+    }
 
     // Get trade parameters from request body
     const { symbol, action, quantity, price } = await req.json();
@@ -138,6 +145,16 @@ serve(async (req) => {
         console.log("Auto-logged trade to journal:", symbol, action);
       }
     }
+
+    // Audit log trade execution
+    await logAudit({
+      userId,
+      action: tradeResult.success ? "trade.executed" : "trade.failed",
+      resourceType: "trade",
+      resourceId: tradeResult.orderId,
+      details: { symbol, action, quantity, price: tradeResult.executedPrice || price, broker: brokerType, isPaperTrading },
+      userAgent: req.headers.get("user-agent") || undefined,
+    });
 
     return new Response(
       JSON.stringify({
