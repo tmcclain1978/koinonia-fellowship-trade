@@ -1,81 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { encryptText, decryptText, safeDecrypt } from "../_shared/encryption.ts";
+import { logAudit } from "../_shared/audit.ts";
+import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limiter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// Encryption key from environment (base64 encoded)
-const ENCRYPTION_KEY_B64 = Deno.env.get("CREDENTIALS_ENCRYPTION_KEY");
-
-async function getEncryptionKey(): Promise<CryptoKey> {
-  let keyData: Uint8Array;
-  
-  if (!ENCRYPTION_KEY_B64) {
-    // Generate a deterministic key from the Supabase service role key
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const encoder = new TextEncoder();
-    const data = encoder.encode(serviceKey);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    keyData = new Uint8Array(hashBuffer);
-  } else {
-    try {
-      keyData = Uint8Array.from(atob(ENCRYPTION_KEY_B64), c => c.charCodeAt(0));
-      if (keyData.length !== 32) {
-        throw new Error("Invalid key length");
-      }
-    } catch (error) {
-      console.warn("Invalid encryption key format, using fallback");
-      const encoder = new TextEncoder();
-      const data = encoder.encode(ENCRYPTION_KEY_B64);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      keyData = new Uint8Array(hashBuffer);
-    }
-  }
-  
-  return await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-}
-
-async function encryptText(plaintext: string): Promise<string> {
-  const key = await getEncryptionKey();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(plaintext);
-  
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoded
-  );
-  
-  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-  combined.set(iv);
-  combined.set(new Uint8Array(ciphertext), iv.length);
-  
-  return btoa(String.fromCharCode(...combined));
-}
-
-async function decryptText(encrypted: string): Promise<string> {
-  const key = await getEncryptionKey();
-  const combined = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
-  
-  const iv = combined.slice(0, 12);
-  const ciphertext = combined.slice(12);
-  
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    ciphertext
-  );
-  
-  return new TextDecoder().decode(decrypted);
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
