@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Bell, X, Check, AlertTriangle, TrendingUp, DollarSign, Shield } from "lucide-react";
+import { Bell, X, Check, AlertTriangle, TrendingUp, DollarSign, Shield, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface AppNotification {
   id: string;
@@ -30,49 +30,125 @@ const colorMap = {
   info: "text-muted-foreground",
 };
 
-// Global notification store
+// In-memory listeners for instant UI updates
 let listeners: (() => void)[] = [];
-let notifications: AppNotification[] = [];
+let memoryNotifs: AppNotification[] = [];
 
-export const pushNotification = (notif: Omit<AppNotification, "id" | "timestamp" | "read">) => {
+export const pushNotification = async (notif: Omit<AppNotification, "id" | "timestamp" | "read">) => {
   const newNotif: AppNotification = {
     ...notif,
     id: crypto.randomUUID(),
     timestamp: new Date(),
     read: false,
   };
-  notifications = [newNotif, ...notifications].slice(0, 50);
+  memoryNotifs = [newNotif, ...memoryNotifs].slice(0, 50);
   listeners.forEach((l) => l());
+
+  // Persist to database (best-effort)
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from("user_notifications").insert({
+        id: newNotif.id,
+        user_id: user.id,
+        type: notif.type,
+        title: notif.title,
+        message: notif.message,
+        read: false,
+      });
+    }
+  } catch (e) {
+    console.warn("Failed to persist notification:", e);
+  }
 };
 
 const useNotifications = () => {
   const [, forceUpdate] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  // Load from DB on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setLoaded(true); return; }
+
+        const { data } = await supabase
+          .from("user_notifications")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (data && data.length > 0) {
+          const dbNotifs: AppNotification[] = data.map((n: any) => ({
+            id: n.id,
+            type: n.type as AppNotification["type"],
+            title: n.title,
+            message: n.message,
+            timestamp: new Date(n.created_at),
+            read: n.read,
+          }));
+          // Merge: DB notifications + any in-memory ones not yet in DB
+          const dbIds = new Set(dbNotifs.map((n) => n.id));
+          const memOnly = memoryNotifs.filter((n) => !dbIds.has(n.id));
+          memoryNotifs = [...memOnly, ...dbNotifs].slice(0, 50);
+          listeners.forEach((l) => l());
+        }
+      } catch (e) {
+        console.warn("Failed to load notifications:", e);
+      }
+      setLoaded(true);
+    };
+    load();
+  }, []);
+
   useEffect(() => {
     const listener = () => forceUpdate((n) => n + 1);
     listeners.push(listener);
     return () => { listeners = listeners.filter((l) => l !== listener); };
   }, []);
-  return notifications;
+
+  return { notifications: memoryNotifs, loaded };
 };
 
 export const NotificationCenter = () => {
-  const allNotifications = useNotifications();
+  const { notifications: allNotifications, loaded } = useNotifications();
   const [open, setOpen] = useState(false);
   const unreadCount = allNotifications.filter((n) => !n.read).length;
 
-  const markAllRead = useCallback(() => {
-    notifications = notifications.map((n) => ({ ...n, read: true }));
+  const markAllRead = useCallback(async () => {
+    memoryNotifs = memoryNotifs.map((n) => ({ ...n, read: true }));
     listeners.forEach((l) => l());
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("user_notifications")
+          .update({ read: true })
+          .eq("user_id", user.id)
+          .eq("read", false);
+      }
+    } catch (e) { console.warn("Failed to mark all read:", e); }
   }, []);
 
-  const markRead = useCallback((id: string) => {
-    notifications = notifications.map((n) => n.id === id ? { ...n, read: true } : n);
+  const markRead = useCallback(async (id: string) => {
+    memoryNotifs = memoryNotifs.map((n) => n.id === id ? { ...n, read: true } : n);
     listeners.forEach((l) => l());
+    try {
+      await supabase.from("user_notifications").update({ read: true }).eq("id", id);
+    } catch (e) { console.warn("Failed to mark read:", e); }
   }, []);
 
-  const clearAll = useCallback(() => {
-    notifications = [];
+  const clearAll = useCallback(async () => {
+    memoryNotifs = [];
     listeners.forEach((l) => l());
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("user_notifications").delete().eq("user_id", user.id);
+      }
+    } catch (e) { console.warn("Failed to clear notifications:", e); }
   }, []);
 
   return (
@@ -104,7 +180,11 @@ export const NotificationCenter = () => {
           </div>
         </div>
         <ScrollArea className="max-h-80">
-          {allNotifications.length === 0 ? (
+          {!loaded ? (
+            <div className="p-6 text-center">
+              <Loader2 className="w-4 h-4 animate-spin mx-auto text-muted-foreground" />
+            </div>
+          ) : allNotifications.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
               No notifications yet
             </div>
