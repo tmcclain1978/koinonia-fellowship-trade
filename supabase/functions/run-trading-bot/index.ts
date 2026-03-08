@@ -239,7 +239,8 @@ serve(async (req) => {
               userId: settings.user_id,
               symbol: opportunity.symbol,
               action: "analyze",
-              enhancedAnalysis
+              enhancedAnalysis,
+              tradingMode
             },
           });
 
