@@ -19,6 +19,7 @@ interface AutoTradingSettingsData {
   max_weekly_loss: number;
   portfolio_stop_loss_percent: number;
   max_session_trades: number;
+  min_confidence_threshold: number;
 }
 
 const AutoTradingSettings = () => {
@@ -33,6 +34,7 @@ const AutoTradingSettings = () => {
     max_weekly_loss: 2000,
     portfolio_stop_loss_percent: 5,
     max_session_trades: 10,
+    min_confidence_threshold: 50,
   });
   const [symbolInput, setSymbolInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,6 +66,7 @@ const AutoTradingSettings = () => {
           max_weekly_loss: (data as any).max_weekly_loss || 2000,
           portfolio_stop_loss_percent: (data as any).portfolio_stop_loss_percent || 5,
           max_session_trades: (data as any).max_session_trades || 10,
+          min_confidence_threshold: (data as any).min_confidence_threshold || 50,
         });
       }
     } catch (error) {
@@ -90,6 +93,7 @@ const AutoTradingSettings = () => {
           max_weekly_loss: settings.max_weekly_loss,
           portfolio_stop_loss_percent: settings.portfolio_stop_loss_percent,
           max_session_trades: settings.max_session_trades,
+          min_confidence_threshold: settings.min_confidence_threshold,
         } as any, {
           onConflict: 'user_id'
         });
@@ -217,6 +221,31 @@ const AutoTradingSettings = () => {
             <SelectItem value="aggressive">Aggressive</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Confidence Threshold */}
+      <div>
+        <Label htmlFor="confidence_threshold">Minimum Confidence Threshold: {settings.min_confidence_threshold}%</Label>
+        <div className="flex items-center gap-4 mt-2">
+          <span className="text-xs text-muted-foreground w-8">20%</span>
+          <input
+            type="range"
+            id="confidence_threshold"
+            min={20}
+            max={95}
+            step={5}
+            value={settings.min_confidence_threshold}
+            onChange={(e) =>
+              setSettings({ ...settings, min_confidence_threshold: parseInt(e.target.value) })
+            }
+            className="flex-1 accent-primary"
+          />
+          <span className="text-xs text-muted-foreground w-8">95%</span>
+        </div>
+        <p className="text-sm text-muted-foreground mt-1">
+          The bot will only execute trades when its composite analysis confidence meets or exceeds this threshold.
+          Lower values = more trades but less selective. Higher values = fewer, higher-conviction trades.
+        </p>
       </div>
 
       {/* Risk Limits Section */}
