@@ -9,6 +9,10 @@ import { TrendingUp, Activity, BarChart3, GitBranch, Newspaper, FlaskConical } f
 import Navigation from "@/components/Navigation";
 import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 import { BacktestingModule } from "@/components/BacktestingModule";
+import { MobileTabNav } from "@/components/MobileTabNav";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
+import { BacktestingModule } from "@/components/BacktestingModule";
 
 const Analytics = () => {
   const [symbol, setSymbol] = useState("AAPL");
@@ -72,8 +76,8 @@ const Analytics = () => {
   return (
     <>
       <Navigation />
-      <div className="min-h-screen bg-background pt-16">
-        <div className="container mx-auto px-6 py-8">
+      <div className="min-h-screen bg-background pt-16 pb-20 lg:pb-8">
+        <div className="container mx-auto px-4 sm:px-6 py-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Advanced Analytics</h1>
           <p className="text-muted-foreground mb-6">
             Deep market analysis with heat maps, IV/OI charts, technical indicators, news sentiment, and strategy backtesting
@@ -362,6 +366,7 @@ const Analytics = () => {
           </div>
         </div>
       </div>
+      <MobileTabNav />
     </>
   );
 };
