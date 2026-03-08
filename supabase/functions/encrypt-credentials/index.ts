@@ -143,15 +143,7 @@ serve(async (req) => {
         );
       }
 
-      const safeDecrypt = async (value: string | null) => {
-        if (!value) return null;
-        try {
-          return await decryptText(value);
-        } catch (e) {
-          console.warn("[encrypt-credentials] Could not decrypt value, returning as-is");
-          return value;
-        }
-      };
+      // Using imported safeDecrypt from shared encryption module
 
       const decryptedData: any = {
         trading_mode: data.trading_mode,
