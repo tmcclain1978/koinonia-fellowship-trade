@@ -15,7 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, symbol, action, enhancedAnalysis } = await req.json();
+    const { userId, symbol, action, enhancedAnalysis, tradingMode } = await req.json();
+    
+    // Dynamic confidence threshold: lower for paper trading since data may be mock
+    const MINIMUM_CONFIDENCE = tradingMode === "paper" ? 0.50 : 0.90;
     
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
