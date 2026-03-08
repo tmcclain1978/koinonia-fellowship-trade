@@ -163,10 +163,10 @@ const TradingBot = () => {
 
       setTradingMode(mode);
       toast({
-        title: `Trading Mode: ${mode === "paper" ? "Paper" : "Live"}`,
+        title: `Execution Mode: ${mode === "paper" ? "Simulated" : "Live"}`,
         description: mode === "paper" 
-          ? "Bot will execute simulated trades only" 
-          : "⚠️ Bot will execute real trades with your broker",
+          ? "Strategy will run in simulation — no real orders transmitted" 
+          : "⚠️ You have authorized live order transmission to your broker based on your strategy",
         variant: mode === "live" ? "destructive" : "default",
       });
     } catch (error: any) {
@@ -240,10 +240,10 @@ const TradingBot = () => {
 
       setBotEnabled(newStatus);
       toast({
-        title: newStatus ? "Bot Started" : "Bot Stopped",
+        title: newStatus ? "Automation Started" : "Automation Stopped",
         description: newStatus
-          ? "The AI trading bot is now active with 85%+ confidence gate"
-          : "The AI trading bot has been paused",
+          ? "Your configured strategy is now active — all actions follow your defined parameters"
+          : "Strategy automation has been paused",
       });
     } catch (error: any) {
       toast({
@@ -268,10 +268,10 @@ const TradingBot = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bot className="w-6 h-6" />
-              AI Trading Bot
+              Strategy Automation Tool
             </CardTitle>
             <CardDescription>
-              Upgrade to Enterprise to access the AI Auto-Trading Bot
+              Upgrade to Enterprise to access the automated strategy execution tool
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -299,10 +299,10 @@ const TradingBot = () => {
             <div>
               <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
                 <Bot className="w-8 h-8" />
-                AI Trading Bot
+                Strategy Automation Tool
               </h1>
                 <p className="text-muted-foreground">
-                  Automated trading with 85%+ confidence gate
+                  User-configured strategy execution — you define the rules, the tool follows them
                 </p>
               </div>
             </div>
@@ -342,11 +342,11 @@ const TradingBot = () => {
                   )}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg">Trading Mode</h3>
+                  <h3 className="font-semibold text-lg">Execution Mode</h3>
                   <p className="text-sm text-muted-foreground">
                     {tradingMode === "paper" 
-                      ? "Simulated trades - no real money at risk" 
-                      : "⚠️ Real trades - actual money will be used"}
+                      ? "Simulated execution — no real money at risk" 
+                      : "⚠️ Live execution — orders will be transmitted to your broker per your instructions"}
                   </p>
                 </div>
               </div>
@@ -369,7 +369,7 @@ const TradingBot = () => {
             {tradingMode === "live" && (
               <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
                 <p className="text-sm text-destructive font-medium">
-                  ⚠️ Live trading is enabled. Real orders will be placed with your connected broker.
+                  ⚠️ Live execution is enabled. Orders will be transmitted to your connected broker based on your configured strategy parameters. You remain fully responsible for all trading outcomes.
                 </p>
               </div>
             )}
@@ -478,10 +478,10 @@ const TradingBot = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="w-5 h-5" />
-              Bot Analysis Pipeline
+              Analysis Data Sources
             </CardTitle>
             <CardDescription>
-              Data sources used for trading decisions (90%+ confidence required)
+              Market data sources used to generate analytical insights for your review
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -527,8 +527,8 @@ const TradingBot = () => {
                   <Lightbulb className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <div className="font-medium">AI Trade Suggestions</div>
-                  <div className="text-sm text-muted-foreground">Smart Picks</div>
+                  <div className="font-medium">AI Scenario Analysis</div>
+                  <div className="text-sm text-muted-foreground">Study Scenarios</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
@@ -536,8 +536,8 @@ const TradingBot = () => {
                   <Search className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <div className="font-medium">AI Stock Analysis</div>
-                  <div className="text-sm text-muted-foreground">Deep Insights</div>
+                  <div className="font-medium">AI Research Analysis</div>
+                  <div className="text-sm text-muted-foreground">Educational Insights</div>
                 </div>
               </div>
             </div>
@@ -674,17 +674,17 @@ const TradingBot = () => {
           </Card>
         )}
 
-        {/* Trade History */}
+        {/* Execution History */}
         <Card>
           <CardHeader>
-            <CardTitle>Trade History</CardTitle>
-            <CardDescription>Recent trades executed by the AI bot</CardDescription>
+            <CardTitle>Execution History</CardTitle>
+            <CardDescription>Orders transmitted based on your configured strategy parameters</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {trades.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
-                  No trades yet. Start the bot to begin trading.
+                  No executions yet. Configure and activate your strategy to begin.
                 </p>
               ) : (
                 trades.map((trade) => (
@@ -736,7 +736,7 @@ const TradingBot = () => {
                     </div>
                     {trade.reasoning && (
                       <div className="text-sm text-muted-foreground bg-muted/50 rounded p-3">
-                        <strong>AI Reasoning:</strong> {trade.reasoning}
+                        <strong>Analysis Notes:</strong> {trade.reasoning}
                       </div>
                     )}
                   </div>
@@ -753,16 +753,17 @@ const TradingBot = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <Zap className="w-5 h-5" />
-              Enable Live Trading
+              Enable Live Execution
             </DialogTitle>
             <DialogDescription className="text-left space-y-3 pt-2">
               <p>
-                <strong className="text-destructive">⚠️ Warning:</strong> You are about to enable live trading mode.
+                <strong className="text-destructive">⚠️ Warning:</strong> You are about to enable live execution mode. By proceeding, you authorize this tool to transmit orders to your brokerage based on the strategy parameters you have configured.
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>Real orders will be placed with your broker</li>
-                <li>Real money will be at risk</li>
-                <li>Trades cannot be undone once executed</li>
+                <li>Real orders will be transmitted to your broker per your configured strategy</li>
+                <li>You are solely responsible for all trading decisions and outcomes</li>
+                <li>Orders cannot be reversed once executed by your broker</li>
+                <li>This tool does not provide investment advice or manage your portfolio</li>
               </ul>
               <p className="pt-2">
                 To confirm, type <strong className="font-mono bg-muted px-1 rounded">CONFIRM</strong> below:
@@ -772,7 +773,7 @@ const TradingBot = () => {
           
           <div className="py-2">
             <Input
-              placeholder="Type CONFIRM to enable live trading"
+              placeholder="Type CONFIRM to enable live execution"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
               className="font-mono"
@@ -794,7 +795,7 @@ const TradingBot = () => {
               onClick={confirmLiveTrading}
               disabled={confirmText !== "CONFIRM"}
             >
-              Enable Live Trading
+              I Authorize Live Execution
             </Button>
           </DialogFooter>
         </DialogContent>
