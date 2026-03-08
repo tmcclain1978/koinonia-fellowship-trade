@@ -144,18 +144,11 @@ export const SchwabOrderEntry = ({
       toast({ title: "Order Preview", description: "Review order details below" });
     } catch (error: any) {
       console.error("Preview error:", error);
-      // Mock preview for demo
-      setPreview({
-        estimatedCost: parseFloat(quantity) * (quote?.lastPrice || 100),
-        commission: 0,
-        fees: 0.01,
-        symbol: symbol.toUpperCase(),
-        quantity: parseInt(quantity),
-        orderType,
-        action,
-        status: 'VALIDATED',
+      toast({ 
+        title: "Preview Unavailable", 
+        description: "Unable to preview order. Please ensure your brokerage account is connected.", 
+        variant: "destructive" 
       });
-      toast({ title: "Order Preview (Demo)", description: "Showing estimated order details" });
     } finally {
       setLoadingPreview(false);
     }
@@ -188,16 +181,11 @@ export const SchwabOrderEntry = ({
       }
     } catch (error: any) {
       console.error("Order error:", error);
-      // Mock success for demo
-      const mockOrderId = `ORD-${Date.now()}`;
       toast({ 
-        title: "Order Placed (Demo)", 
-        description: `Order ${mockOrderId} would be submitted`,
+        title: "Order Failed", 
+        description: "Unable to place order. Please check your brokerage connection and try again.", 
+        variant: "destructive" 
       });
-      if (onOrderPlaced) {
-        onOrderPlaced(mockOrderId);
-      }
-      setPreview(null);
     } finally {
       setLoadingOrder(false);
     }
