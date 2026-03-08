@@ -32,6 +32,12 @@ serve(async (req) => {
       throw new Error("Invalid user token");
     }
 
+    // Rate limit: 30 requests per minute per user
+    const rl = checkRateLimit(`creds:${user.id}`, 30);
+    if (!rl.allowed) {
+      return rateLimitResponse(rl.retryAfterMs!, corsHeaders);
+    }
+
     const { operation, credentials } = await req.json();
 
     if (operation === "save") {
@@ -102,6 +108,15 @@ serve(async (req) => {
         console.error("Error saving credentials:", error);
         throw new Error("Failed to save credentials");
       }
+
+      // Audit log credential save
+      await logAudit({
+        userId: user.id,
+        action: "credentials.save",
+        resourceType: "user_api_credentials",
+        details: { broker_type: credentials.broker_type },
+        userAgent: req.headers.get("user-agent") || undefined,
+      });
 
       return new Response(
         JSON.stringify({ success: true, message: "Credentials encrypted and saved" }),
