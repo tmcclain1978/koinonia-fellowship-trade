@@ -163,10 +163,10 @@ const TradingBot = () => {
 
       setTradingMode(mode);
       toast({
-        title: `Trading Mode: ${mode === "paper" ? "Paper" : "Live"}`,
+        title: `Execution Mode: ${mode === "paper" ? "Simulated" : "Live"}`,
         description: mode === "paper" 
-          ? "Bot will execute simulated trades only" 
-          : "⚠️ Bot will execute real trades with your broker",
+          ? "Strategy will run in simulation — no real orders transmitted" 
+          : "⚠️ You have authorized live order transmission to your broker based on your strategy",
         variant: mode === "live" ? "destructive" : "default",
       });
     } catch (error: any) {
