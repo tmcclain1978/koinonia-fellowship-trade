@@ -36,7 +36,7 @@ const TradeSuggestionsCard = () => {
       console.error("Error loading suggestions:", error);
       toast({
         title: "Error",
-        description: "Failed to load trade suggestions",
+        description: "Failed to load study scenarios",
         variant: "destructive",
       });
     } finally {
@@ -44,13 +44,15 @@ const TradeSuggestionsCard = () => {
     }
   };
 
+  const getDirectionLabel = (action: string) => action === "BUY" ? "Bullish Scenario" : "Bearish Scenario";
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
-            <CardTitle>AI Trade Suggestions</CardTitle>
+            <CardTitle>AI Study Scenarios</CardTitle>
           </div>
           <Button
             variant="ghost"
@@ -62,18 +64,18 @@ const TradeSuggestionsCard = () => {
           </Button>
         </div>
         <CardDescription>
-          AI-powered recommendations based on current market analysis
+          AI-generated educational scenarios for study and analysis practice — not trading advice
         </CardDescription>
       </CardHeader>
       <CardContent>
         {loading && suggestions.length === 0 ? (
           <div className="text-center py-8">
             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            <p className="text-sm text-muted-foreground">Analyzing markets...</p>
+            <p className="text-sm text-muted-foreground">Generating study scenarios...</p>
           </div>
         ) : suggestions.length === 0 ? (
           <p className="text-center text-muted-foreground py-8">
-            No suggestions available. Click refresh to generate new recommendations.
+            No scenarios available. Click refresh to generate new study scenarios.
           </p>
         ) : (
           <div className="space-y-4">
@@ -95,15 +97,15 @@ const TradeSuggestionsCard = () => {
                     </div>
                     <div>
                       <div className="font-semibold text-foreground text-lg">
-                        {suggestion.action} {suggestion.symbol}
+                        {getDirectionLabel(suggestion.action)}: {suggestion.symbol}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Target: ${suggestion.targetPrice}
+                        Study Level: ${suggestion.targetPrice}
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm text-muted-foreground">Confidence</div>
+                    <div className="text-sm text-muted-foreground">AI Score</div>
                     <div className="font-bold text-foreground">
                       {suggestion.confidence}%
                     </div>
@@ -115,7 +117,7 @@ const TradeSuggestionsCard = () => {
                 </div>
 
                 <Button variant="outline" size="sm" className="w-full">
-                  View Analysis
+                  Study This Scenario
                 </Button>
               </div>
             ))}
@@ -124,8 +126,9 @@ const TradeSuggestionsCard = () => {
 
         <div className="mt-4 p-3 bg-warning/10 rounded-lg border border-warning/20">
           <p className="text-sm text-warning">
-            <strong>Disclaimer:</strong> These are AI-generated suggestions for educational purposes. 
-            Always do your own research before making trading decisions.
+            <strong>Educational Use Only:</strong> These are AI-generated hypothetical scenarios for learning purposes. 
+            They are not investment recommendations. Always conduct your own research and consult a qualified 
+            financial advisor before making any trading decisions.
           </p>
         </div>
       </CardContent>

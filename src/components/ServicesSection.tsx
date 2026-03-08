@@ -7,30 +7,31 @@ import {
   MessageCircle, 
   Award,
   ArrowRight,
-  CheckCircle
+  CheckCircle,
+  BarChart2
 } from "lucide-react";
 
 const ServicesSection = () => {
   const services = [
     {
       icon: BookOpen,
-      title: "Educational Resources",
-      description: "Comprehensive guides, video tutorials, and market analysis to help you master option trading strategies.",
-      features: ["Weekly Market Analysis", "Strategy Guides", "Risk Management", "Video Library"],
+      title: "Trading Education",
+      description: "Comprehensive courses, video tutorials, and study materials covering stock and options trading from beginner to advanced levels.",
+      features: ["300+ Structured Lessons", "Strategy Study Guides", "Risk Management Education", "Video Library"],
       color: "primary"
     },
     {
-      icon: TrendingUp,
-      title: "Live Trading Signals",
-      description: "Receive real-time trading alerts and signals from our expert analysts with detailed entry and exit strategies.",
-      features: ["Real-time Alerts", "Entry/Exit Points", "Risk Analysis", "Performance Tracking"],
+      icon: BarChart2,
+      title: "Market Analysis Tools",
+      description: "Software tools to help you study market data, chart patterns, and practice technical analysis — for educational use only.",
+      features: ["Charting Software", "Technical Indicators", "AI-Assisted Study Tools", "Market Data Visualization"],
       color: "success"
     },
     {
       icon: Shield,
-      title: "Risk Management",
-      description: "Learn proven risk management techniques to protect your capital and maximize long-term profitability.",
-      features: ["Position Sizing", "Stop Loss Strategies", "Portfolio Diversification", "Capital Protection"],
+      title: "Paper Trading Simulator",
+      description: "Practice trading strategies in a risk-free simulated environment before applying your knowledge with real brokerages.",
+      features: ["Simulated Trades", "Performance Tracking", "Strategy Backtesting", "Risk-Free Practice"],
       color: "warning"
     }
   ];
@@ -56,10 +57,11 @@ const ServicesSection = () => {
         {/* Header */}
         <div className="text-center mb-16">
           <h2 className="font-display text-4xl lg:text-5xl font-bold text-foreground mb-6">
-            Our <span className="bg-gradient-accent bg-clip-text text-transparent">Services</span>
+            Platform <span className="bg-gradient-accent bg-clip-text text-transparent">Features</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Everything you need to succeed in stock option trading, backed by our fellowship community and proven strategies.
+            Educational software tools to help you learn stock and options trading, backed by our 
+            fellowship community and structured curriculum.
           </p>
         </div>
 
@@ -105,10 +107,15 @@ const ServicesSection = () => {
         <div className="text-center bg-gradient-card rounded-2xl p-12 border border-border">
           <Award className="w-16 h-16 text-primary mx-auto mb-6" />
           <h3 className="font-display text-3xl font-bold text-foreground mb-4">
-            Ready to Transform Your Trading?
+            Ready to Start Learning?
           </h3>
-          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Join thousands of successful traders who have achieved consistent profits through our proven fellowship approach.
+          <p className="text-xl text-muted-foreground mb-4 max-w-2xl mx-auto">
+            Join our educational fellowship and gain access to trading courses, practice tools, and a 
+            supportive community of learners.
+          </p>
+          <p className="text-xs text-muted-foreground mb-8 max-w-xl mx-auto italic">
+            Koinonia is an educational software platform. We do not provide investment advice, 
+            manage portfolios, or guarantee trading results.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="hero" size="lg">
@@ -116,7 +123,7 @@ const ServicesSection = () => {
             </Button>
             <Button variant="outline" size="lg">
               <MessageCircle className="w-5 h-5 mr-2" />
-              Schedule Consultation
+              Ask a Question
             </Button>
           </div>
         </div>
