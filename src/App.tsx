@@ -31,6 +31,7 @@ import BotTesting from "./pages/BotTesting";
 import PocketOption from "./pages/PocketOption";
 import PennyStocks from "./pages/PennyStocks";
 import NotFound from "./pages/NotFound";
+import Status from "./pages/Status";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -81,6 +82,7 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/help" element={<Help />} />
+            <Route path="/status" element={<Status />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
