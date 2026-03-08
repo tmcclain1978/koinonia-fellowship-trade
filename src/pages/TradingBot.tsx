@@ -17,6 +17,7 @@ import Navigation from "@/components/Navigation";
 import RealTimeAnalysisDashboard from "@/components/RealTimeAnalysisDashboard";
 import DataSourceAccuracyTracker from "@/components/DataSourceAccuracyTracker";
 import BotScannerStatus from "@/components/BotScannerStatus";
+import BotStrategySelector from "@/components/BotStrategySelector";
 import { useTradingStats } from "@/hooks/useTradingStats";
 
 interface Trade {
@@ -543,7 +544,10 @@ const TradingBot = () => {
           </CardContent>
         </Card>
 
-        {/* Bot Scanner Status - NEW */}
+        {/* Strategy Selector - Choose built-in or custom */}
+        <BotStrategySelector />
+
+        {/* Bot Scanner Status */}
         <BotScannerStatus botEnabled={botEnabled} />
 
         {/* Real-Time Analysis Dashboard */}
