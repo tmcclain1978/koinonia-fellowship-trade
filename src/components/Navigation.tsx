@@ -5,6 +5,7 @@ import { Menu, X, TrendingUp, LogOut, User, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ConnectionHealthIndicator } from "@/components/ConnectionHealthIndicator";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { SystemStatusBanner } from "@/components/SystemStatusBanner";
 
 const scrollToSection = (sectionId: string) => {
   const element = document.getElementById(sectionId);
@@ -56,6 +57,7 @@ const Navigation = () => {
   // Show authenticated navigation if user is logged in
   if (user) {
     return (
+      <>
       <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-b border-border overflow-hidden">
         <div className="max-w-full px-4 lg:px-6 py-3">
           <div className="flex items-center justify-between">
