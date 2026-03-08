@@ -210,9 +210,11 @@ const AutoTradingSettings = () => {
         </p>
       </div>
 
-      {/* Risk Tolerance */}
       <div>
-        <Label htmlFor="risk">Risk Tolerance</Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="risk">Risk Tolerance</Label>
+          <HelpTooltip content="Controls position sizing and strategy aggressiveness. Conservative uses smaller positions; aggressive takes larger ones." />
+        </div>
         <Select
           value={settings.risk_tolerance}
           onValueChange={(value: any) => setSettings({ ...settings, risk_tolerance: value })}
@@ -230,7 +232,10 @@ const AutoTradingSettings = () => {
 
       {/* Confidence Threshold */}
       <div>
-        <Label htmlFor="confidence_threshold">Minimum Confidence Threshold: {settings.min_confidence_threshold}%</Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="confidence_threshold">Minimum Confidence Threshold: {settings.min_confidence_threshold}%</Label>
+          <HelpTooltip content="Only execute trades when the AI analysis confidence meets this threshold. Lower = more trades, higher = more selective." />
+        </div>
         <div className="flex items-center gap-4 mt-2">
           <span className="text-xs text-muted-foreground w-8">20%</span>
           <input
@@ -258,6 +263,7 @@ const AutoTradingSettings = () => {
         <h4 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
           <Bot className="w-5 h-5 text-destructive" />
           Risk Limits (Circuit Breakers)
+          <HelpTooltip content="Automatic safety stops that disable the bot when losses exceed your configured limits." />
         </h4>
         
         <div className="grid md:grid-cols-2 gap-4">
