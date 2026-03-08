@@ -1916,6 +1916,33 @@ export type Database = {
           },
         ]
       }
+      service_status_history: {
+        Row: {
+          checked_at: string
+          checked_by: string | null
+          id: string
+          latency: number | null
+          service_name: string
+          status: string
+        }
+        Insert: {
+          checked_at?: string
+          checked_by?: string | null
+          id?: string
+          latency?: number | null
+          service_name: string
+          status?: string
+        }
+        Update: {
+          checked_at?: string
+          checked_by?: string | null
+          id?: string
+          latency?: number | null
+          service_name?: string
+          status?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           created_at: string
@@ -2340,6 +2367,36 @@ export type Database = {
           id?: string
           saved_exit_presets?: Json | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_notifications: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          read: boolean
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          read?: boolean
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          read?: boolean
+          title?: string
+          type?: string
           user_id?: string
         }
         Relationships: []
