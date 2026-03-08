@@ -7,7 +7,6 @@ import { TrendingUp, TrendingDown, Minus, Wifi, WifiOff, Plus, X, Activity, Zap 
 import { useMarketDataStream, StreamingPrice } from "@/hooks/useMarketDataStream";
 import { safeNumber, safeToFixed } from "@/lib/safeNumber";
 import { DataSourceBadge } from "@/components/DataSourceBadge";
-import { safeNumber, safeToFixed } from "@/lib/safeNumber";
 interface LivePriceDisplayProps {
   initialSymbols?: string[];
   onPriceUpdate?: (symbol: string, price: number) => void;
