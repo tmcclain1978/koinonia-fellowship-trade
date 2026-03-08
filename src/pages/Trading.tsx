@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarIcon, TrendingUp, Activity, BarChart2, Wallet, Search, LineChart, LayoutGrid, Shield, Clock, BookOpen } from "lucide-react";
 import { PhroureoHelpButton } from "@/components/phroureo";
+import { MobileTabNav } from "@/components/MobileTabNav";
 import { QuickJournalButton } from "@/components/journal/QuickJournalButton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -705,6 +706,7 @@ const Trading = () => {
           </Tabs>
         </div>
       </div>
+      <MobileTabNav />
     </DailyLossGuardProvider>
   );
 };
