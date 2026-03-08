@@ -3,7 +3,6 @@ import {
   Heart, 
   Target, 
   Users2, 
-  TrendingUp,
   Award,
   CheckCircle,
   ArrowRight
@@ -14,12 +13,12 @@ const AboutSection = () => {
     {
       icon: Heart,
       title: "Fellowship First",
-      description: "We believe in the power of community and mutual support in achieving financial success."
+      description: "We believe in the power of community and mutual support in learning to trade responsibly."
     },
     {
       icon: Target,
-      title: "Precision Trading",
-      description: "Every strategy is backed by thorough analysis and proven methodologies."
+      title: "Education-Driven",
+      description: "Every tool and lesson is designed to help you understand market mechanics and build your own strategies."
     },
     {
       icon: Users2,
@@ -28,11 +27,11 @@ const AboutSection = () => {
     }
   ];
 
-  const achievements = [
-    { number: "85%", label: "Average Success Rate", color: "success" },
-    { number: "2,500+", label: "Active Members", color: "primary" },
-    { number: "$2.5M+", label: "Member Profits", color: "accent" },
-    { number: "5", label: "Years of Excellence", color: "warning" }
+  const highlights = [
+    { number: "300+", label: "Educational Lessons", color: "success" },
+    { number: "4", label: "Curriculum Levels", color: "primary" },
+    { number: "57", label: "Course Modules", color: "accent" },
+    { number: "24/7", label: "Platform Access", color: "warning" }
   ];
 
   const getColorClass = (color: string) => {
@@ -54,7 +53,8 @@ const AboutSection = () => {
             About <span className="bg-gradient-accent bg-clip-text text-transparent">Koinonia</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            More than just trading education - we're a fellowship committed to guiding each member toward financial success through proven strategies and community support.
+            An educational trading software platform — we provide tools and resources to help you 
+            learn about stock and options trading at your own pace.
           </p>
         </div>
 
@@ -67,12 +67,12 @@ const AboutSection = () => {
                 Our Mission
               </h3>
               <p className="text-muted-foreground leading-relaxed">
-                Founded on the principle that financial success is best achieved through fellowship and shared knowledge, 
-                Koinonia brings together traders of all levels to learn, grow, and prosper together.
+                Founded on the principle that financial literacy is best achieved through fellowship and shared knowledge, 
+                Koinonia brings together learners of all levels to study, practice, and grow together.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                Our name "Koinonia" comes from the Greek word meaning fellowship and community - values that are at the 
-                heart of everything we do. We believe that when traders support each other, everyone wins.
+                Our name "Koinonia" comes from the Greek word meaning fellowship and community — values that are at the 
+                heart of everything we do. We provide software tools for education, not investment advice.
               </p>
             </div>
 
@@ -82,10 +82,10 @@ const AboutSection = () => {
               </h4>
               <div className="space-y-3">
                 {[
-                  "Personalized mentorship from experienced traders",
-                  "Real-time market analysis and trading signals",
-                  "Risk management strategies that protect your capital",
-                  "Supportive community that celebrates your success"
+                  "Comprehensive curriculum from beginner to advanced",
+                  "Paper trading simulator for risk-free practice",
+                  "AI-powered educational analysis tools",
+                  "Supportive community of fellow learners"
                 ].map((item, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
@@ -123,18 +123,18 @@ const AboutSection = () => {
               </div>
             </div>
 
-            {/* Achievement Stats */}
+            {/* Platform Highlights */}
             <div className="bg-gradient-card rounded-xl p-6 border border-border">
               <h4 className="font-display text-xl font-semibold text-foreground text-center mb-6">
-                Our Track Record
+                Platform Highlights
               </h4>
               <div className="grid grid-cols-2 gap-4">
-                {achievements.map((achievement, index) => (
+                {highlights.map((item, index) => (
                   <div key={index} className="text-center">
-                    <div className={`font-display text-2xl font-bold ${getColorClass(achievement.color)} mb-1`}>
-                      {achievement.number}
+                    <div className={`font-display text-2xl font-bold ${getColorClass(item.color)} mb-1`}>
+                      {item.number}
                     </div>
-                    <div className="text-sm text-muted-foreground">{achievement.label}</div>
+                    <div className="text-sm text-muted-foreground">{item.label}</div>
                   </div>
                 ))}
               </div>
@@ -142,28 +142,29 @@ const AboutSection = () => {
           </div>
         </div>
 
-        {/* Team Recognition */}
+        {/* Disclaimer Section */}
         <div className="text-center bg-card rounded-2xl p-12 border border-border">
           <Award className="w-16 h-16 text-primary mx-auto mb-6" />
           <h3 className="font-display text-2xl font-bold text-card-foreground mb-4">
-            Recognized Excellence
+            Educational Software Platform
           </h3>
           <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
-            Our commitment to ethical trading practices and member success has earned recognition from leading 
-            financial education organizations and satisfied members worldwide.
+            Koinonia is a software tool designed for trading education and practice. We do not manage 
+            client portfolios, provide personalized investment advice, or act as a broker-dealer. 
+            All trading decisions are made solely by the user.
           </p>
           <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground">
             <span className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-success" />
-              SEC Compliant
+              Educational Software Tool
             </span>
             <span className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-success" />
-              FINRA Registered
+              Not Investment Advice
             </span>
             <span className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-success" />
-              5-Star Reviews
+              User-Directed Trading Only
             </span>
           </div>
         </div>

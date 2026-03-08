@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight, Play, BookOpen, BarChart2, Shield } from "lucide-react";
 import heroImage from "@/assets/hero-trading.jpg";
 import DemoVideoModal from "@/components/DemoVideoModal";
 
@@ -33,8 +33,8 @@ const HeroSection = () => {
                 <span className="text-primary-glow">finance</span>
               </h1>
               <p className="text-xl text-muted-foreground max-w-lg leading-relaxed">
-                Join our community of successful stock option traders. Learn proven strategies, 
-                receive expert guidance, and build lasting wealth through fellowship.
+                An educational trading software platform. Learn stock and options trading strategies, 
+                practice with paper trading tools, and sharpen your skills through community fellowship.
               </p>
             </div>
 
@@ -45,7 +45,7 @@ const HeroSection = () => {
                 className="group"
                 onClick={() => navigate("/auth")}
               >
-                Start Trading Today
+                Start Learning Today
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button 
@@ -58,38 +58,52 @@ const HeroSection = () => {
                 Watch Demo
               </Button>
             </div>
+
+            <p className="text-xs text-muted-foreground max-w-md">
+              Koinonia is an educational software tool. It is not a registered investment advisor, broker-dealer, 
+              or financial planner. All content is for educational and informational purposes only.
+            </p>
           </div>
 
-          {/* Right Content - Interactive Card */}
+          {/* Right Content - Platform Features Card */}
           <div className="relative">
             <div className="bg-card/80 backdrop-blur-sm rounded-2xl p-8 shadow-elegant border border-border">
               <div className="space-y-6">
                 <div className="text-center">
                   <h3 className="font-display font-semibold text-xl text-card-foreground mb-2">
-                    Live Trading Performance
+                    Educational Trading Tools
                   </h3>
-                  <p className="text-muted-foreground text-sm">Real-time results from our community</p>
+                  <p className="text-muted-foreground text-sm">Software tools to support your learning journey</p>
                 </div>
                 
-                {/* Mock Trading Data */}
+                {/* Platform Features */}
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center p-3 bg-success/10 rounded-lg">
-                    <span className="text-sm font-medium text-card-foreground">AAPL Call Option</span>
-                    <span className="text-success font-semibold">+24.5%</span>
+                  <div className="flex items-center gap-3 p-3 bg-primary/10 rounded-lg">
+                    <BookOpen className="w-5 h-5 text-primary" />
+                    <div>
+                      <span className="text-sm font-medium text-card-foreground">300+ Lessons & Courses</span>
+                      <p className="text-xs text-muted-foreground">From beginner to advanced strategies</p>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center p-3 bg-primary/10 rounded-lg">
-                    <span className="text-sm font-medium text-card-foreground">TSLA Put Option</span>
-                    <span className="text-primary font-semibold">+18.2%</span>
+                  <div className="flex items-center gap-3 p-3 bg-success/10 rounded-lg">
+                    <BarChart2 className="w-5 h-5 text-success" />
+                    <div>
+                      <span className="text-sm font-medium text-card-foreground">Paper Trading Simulator</span>
+                      <p className="text-xs text-muted-foreground">Practice risk-free with simulated trades</p>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center p-3 bg-accent/10 rounded-lg">
-                    <span className="text-sm font-medium text-card-foreground">MSFT Call Option</span>
-                    <span className="text-accent font-semibold">+31.7%</span>
+                  <div className="flex items-center gap-3 p-3 bg-accent/10 rounded-lg">
+                    <Shield className="w-5 h-5 text-accent" />
+                    <div>
+                      <span className="text-sm font-medium text-card-foreground">Risk Management Education</span>
+                      <p className="text-xs text-muted-foreground">Learn position sizing & capital protection</p>
+                    </div>
                   </div>
                 </div>
 
                 <div className="text-center pt-4 border-t border-border">
-                  <p className="text-sm text-muted-foreground">
-                    Average monthly return: <span className="text-primary font-semibold">+22.8%</span>
+                  <p className="text-xs text-muted-foreground italic">
+                    For educational purposes only. Past performance does not guarantee future results.
                   </p>
                 </div>
               </div>

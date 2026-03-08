@@ -17,7 +17,7 @@ const tiers = [
     features: [
       "Access to educational videos",
       "Weekly podcast episodes",
-      "Basic market insights",
+      "Basic market study tools",
       "Community forum access",
     ],
     cta: "Get Started",
@@ -28,13 +28,13 @@ const tiers = [
     id: "basic",
     price: "$49",
     period: "/month",
-    description: "For active traders",
+    description: "For active learners",
     icon: Zap,
     features: [
       "Everything in Free",
-      "Up to 50 AI stock analyses per month",
-      "5 real-time trading signals daily",
-      "Basic options chain data",
+      "Up to 50 AI educational analyses per month",
+      "5 daily AI study scenarios",
+      "Basic options chain data viewer",
       "Email support",
     ],
     cta: "Subscribe Now",
@@ -44,14 +44,14 @@ const tiers = [
     id: "pro",
     price: "$149",
     period: "/month",
-    description: "For serious traders",
+    description: "For dedicated students",
     icon: TrendingUp,
     popular: true,
     features: [
       "Everything in Basic",
-      "Unlimited AI stock analyses",
-      "Unlimited trading signals",
-      "Advanced options chain with Greeks",
+      "Unlimited AI educational analyses",
+      "Unlimited AI study scenarios",
+      "Advanced options data with Greeks",
       "Priority support",
       "Custom watchlists",
     ],
@@ -62,15 +62,15 @@ const tiers = [
     id: "enterprise",
     price: "$499",
     period: "/month",
-    description: "For professional traders",
+    description: "For power users & teams",
     icon: Crown,
     features: [
       "Everything in Pro",
-      "AI Auto-Trading Bot",
-      "Customizable trading strategies",
-      "Risk management tools",
+      "AI-powered strategy backtesting lab",
+      "Advanced simulation engine",
+      "Full risk analysis toolkit",
       "API access",
-      "Dedicated account manager",
+      "Dedicated support representative",
       "White-glove onboarding",
     ],
     cta: "Subscribe Now",
@@ -153,10 +153,11 @@ const Pricing = () => {
         {/* Header */}
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-display font-bold text-foreground mb-4">
-            Choose Your Trading Plan
+            Choose Your Learning Plan
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Fellowship that guides finance. Select the plan that fits your trading journey.
+            Select the plan that fits your educational journey. All plans provide software tools 
+            for learning — not investment advice.
           </p>
         </div>
 
@@ -237,12 +238,17 @@ const Pricing = () => {
         </div>
 
         {/* FAQ or Additional Info */}
-        <div className="mt-20 text-center">
-          <p className="text-muted-foreground mb-4">
+        <div className="mt-20 text-center space-y-4">
+          <p className="text-muted-foreground">
             All plans include a 30-day money-back guarantee
           </p>
           <p className="text-sm text-muted-foreground">
             Need a custom plan? <a href="/#contact" className="text-primary hover:underline">Contact us</a>
+          </p>
+          <p className="text-xs text-muted-foreground max-w-2xl mx-auto mt-6 pt-4 border-t border-border italic">
+            Koinonia is an educational software platform. Subscription fees are for access to educational tools, 
+            courses, and software features. We do not manage portfolios, provide investment advice, or guarantee 
+            trading results. All trading decisions are made solely by the user.
           </p>
         </div>
       </div>
