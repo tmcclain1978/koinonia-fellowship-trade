@@ -7,7 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const MINIMUM_CONFIDENCE = 0.90;
 const MAX_PRICE_DEVIATION_PERCENT = 2;
 
 serve(async (req) => {
@@ -16,7 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, symbol, action, enhancedAnalysis } = await req.json();
+    const { userId, symbol, action, enhancedAnalysis, tradingMode } = await req.json();
+    
+    // Dynamic confidence threshold: lower for paper trading since data may be mock
+    const MINIMUM_CONFIDENCE = tradingMode === "paper" ? 0.50 : 0.90;
     
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -32,7 +34,7 @@ serve(async (req) => {
       .eq("user_id", userId)
       .single();
 
-    if (roleData?.role !== "enterprise") {
+    if (roleData?.role !== "enterprise" && roleData?.role !== "admin") {
       return new Response(
         JSON.stringify({ error: "Enterprise subscription required for auto-trading" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

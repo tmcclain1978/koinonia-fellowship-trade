@@ -39,15 +39,23 @@ serve(async (req) => {
     // Process each user's bot
     for (const settings of activeSettings) {
       try {
-        // Check if user has enterprise access
+        // Get user's trading mode
+        const { data: credData } = await supabase
+          .from("user_api_credentials")
+          .select("trading_mode")
+          .eq("user_id", settings.user_id)
+          .maybeSingle();
+        const tradingMode = credData?.trading_mode || "paper";
+
+        // Check if user has enterprise/admin access
         const { data: roleData } = await supabase
           .from("user_roles")
           .select("role")
           .eq("user_id", settings.user_id)
           .single();
 
-        if (roleData?.role !== "enterprise") {
-          console.log(`[Trading Bot] User ${settings.user_id} not enterprise, skipping`);
+        if (roleData?.role !== "enterprise" && roleData?.role !== "admin") {
+          console.log(`[Trading Bot] User ${settings.user_id} not enterprise/admin, skipping`);
           continue;
         }
 
@@ -156,11 +164,13 @@ serve(async (req) => {
         // PHASE 1: Run the stock screener to find 90%+ opportunities
         console.log(`[Trading Bot] Running screener for user ${settings.user_id}...`);
         
+        const minScreenerConfidence = tradingMode === "paper" ? 30 : 85;
+        
         const { data: screenerData, error: screenerError } = await supabase.functions.invoke("bot-stock-screener", {
           body: {
             userId: settings.user_id,
-            customSymbols: settings.allowed_symbols,
-            minConfidence: 85
+            customSymbols: settings.allowed_symbols?.length ? settings.allowed_symbols : undefined,
+            minConfidence: minScreenerConfidence
           },
         });
 
@@ -229,7 +239,8 @@ serve(async (req) => {
               userId: settings.user_id,
               symbol: opportunity.symbol,
               action: "analyze",
-              enhancedAnalysis
+              enhancedAnalysis,
+              tradingMode
             },
           });
 
