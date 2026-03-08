@@ -172,6 +172,7 @@ export type Database = {
           max_position_size: number | null
           max_session_trades: number | null
           max_weekly_loss: number | null
+          min_confidence_threshold: number | null
           portfolio_stop_loss_percent: number | null
           risk_tolerance: string | null
           updated_at: string | null
@@ -187,6 +188,7 @@ export type Database = {
           max_position_size?: number | null
           max_session_trades?: number | null
           max_weekly_loss?: number | null
+          min_confidence_threshold?: number | null
           portfolio_stop_loss_percent?: number | null
           risk_tolerance?: string | null
           updated_at?: string | null
@@ -202,6 +204,7 @@ export type Database = {
           max_position_size?: number | null
           max_session_trades?: number | null
           max_weekly_loss?: number | null
+          min_confidence_threshold?: number | null
           portfolio_stop_loss_percent?: number | null
           risk_tolerance?: string | null
           updated_at?: string | null
