@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, TrendingUp, LogOut, User, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ConnectionHealthIndicator } from "@/components/ConnectionHealthIndicator";
+import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 
 const scrollToSection = (sectionId: string) => {
   const element = document.getElementById(sectionId);
@@ -193,6 +194,7 @@ const Navigation = () => {
               
               <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border shrink-0">
                 <ConnectionHealthIndicator />
+                <NotificationCenter />
                 <Button variant="ghost" size="sm" asChild className="px-2">
                   <Link to="/settings">
                     <Settings className="w-4 h-4" />
