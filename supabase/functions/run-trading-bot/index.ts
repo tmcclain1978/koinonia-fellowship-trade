@@ -161,10 +161,10 @@ serve(async (req) => {
 
         // ========== END PHASE 2 ==========
 
-        // PHASE 1: Run the stock screener to find 90%+ opportunities
-        console.log(`[Trading Bot] Running screener for user ${settings.user_id}...`);
-        
-        const minScreenerConfidence = tradingMode === "paper" ? 30 : 85;
+        // PHASE 1: Run the stock screener using user's confidence threshold
+        const userThreshold = (settings as any).min_confidence_threshold || 50;
+        const minScreenerConfidence = Math.max(userThreshold - 20, 10); // Screen slightly below threshold
+        console.log(`[Trading Bot] Running screener for user ${settings.user_id} (threshold: ${userThreshold}%, screener min: ${minScreenerConfidence}%)...`);
         
         const { data: screenerData, error: screenerError } = await supabase.functions.invoke("bot-stock-screener", {
           body: {
