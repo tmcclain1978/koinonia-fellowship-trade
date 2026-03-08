@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSchwabStreaming, StreamingQuote } from "@/hooks/useSchwabStreaming";
+import { DataSourceBadge } from "@/components/DataSourceBadge";
 import { 
   Radio, 
   RadioTower, 
@@ -82,10 +83,10 @@ export const SchwabLiveQuotes = ({
           </CardTitle>
           <div className="flex items-center gap-2">
             {/* Connection Status */}
-            <Badge variant={isConnected ? "default" : "secondary"} className="gap-1">
-              <Radio className={`w-3 h-3 ${isConnected ? 'animate-pulse' : ''}`} />
-              {isConnected ? 'Live' : 'Disconnected'}
-            </Badge>
+            <DataSourceBadge 
+              source={isConnected ? 'polygon' : 'disconnected'} 
+              lastUpdate={lastUpdate}
+            />
             
             {/* Controls */}
             <Button variant="outline" size="icon" onClick={togglePause}>
