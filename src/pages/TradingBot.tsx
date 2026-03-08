@@ -344,6 +344,16 @@ const TradingBot = () => {
                 <p className="text-muted-foreground">
                   User-configured strategy execution — you define the rules, the tool follows them
                 </p>
+                {botEnabled && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant={botRunning ? "default" : "secondary"} className="text-xs">
+                      {botRunning ? "⏳ Scanning..." : "✅ Active — next scan in ~2 min"}
+                    </Badge>
+                    {lastRunResult && (
+                      <span className="text-xs text-muted-foreground">{lastRunResult}</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
