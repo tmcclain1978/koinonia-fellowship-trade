@@ -133,10 +133,10 @@ const AutoTradingSettings = () => {
       <div className="bg-card rounded-xl p-8 border border-border">
         <div className="flex items-center gap-3 mb-4">
           <Bot className="w-6 h-6 text-muted-foreground" />
-          <h3 className="text-xl font-semibold text-foreground">AI Auto-Trading Bot</h3>
+          <h3 className="text-xl font-semibold text-foreground">Strategy Automation Settings</h3>
         </div>
         <p className="text-muted-foreground mb-4">
-          Upgrade to Enterprise to unlock the AI Auto-Trading Bot feature.
+          Upgrade to Enterprise to access the automated strategy execution tool.
         </p>
         <Button onClick={() => window.location.href = "/pricing"}>
           Upgrade to Enterprise
@@ -149,15 +149,15 @@ const AutoTradingSettings = () => {
     <div className="bg-card rounded-xl p-8 border border-border space-y-6">
       <div className="flex items-center gap-3 mb-4">
         <Bot className="w-6 h-6 text-primary" />
-        <h3 className="text-xl font-semibold text-foreground">AI Auto-Trading Bot</h3>
+        <h3 className="text-xl font-semibold text-foreground">Strategy Automation Settings</h3>
       </div>
 
       {/* Enable/Disable */}
       <div className="flex items-center justify-between">
         <div>
-          <Label htmlFor="enabled">Enable Auto-Trading</Label>
+          <Label htmlFor="enabled">Enable Strategy Automation</Label>
           <p className="text-sm text-muted-foreground">
-            Allow the AI bot to execute trades automatically
+            Authorize the tool to transmit orders based on your configured strategy parameters
           </p>
         </div>
         <Switch
@@ -197,7 +197,7 @@ const AutoTradingSettings = () => {
           placeholder="5"
         />
         <p className="text-sm text-muted-foreground mt-1">
-          Maximum trades the bot can execute per day
+          Maximum orders the tool can transmit per day based on your strategy
         </p>
       </div>
 
@@ -240,7 +240,7 @@ const AutoTradingSettings = () => {
               placeholder="500"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Bot pauses if daily loss exceeds this amount
+              Automation pauses if daily loss exceeds this user-defined limit
             </p>
           </div>
 
@@ -257,7 +257,7 @@ const AutoTradingSettings = () => {
               placeholder="2000"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Bot pauses if weekly loss exceeds this amount
+              Automation pauses if weekly loss exceeds this user-defined limit
             </p>
           </div>
 
@@ -274,7 +274,7 @@ const AutoTradingSettings = () => {
               placeholder="5"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              All trading stops if portfolio drops by this %
+              All automation stops if portfolio drops by this user-defined %
             </p>
           </div>
 
@@ -337,9 +337,10 @@ const AutoTradingSettings = () => {
 
       <div className="p-4 bg-warning/10 rounded-lg border border-warning/20">
         <p className="text-sm text-warning">
-          <strong>Important:</strong> Auto-trading involves significant risk. The bot will execute
-          trades based on AI recommendations. Always monitor your account and ensure you have proper
-          risk management in place.
+          <strong>Important:</strong> By enabling automation, you authorize this tool to transmit orders to your 
+          brokerage based on the strategy parameters you have configured. The platform does not provide investment 
+          advice, determine trade suitability, or manage your portfolio. You remain solely responsible for all 
+          trading decisions and outcomes. Always monitor your account.
         </p>
       </div>
     </div>
