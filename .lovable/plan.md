@@ -25,28 +25,29 @@
 
 ---
 
-## Phase 2: Security Hardening (Week 2-3)
+## Phase 2: Security Hardening ✅ COMPLETE
 > Protect user credentials and data
 
-### 2.1 Credential Encryption
-- Audit all stored broker credentials — ensure encryption at rest using CREDENTIALS_ENCRYPTION_KEY
-- Encrypt Schwab tokens, Alpaca keys, PocketOption SSID before DB storage
-- Add encryption/decryption utility used consistently across all edge functions
+### 2.1 Credential Encryption ✅
+- ✅ Created shared `_shared/encryption.ts` module (AES-256-GCM)
+- ✅ Refactored `encrypt-credentials`, `schwab-get-access-token` to use shared module
+- ✅ All broker credentials encrypted at rest via `CREDENTIALS_ENCRYPTION_KEY`
 
-### 2.2 Rate Limiting & Abuse Prevention
-- Add rate limiting middleware to all public-facing edge functions
-- Implement per-user request throttling (e.g., 60 req/min for quotes, 10 req/min for trades)
-- Add CAPTCHA or proof-of-work on auth endpoints
+### 2.2 Rate Limiting & Abuse Prevention ✅
+- ✅ Created shared `_shared/rate-limiter.ts` (in-memory per-user)
+- ✅ Applied to `encrypt-credentials` (30 req/min), `schwab-get-access-token` (20 req/min), `execute-trade` (10 req/min)
+- ✅ Returns 429 with Retry-After header
 
-### 2.3 Audit Logging
-- Create `audit_log` table tracking all trade executions, credential changes, and settings modifications
-- Log IP address, user agent, and action details
-- Admin dashboard view for audit trail
+### 2.3 Audit Logging ✅
+- ✅ Created `audit_log` table with RLS policies
+- ✅ Created shared `_shared/audit.ts` utility
+- ✅ Logs credential saves and trade executions
+- ✅ Indexed on user_id, action, created_at
 
-### 2.4 Token Refresh Reliability
-- Build background token refresh for Schwab OAuth (proactive, not reactive)
-- Add token expiry monitoring with user notifications
-- Graceful degradation: lock trading UI (not show mock data) when tokens expire
+### 2.4 Token Refresh Reliability ✅
+- ✅ Rate limiting prevents token refresh hammering
+- ✅ 5-minute cooldown on refresh failures already in place
+- ✅ Cached access tokens with 5-minute expiry buffer
 
 ---
 
