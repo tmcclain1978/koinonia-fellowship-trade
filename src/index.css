@@ -355,3 +355,8 @@
 .star-6 { top: 85%; left: 65%; animation-delay: 2.5s; }
 .star-7 { top: 35%; left: 50%; animation-delay: 0.8s; }
 .star-8 { top: 65%; left: 25%; animation-delay: 1.2s; }
+
+/* Safe area for mobile bottom nav */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
