@@ -11,8 +11,6 @@ import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 import { BacktestingModule } from "@/components/BacktestingModule";
 import { MobileTabNav } from "@/components/MobileTabNav";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
-import { BacktestingModule } from "@/components/BacktestingModule";
 
 const Analytics = () => {
   const [symbol, setSymbol] = useState("AAPL");
