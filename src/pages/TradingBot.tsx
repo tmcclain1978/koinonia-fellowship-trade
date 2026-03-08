@@ -70,6 +70,8 @@ const TradingBot = () => {
   const [showLiveConfirmDialog, setShowLiveConfirmDialog] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [lastRunResult, setLastRunResult] = useState<string | null>(null);
+  const [botRunning, setBotRunning] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -78,6 +80,44 @@ const TradingBot = () => {
     loadTrades();
     loadPerformanceLogs();
   }, []);
+
+  // Bot execution loop - runs every 2 minutes when enabled
+  useEffect(() => {
+    if (!botEnabled) return;
+
+    const runBot = async () => {
+      setBotRunning(true);
+      try {
+        console.log("[TradingBot] Triggering bot run...");
+        const { data, error } = await supabase.functions.invoke("run-trading-bot");
+        if (error) {
+          console.error("[TradingBot] Run error:", error);
+          setLastRunResult(`Error: ${error.message}`);
+        } else {
+          console.log("[TradingBot] Run result:", data);
+          const summary = data?.summary;
+          setLastRunResult(
+            `Screened: ${summary?.totalBots || 0} bot(s) | Trades attempted: ${summary?.totalTradesAttempted || 0} | No opportunities: ${summary?.noOpportunities || 0}`
+          );
+          // Reload trades and stats after a run
+          loadTrades();
+          reloadStats();
+        }
+      } catch (err: any) {
+        console.error("[TradingBot] Exception:", err);
+        setLastRunResult(`Exception: ${err.message}`);
+      } finally {
+        setBotRunning(false);
+      }
+    };
+
+    // Run immediately on enable
+    runBot();
+
+    // Then run every 2 minutes
+    const interval = setInterval(runBot, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [botEnabled]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
