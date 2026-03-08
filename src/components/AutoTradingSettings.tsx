@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Bot, Save } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface AutoTradingSettingsData {
   enabled: boolean;
@@ -171,9 +172,11 @@ const AutoTradingSettings = () => {
         />
       </div>
 
-      {/* Max Position Size */}
       <div>
-        <Label htmlFor="max_position">Max Position Size</Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="max_position">Max Position Size</Label>
+          <HelpTooltip content="Maximum number of contracts or shares per individual trade. Limits exposure on any single position." />
+        </div>
         <Input
           id="max_position"
           type="number"
@@ -188,9 +191,11 @@ const AutoTradingSettings = () => {
         </p>
       </div>
 
-      {/* Max Daily Trades */}
       <div>
-        <Label htmlFor="max_daily">Max Daily Trades</Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="max_daily">Max Daily Trades</Label>
+          <HelpTooltip content="Maximum number of trades the bot can execute in a single day. Prevents overtrading." />
+        </div>
         <Input
           id="max_daily"
           type="number"
