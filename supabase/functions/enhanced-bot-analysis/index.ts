@@ -304,7 +304,8 @@ serve(async (req) => {
 });
 
 // Helper function to extract recommendation from analysis text
-function extractRecommendation(analysis: string): string {
+function extractRecommendation(analysis: string | null | undefined): string {
+  if (!analysis) return "NEUTRAL";
   const lower = analysis.toLowerCase();
   if (lower.includes("strong buy") || lower.includes("highly recommend call")) {
     return "STRONG_BUY";
