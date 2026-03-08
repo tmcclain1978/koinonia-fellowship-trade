@@ -19,6 +19,7 @@ interface AutoTradingSettingsData {
   max_weekly_loss: number;
   portfolio_stop_loss_percent: number;
   max_session_trades: number;
+  min_confidence_threshold: number;
 }
 
 const AutoTradingSettings = () => {
@@ -33,6 +34,7 @@ const AutoTradingSettings = () => {
     max_weekly_loss: 2000,
     portfolio_stop_loss_percent: 5,
     max_session_trades: 10,
+    min_confidence_threshold: 50,
   });
   const [symbolInput, setSymbolInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,6 +66,7 @@ const AutoTradingSettings = () => {
           max_weekly_loss: (data as any).max_weekly_loss || 2000,
           portfolio_stop_loss_percent: (data as any).portfolio_stop_loss_percent || 5,
           max_session_trades: (data as any).max_session_trades || 10,
+          min_confidence_threshold: (data as any).min_confidence_threshold || 50,
         });
       }
     } catch (error) {
@@ -90,6 +93,7 @@ const AutoTradingSettings = () => {
           max_weekly_loss: settings.max_weekly_loss,
           portfolio_stop_loss_percent: settings.portfolio_stop_loss_percent,
           max_session_trades: settings.max_session_trades,
+          min_confidence_threshold: settings.min_confidence_threshold,
         } as any, {
           onConflict: 'user_id'
         });
