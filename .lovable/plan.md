@@ -1,378 +1,197 @@
+# Koinonia Fellowship Trading Platform — Market Readiness Plan
 
-# Penny Stock Research and Predictive Engine
+## Phase 1: Critical Safety & Trust (Week 1-2)
+> Prevent harm, establish trust signals
 
-## Summary
+### 1.1 Remove Silent Mock Data Fallback
+- Replace mock data generation with clear error states across all data fetchers
+- Add persistent LIVE / DELAYED / SIMULATED badge on every chart, quote, and position display
+- Show explicit "No Data Available" UI instead of fake candles
+- Add connection health indicator in navigation bar
 
-This plan creates a dedicated Penny Stock Research page featuring an AI-driven predictive engine that identifies potential breakout candidates. The system combines methodologies from experienced traders (Timothy Sykes, Ross Cameron, Humbled Trader, Jason Bond) with machine learning to surface high-probability setups with confidence scores and explanations.
+### 1.2 Data Source Transparency
+- Add a "Data Source" chip on charts (e.g., "Polygon Live", "FMP Delayed 15m")
+- Log and surface last-successful-fetch timestamp
+- Alert user when data is stale (>5 min old during market hours)
 
-## Architecture Overview
-
-```text
-+-------------------+     +------------------------+     +------------------+
-|   Frontend Page   |---->|  Penny Stock Engine    |---->|   Watch-List     |
-|  /penny-stocks    |     |  (Edge Function)       |     |   Dashboard      |
-+-------------------+     +------------------------+     +------------------+
-         |                          |
-         v                          v
-+-------------------+     +------------------------+     +------------------+
-| Symbol Scanner    |     | Feature Engineering    |     | Prediction       |
-| - Price < $10     |     | - Technical Indicators |     | - ML Scoring     |
-| - Volume Spike    |     | - Sentiment Analysis   |     | - SHAP Explain   |
-| - Low Float       |     | - Pattern Detection    |     | - Confidence %   |
-+-------------------+     +------------------------+     +------------------+
-                                    |
-                                    v
-                          +------------------------+
-                          | Lovable AI (Gemini)    |
-                          | - Pattern Recognition  |
-                          | - Sentiment Scoring    |
-                          | - Breakout Probability |
-                          +------------------------+
-```
-
-## What Gets Built
-
-### 1. New Page: `/penny-stocks`
-
-A dedicated research dashboard with:
-
-- **Watch-List Panel**: Ranked table of breakout candidates with symbol, price, % change, volume, float, confidence score, and catalyst flags
-- **Detailed Stock View**: Mini-chart, technical overlays, news headlines, sentiment gauge, and feature importance breakdown
-- **Scanner Controls**: Configurable filters for price range, volume threshold, float size, and pattern types
-- **AI Explanations**: Natural language reasoning for each prediction (e.g., "Strong volume breakout on FDA news catalyst")
-
-### 2. New Edge Function: `penny-stock-engine`
-
-The core predictive engine that:
-
-- Scans universe of penny stocks (under $10, min volume, max float)
-- Computes technical features: RSI, VWAP, SMAs, relative volume, ATR, momentum
-- Detects chart patterns: Bull flags, flat-top breakouts, pennants
-- Analyzes news sentiment using existing `news-sentiment-scanner`
-- Runs predictions using Lovable AI with structured output
-- Returns ranked candidates with breakout probability and explanations
-
-### 3. Database Table: `penny_stock_predictions`
-
-Stores prediction history for:
-
-- Tracking accuracy over time
-- Learning from past predictions
-- User watchlist management
-
-### 4. Supporting Components
-
-- **PennyStockWatchlist**: Sortable/filterable candidate table
-- **PennyStockDetail**: Expanded view with charts and analysis
-- **BreakoutPatternDetector**: Visual pattern identification
-- **PredictionExplainer**: SHAP-style feature importance display
+### 1.3 Legal & Compliance Foundations
+- Add Terms of Service page with trading risk disclaimers
+- Add proper SEC/FINRA disclaimers on AI signals and trade suggestions
+- Add "Not Investment Advice" banner on all AI analysis components
+- Research RIA registration requirements (external legal task)
 
 ---
 
-## Technical Implementation
+## Phase 2: Security Hardening (Week 2-3)
+> Protect user credentials and data
 
-### Part 1: Database Schema
+### 2.1 Credential Encryption
+- Audit all stored broker credentials — ensure encryption at rest using CREDENTIALS_ENCRYPTION_KEY
+- Encrypt Schwab tokens, Alpaca keys, PocketOption SSID before DB storage
+- Add encryption/decryption utility used consistently across all edge functions
 
-```sql
--- Store penny stock predictions for tracking and learning
-CREATE TABLE public.penny_stock_predictions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  symbol TEXT NOT NULL,
-  prediction_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  
-  -- Prediction outputs
-  breakout_probability NUMERIC NOT NULL,
-  confidence_rank TEXT CHECK (confidence_rank IN ('High', 'Moderate', 'Low')),
-  predicted_direction TEXT CHECK (predicted_direction IN ('bullish', 'bearish', 'neutral')),
-  
-  -- Feature snapshot
-  price_at_prediction NUMERIC,
-  volume_at_prediction BIGINT,
-  relative_volume NUMERIC,
-  market_cap NUMERIC,
-  float_shares NUMERIC,
-  short_interest NUMERIC,
-  
-  -- Technical indicators
-  rsi NUMERIC,
-  vwap NUMERIC,
-  sma_20 NUMERIC,
-  momentum_5d NUMERIC,
-  near_52w_high BOOLEAN DEFAULT false,
-  pattern_detected TEXT, -- 'bull_flag', 'flat_top', 'pennant', etc.
-  
-  -- Sentiment
-  news_sentiment_score NUMERIC,
-  catalyst_type TEXT, -- 'earnings', 'fda', 'partnership', 'sector', etc.
-  catalyst_headline TEXT,
-  
-  -- AI explanation
-  reasoning TEXT,
-  key_factors JSONB DEFAULT '[]'::jsonb,
-  risk_flags JSONB DEFAULT '[]'::jsonb,
-  
-  -- Outcome tracking
-  actual_outcome TEXT, -- 'hit_target', 'stopped_out', 'neutral', NULL if pending
-  price_after_5d NUMERIC,
-  max_gain_5d NUMERIC,
-  was_accurate BOOLEAN,
-  
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  
-  UNIQUE(user_id, symbol, prediction_date)
-);
+### 2.2 Rate Limiting & Abuse Prevention
+- Add rate limiting middleware to all public-facing edge functions
+- Implement per-user request throttling (e.g., 60 req/min for quotes, 10 req/min for trades)
+- Add CAPTCHA or proof-of-work on auth endpoints
 
--- User's saved penny stock watchlist
-CREATE TABLE public.penny_stock_watchlist (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  symbol TEXT NOT NULL,
-  added_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  notes TEXT,
-  alert_enabled BOOLEAN DEFAULT false,
-  
-  UNIQUE(user_id, symbol)
-);
+### 2.3 Audit Logging
+- Create `audit_log` table tracking all trade executions, credential changes, and settings modifications
+- Log IP address, user agent, and action details
+- Admin dashboard view for audit trail
 
--- Enable RLS
-ALTER TABLE public.penny_stock_predictions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.penny_stock_watchlist ENABLE ROW LEVEL SECURITY;
-
--- Policies
-CREATE POLICY "Users manage own predictions"
-  ON public.penny_stock_predictions FOR ALL
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users manage own watchlist"
-  ON public.penny_stock_watchlist FOR ALL
-  USING (auth.uid() = user_id);
-
--- Enable realtime for watchlist
-ALTER PUBLICATION supabase_realtime ADD TABLE public.penny_stock_watchlist;
-```
-
-### Part 2: Edge Function - penny-stock-engine
-
-File: `supabase/functions/penny-stock-engine/index.ts`
-
-```typescript
-// Core structure (full implementation in build phase)
-interface PennyStockCandidate {
-  symbol: string;
-  companyName: string;
-  price: number;
-  changePercent: number;
-  volume: number;
-  avgVolume: number;
-  relativeVolume: number;
-  marketCap: number;
-  floatShares: number;
-  shortInterest: number;
-  
-  technicals: {
-    rsi: number;
-    vwap: number;
-    sma20: number;
-    ema9: number;
-    ema20: number;
-    momentum5d: number;
-    nearHigh52w: boolean;
-    aboveVwap: boolean;
-    emaCrossover: boolean;
-  };
-  
-  patterns: {
-    bullFlag: boolean;
-    flatTopBreakout: boolean;
-    pennant: boolean;
-    fishHook: boolean;
-    gapUp: boolean;
-  };
-  
-  sentiment: {
-    score: number;
-    label: 'Bullish' | 'Bearish' | 'Neutral';
-    catalystType: string | null;
-    headline: string | null;
-  };
-  
-  prediction: {
-    breakoutProbability: number;
-    confidenceRank: 'High' | 'Moderate' | 'Low';
-    reasoning: string;
-    keyFactors: string[];
-    riskFlags: string[];
-  };
-}
-```
-
-The engine will:
-
-1. **Scan Universe**: Fetch stocks under $10 with volume > 500K
-2. **Calculate Features**: Technical indicators (RSI, VWAP, EMAs, momentum)
-3. **Detect Patterns**: Bull flag, flat-top, pennant using price action rules
-4. **Analyze Sentiment**: Call `news-sentiment-scanner` for each candidate
-5. **AI Prediction**: Use Lovable AI with structured tool calling to get:
-   - Breakout probability (0-100%)
-   - Confidence rank
-   - Natural language reasoning
-   - Key contributing factors
-   - Risk warnings
-
-### Part 3: Frontend Page
-
-File: `src/pages/PennyStocks.tsx`
-
-Key sections:
-
-1. **Scanner Controls** (top panel)
-   - Price range slider ($0.50 - $10)
-   - Min volume filter
-   - Float size filter  
-   - Pattern type checkboxes
-   - Scan button with progress indicator
-
-2. **Watch-List Table** (main area)
-   - Sortable columns: Symbol, Price, Change%, Volume, RVOL, Score, Patterns
-   - Color-coded confidence badges (green/yellow/red)
-   - Add to watchlist button
-   - Click to expand details
-
-3. **Detailed View** (slide-out panel)
-   - Price chart with indicators
-   - News headlines with sentiment scores
-   - AI reasoning explanation
-   - Feature importance bars
-   - Risk warning cards
-   - "Add to Watchlist" / "Set Alert" buttons
-
-4. **My Watchlist** (sidebar tab)
-   - Saved symbols with quick stats
-   - Alert status indicators
-   - Remove button
-
-### Part 4: Components
-
-| Component | Purpose |
-|-----------|---------|
-| `PennyStockScanner.tsx` | Scanner controls and execution |
-| `PennyStockWatchlist.tsx` | Main results table |
-| `PennyStockDetailPanel.tsx` | Expanded stock analysis view |
-| `BreakoutPatternBadge.tsx` | Visual pattern indicator |
-| `ConfidenceGauge.tsx` | Circular probability display |
-| `FeatureImportanceChart.tsx` | Bar chart of contributing factors |
-| `CatalystNewsFeed.tsx` | Sentiment-tagged headlines |
-| `RiskFlagCard.tsx` | Warning display component |
-
-### Part 5: Navigation Update
-
-Add "Penny Stocks" link to Navigation.tsx in the authenticated menu between "Bot Testing" and "PocketOption".
-
-### Part 6: Route Registration
-
-Add to App.tsx:
-```typescript
-import PennyStocks from "./pages/PennyStocks";
-// ...
-<Route path="/penny-stocks" element={<PennyStocks />} />
-```
+### 2.4 Token Refresh Reliability
+- Build background token refresh for Schwab OAuth (proactive, not reactive)
+- Add token expiry monitoring with user notifications
+- Graceful degradation: lock trading UI (not show mock data) when tokens expire
 
 ---
 
-## Feature Scoring System
+## Phase 3: Universal Broker Integration (Week 3-6)
+> Users sign in to their brokerage through the app — no developer accounts needed
 
-Based on the PDF research, the scoring uses a 100-point system:
+### 3.1 Research & Select Aggregation Provider
+- Evaluate **Mesh Connect** (formerly Front Finance) — supports Schwab, Fidelity, E*TRADE, Robinhood, etc.
+- Evaluate **Plaid Investments** — portfolio read access
+- Evaluate **SnapTrade** — trading API aggregator
+- Decision: Pick one provider that supports both read AND trade execution
 
-| Feature Category | Max Points | Criteria |
-|------------------|------------|----------|
-| Volume Score | 20 | RVOL >= 2x = 20, >= 1.5x = 15, >= 1.2x = 10 |
-| Momentum Score | 20 | 5d change >= 10% = 20, >= 5% = 15, >= 2% = 10 |
-| RSI Score | 15 | 40-70 (ideal) = 15, 30-80 = 10, else = 5 |
-| Pattern Score | 15 | Bull flag/pennant = 15, near breakout = 10 |
-| Sentiment Score | 15 | Bullish + catalyst = 15, bullish = 10, neutral = 5 |
-| Float/Short Score | 10 | Low float + high short = 10, either = 5 |
-| Near High Score | 5 | Within 5% of 20d high = 5 |
+### 3.2 Implement Universal Broker OAuth
+- Create `connect-brokerage` edge function using chosen provider SDK
+- Build "Connect Your Brokerage" UI flow:
+  - User clicks "Connect Broker" → provider's hosted OAuth window opens
+  - User logs into their brokerage (Schwab, Fidelity, etc.)
+  - Token returned and stored securely
+- Remove requirement for users to create Schwab developer apps
 
-**Confidence Ranks:**
-- High: Score >= 75
-- Moderate: Score >= 55
-- Low: Score < 55
+### 3.3 Normalize Broker Data
+- Create unified data interfaces: `BrokerAccount`, `BrokerPosition`, `BrokerOrder`
+- Map each broker's response format to unified schema
+- Update all trading components to use normalized interfaces
 
----
-
-## AI Prediction Prompt (Lovable AI)
-
-The edge function will use this structured prompt with tool calling:
-
-```text
-You are an expert penny stock analyst combining methods from:
-- Timothy Sykes (momentum, pre-spike patterns)
-- Ross Cameron (bull flags, first pullback entries)
-- Humbled Trader (VWAP, market cycles)
-- Jason Bond (pennants, rockets, fishhooks)
-
-Analyze this penny stock for breakout potential:
-[Technical data, sentiment, patterns]
-
-Return structured prediction with reasoning.
-```
-
-Tool definition extracts:
-- `breakout_probability`: 0-100
-- `confidence_rank`: High/Moderate/Low
-- `reasoning`: 2-3 sentence explanation
-- `key_factors`: Array of top 3 contributors
-- `risk_flags`: Array of warnings (dilution, pump-and-dump, etc.)
+### 3.4 Retire Legacy Broker Functions
+- Deprecate `execute-td-trade` (TD Ameritrade API is sunset)
+- Deprecate `execute-etrade-trade` (placeholder, non-functional)
+- Clean up unused credential fields from `user_api_credentials`
 
 ---
 
-## Files to Create
+## Phase 4: Multi-Tenant / Organization Support (Week 6-8)
+> Scale from individual traders to teams and firms
 
-| File | Type |
-|------|------|
-| `src/pages/PennyStocks.tsx` | Page component |
-| `src/components/penny-stocks/PennyStockScanner.tsx` | Scanner UI |
-| `src/components/penny-stocks/PennyStockWatchlist.tsx` | Results table |
-| `src/components/penny-stocks/PennyStockDetailPanel.tsx` | Detail view |
-| `src/components/penny-stocks/BreakoutPatternBadge.tsx` | Pattern indicator |
-| `src/components/penny-stocks/ConfidenceGauge.tsx` | Score display |
-| `src/components/penny-stocks/FeatureImportanceChart.tsx` | Factor bars |
-| `src/components/penny-stocks/CatalystNewsFeed.tsx` | News panel |
-| `src/components/penny-stocks/index.ts` | Barrel export |
-| `supabase/functions/penny-stock-engine/index.ts` | Edge function |
-| `src/hooks/usePennyStockScanner.ts` | Scanner hook |
+### 4.1 Organization Data Model
+- Create `organizations` table (name, type, created_by, settings)
+- Create `org_members` table (org_id, user_id, role: owner/admin/trader/viewer)
+- Create `org_risk_policies` table (max position size, allowed symbols, daily loss limits per trader)
 
-## Files to Modify
+### 4.2 Org Admin Dashboard
+- Org creation and member invitation flow
+- Role-based access: Risk Manager sees all positions, Trader sees own
+- Aggregated P&L across all org traders
+- Compliance officer view: audit logs, trade reviews
 
-| File | Change |
-|------|--------|
-| `src/App.tsx` | Add route for `/penny-stocks` |
-| `src/components/Navigation.tsx` | Add nav link |
-| `supabase/config.toml` | Register new edge function |
+### 4.3 Org-Level Risk Controls
+- Per-trader position limits enforced server-side
+- Org-wide daily loss circuit breaker
+- Symbol allowlist/blocklist per org
+- Pre-trade risk check edge function
 
 ---
 
-## Safety & Disclaimers
+## Phase 5: Platform Polish & UX (Week 8-10)
+> Professional-grade user experience
 
-Per the PDF requirements, the page will include:
+### 5.1 Mobile Responsive Trading
+- Redesign trading dashboard for tablet/mobile breakpoints
+- Collapsible panels, swipeable tabs for chart/positions/orders
+- Touch-friendly order entry
 
-1. **Header Banner**: "For Research Purposes Only - Not Financial Advice"
-2. **Risk Warning Card**: Penny stocks are highly speculative
-3. **Disclaimer Footer**: Users must conduct own due diligence
-4. **No Trade Execution**: Research only, no automated trading
+### 5.2 Onboarding Wizard
+- Step-by-step setup: Profile → Connect Broker → Set Risk Preferences → First Trade Tutorial
+- Progressive disclosure of advanced features
+- Contextual help tooltips throughout
+
+### 5.3 Notification System
+- Web Push notifications for price alerts, order fills, risk warnings
+- Email notifications for critical events (margin call, daily loss limit hit)
+- In-app notification center with history
+
+### 5.4 Status & Health Page
+- Real-time API health monitoring (Schwab, Polygon, FMP status)
+- System status banner when any data source is degraded
+- Uptime tracking
 
 ---
 
-## Verification Checklist
+## Phase 6: Advanced Trading Features (Week 10-12)
+> Elite-level capabilities
 
-After implementation:
+### 6.1 Options Flow
+- Unusual options activity scanner
+- Multi-leg options builder (spreads, strangles, iron condors)
+- Options P&L visualization with Greeks
 
-1. Navigate to `/penny-stocks` - page loads without errors
-2. Run scanner with default filters - candidates appear
-3. Click a candidate - detail panel shows chart + analysis
-4. Check AI reasoning - natural language explanation appears
-5. Add to watchlist - symbol persists across sessions
-6. Verify mobile responsiveness
-7. Test with various symbols to confirm data accuracy
+### 6.2 Level 2 / Market Depth
+- Order book visualization component
+- Time & Sales with filtering
+- DOM (Depth of Market) trading ladder
+
+### 6.3 Advanced Order Types
+- Bracket orders with OCO (One-Cancels-Other)
+- Trailing stop with configurable triggers
+- Conditional orders (if SPY drops 2%, sell XYZ)
+- Tax lot selection for sells
+
+### 6.4 Portfolio Intelligence
+- Sector/industry exposure breakdown
+- Correlation matrix across holdings
+- Dividend calendar and income projection
+- Tax-loss harvesting suggestions
+
+---
+
+## Phase 7: Scalability & Infrastructure (Ongoing)
+> Prepare for thousands of concurrent users
+
+### 7.1 Caching Layer
+- Redis/edge caching for market data (same quote served to all users requesting AAPL)
+- Cache invalidation strategy per data type
+- Reduce redundant API calls by 80%+
+
+### 7.2 WebSocket Connection Pooling
+- Shared WebSocket connections for market data
+- Fan-out architecture: one Polygon connection serves many users
+- Connection health monitoring and auto-reconnect
+
+### 7.3 Database Optimization
+- Add indexes on frequently queried columns (user_id + symbol, timestamps)
+- Partition large tables (candles, predictions) by date
+- Archive old data to cold storage
+
+### 7.4 Monitoring & Observability
+- Error tracking (Sentry or similar)
+- Performance metrics dashboard
+- Alerting on error rate spikes, slow queries, API failures
+
+---
+
+## Priority Matrix
+
+| Phase | Impact | Effort | Risk if Skipped |
+|-------|--------|--------|-----------------|
+| P1: Safety | 🔴 Critical | Low | Users trade on fake data |
+| P2: Security | 🔴 Critical | Medium | Credential breach |
+| P3: Broker Integration | 🔴 Critical | High | Can't go to market |
+| P4: Multi-Tenant | 🟡 High | High | Limited to individuals |
+| P5: UX Polish | 🟡 High | Medium | Poor retention |
+| P6: Advanced Features | 🟢 Medium | High | Feature gap vs competitors |
+| P7: Infrastructure | 🟢 Medium | Medium | Scaling problems later |
+
+---
+
+## Key External Dependencies
+- [ ] Legal counsel for RIA/compliance review
+- [ ] Mesh Connect or SnapTrade partnership/API access
+- [ ] Schwab API partner application (if not using aggregator)
+- [ ] SSL certificate for custom domain
+- [ ] Apple Developer account (if PWA push notifications needed)
