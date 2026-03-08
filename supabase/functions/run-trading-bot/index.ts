@@ -46,8 +46,8 @@ serve(async (req) => {
           .eq("user_id", settings.user_id)
           .single();
 
-        if (roleData?.role !== "enterprise") {
-          console.log(`[Trading Bot] User ${settings.user_id} not enterprise, skipping`);
+        if (roleData?.role !== "enterprise" && roleData?.role !== "admin") {
+          console.log(`[Trading Bot] User ${settings.user_id} not enterprise/admin, skipping`);
           continue;
         }
 

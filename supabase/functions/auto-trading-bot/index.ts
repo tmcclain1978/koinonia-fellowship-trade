@@ -7,7 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const MINIMUM_CONFIDENCE = 0.90;
 const MAX_PRICE_DEVIATION_PERCENT = 2;
 
 serve(async (req) => {
@@ -32,7 +31,7 @@ serve(async (req) => {
       .eq("user_id", userId)
       .single();
 
-    if (roleData?.role !== "enterprise") {
+    if (roleData?.role !== "enterprise" && roleData?.role !== "admin") {
       return new Response(
         JSON.stringify({ error: "Enterprise subscription required for auto-trading" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
