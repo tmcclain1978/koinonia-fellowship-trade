@@ -146,6 +146,16 @@ serve(async (req) => {
       }
     }
 
+    // Audit log trade execution
+    await logAudit({
+      userId,
+      action: tradeResult.success ? "trade.executed" : "trade.failed",
+      resourceType: "trade",
+      resourceId: tradeResult.orderId,
+      details: { symbol, action, quantity, price: tradeResult.executedPrice || price, broker: brokerType, isPaperTrading },
+      userAgent: req.headers.get("user-agent") || undefined,
+    });
+
     return new Response(
       JSON.stringify({
         success: tradeResult.success,
