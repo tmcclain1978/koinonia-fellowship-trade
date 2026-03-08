@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { TrendingUp, TrendingDown, Minus, Wifi, WifiOff, Plus, X, Activity, Zap } from "lucide-react";
 import { useMarketDataStream, StreamingPrice } from "@/hooks/useMarketDataStream";
 import { safeNumber, safeToFixed } from "@/lib/safeNumber";
+import { DataSourceBadge } from "@/components/DataSourceBadge";
+import { safeNumber, safeToFixed } from "@/lib/safeNumber";
 interface LivePriceDisplayProps {
   initialSymbols?: string[];
   onPriceUpdate?: (symbol: string, price: number) => void;
@@ -91,13 +93,10 @@ export const LivePriceDisplay = ({
             Live Market Data
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Badge 
-              variant={dataSource === 'polygon' ? "default" : "secondary"} 
-              className="flex items-center gap-1"
-            >
-              <Zap className="w-3 h-3" />
-              {dataSource === 'polygon' ? 'Polygon Live' : 'Simulated'}
-            </Badge>
+            <DataSourceBadge 
+              source={dataSource === 'polygon' ? 'polygon' : 'simulated'} 
+              lastUpdate={tickCount > 0 ? new Date() : null}
+            />
             <Badge variant={isConnected ? "default" : "destructive"} className="flex items-center gap-1">
               {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
               {isConnected ? 'Connected' : 'Disconnected'}
