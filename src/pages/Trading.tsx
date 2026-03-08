@@ -35,6 +35,9 @@ import { AIPredictionTracker } from "@/components/charts/AIPredictionTracker";
 // Professional Trading Components
 import { BracketOrderBuilder } from "@/components/trading/BracketOrderBuilder";
 import { TimeAndSales } from "@/components/trading/TimeAndSales";
+import { DepthOfMarket } from "@/components/trading/DepthOfMarket";
+import { ConditionalOrderBuilder } from "@/components/trading/ConditionalOrderBuilder";
+import { OptionsFlowScanner } from "@/components/options/OptionsFlowScanner";
 import { DailyLossGuardProvider, DailyLossGuardSettings, DailyLossGuardStatus } from "@/components/risk/DailyLossGuard";
 import { PortfolioGreeks } from "@/components/risk/PortfolioGreeks";
 import { StreakTracker } from "@/components/analytics/StreakTracker";
@@ -562,6 +565,9 @@ const Trading = () => {
                   }}
                 />
               </div>
+
+              {/* Conditional Orders */}
+              <ConditionalOrderBuilder symbol={symbol} />
             </TabsContent>
 
             {/* Options Tab */}
@@ -602,6 +608,9 @@ const Trading = () => {
                   />
                 </div>
               </div>
+
+              {/* Options Flow Scanner */}
+              <OptionsFlowScanner />
             </TabsContent>
 
             {/* Positions Tab */}
@@ -650,7 +659,20 @@ const Trading = () => {
 
             {/* Time & Sales Tape Tab */}
             <TabsContent value="tape" className="space-y-6">
-              <TimeAndSales symbol={symbol} />
+              <div className="grid lg:grid-cols-2 gap-6">
+                <TimeAndSales symbol={symbol} />
+                <DepthOfMarket
+                  symbol={symbol}
+                  currentPrice={256}
+                  onPriceClick={(price, side) => {
+                    setLimitPrice(price.toFixed(2));
+                    toast({
+                      title: `Price selected: $${price.toFixed(2)}`,
+                      description: `Click applied to limit price (${side} side)`,
+                    });
+                  }}
+                />
+              </div>
             </TabsContent>
 
             {/* Analysis Tab */}
