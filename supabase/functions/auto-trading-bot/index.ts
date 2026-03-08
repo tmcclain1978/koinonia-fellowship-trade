@@ -52,6 +52,11 @@ serve(async (req) => {
       );
     }
 
+    // Use user's configured confidence threshold (stored as percentage, convert to 0-1)
+    const userThreshold = (settings as any).min_confidence_threshold || 50;
+    const MINIMUM_CONFIDENCE = userThreshold / 100;
+    }
+
     // PHASE 1: Get enhanced analysis if not provided
     let analysis = enhancedAnalysis;
     if (!analysis) {
