@@ -374,6 +374,8 @@ const Navigation = () => {
           )}
         </div>
       </nav>
+      <SystemStatusBanner />
+      </>
     );
   }
 
