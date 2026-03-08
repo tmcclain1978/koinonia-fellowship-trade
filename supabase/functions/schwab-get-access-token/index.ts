@@ -59,16 +59,7 @@ serve(async (req) => {
     let cachedAccessToken = data.schwab_access_token;
     let tokenExpiresAt = data.schwab_token_expires_at;
 
-    const safeDecrypt = async (value: string | null) => {
-      if (!value) return null;
-      try {
-        return await decryptText(value);
-      } catch (e) {
-        // Value might already be plain text (e.g. refresh token written by older code)
-        console.warn('[schwab-get-access-token] Could not decrypt value, treating as plain text');
-        return value;
-      }
-    };
+    // Using imported safeDecrypt from shared encryption module
 
     clientId = await safeDecrypt(clientId);
     clientSecret = await safeDecrypt(clientSecret);
