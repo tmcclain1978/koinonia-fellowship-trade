@@ -10,11 +10,14 @@ import TradeSuggestionsCard from "@/components/TradeSuggestionsCard";
 import { useSubscription } from "@/hooks/useSubscription";
 import { NewsSentimentDashboard } from "@/components/NewsSentimentDashboard";
 import { useDashboardStats } from "@/hooks/useTradingStats";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { MobileTabNav } from "@/components/MobileTabNav";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { subscription } = useSubscription();
@@ -56,6 +59,11 @@ const Dashboard = () => {
           .single();
         
         setIsAdmin(roleData?.role === "admin");
+        
+        // Check if onboarding is needed
+        if (!localStorage.getItem("onboarding_complete")) {
+          setShowOnboarding(true);
+        }
       } else {
         navigate("/auth");
       }
@@ -93,34 +101,37 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background pt-16">
-      <div className="container mx-auto px-6 py-8">
+    <div className="min-h-screen bg-background pt-16 pb-20 lg:pb-8">
+      {showOnboarding && user && (
+        <OnboardingWizard userId={user.id} onComplete={() => setShowOnboarding(false)} />
+      )}
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Welcome Section */}
-        <div className="mb-8 flex justify-between items-start">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
           <div>
-            <h2 className="text-3xl font-display font-bold text-foreground mb-2">
-              Welcome back, {user?.user_metadata?.full_name || user?.email}!
+            <h2 className="text-xl sm:text-3xl font-display font-bold text-foreground mb-1 sm:mb-2">
+              Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}!
             </h2>
-            <p className="text-muted-foreground">
+            <p className="text-sm sm:text-base text-muted-foreground">
               Access AI-powered trading analysis and real-time market insights.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" onClick={() => navigate("/help")}>
               <HelpCircle className="mr-2 h-4 w-4" />
-              Help
+              <span className="hidden sm:inline">Help</span>
             </Button>
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={() => navigate("/admin")}>
                 <Shield className="mr-2 h-4 w-4" />
-                Admin
+                <span className="hidden sm:inline">Admin</span>
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => navigate("/settings")}>
+            <Button variant="outline" size="sm" onClick={() => navigate("/settings")} className="hidden sm:flex">
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </Button>
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
+            <Button variant="outline" size="sm" onClick={handleSignOut} className="hidden sm:flex">
               <LogOut className="mr-2 h-4 w-4" />
               Sign Out
             </Button>
@@ -128,7 +139,7 @@ const Dashboard = () => {
         </div>
 
         {/* Quick Access Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           {subscription?.tier === "enterprise" && (
             <button 
               onClick={() => navigate("/trading-bot")}
@@ -236,7 +247,7 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-card rounded-xl p-6 border border-border">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
@@ -299,6 +310,7 @@ const Dashboard = () => {
           <AIAnalysis />
         </div>
       </div>
+      <MobileTabNav />
     </div>
   );
 };
