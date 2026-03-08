@@ -4,6 +4,7 @@ import { safeNumber, safeToFixed } from "@/lib/safeNumber";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Loader2, ArrowUp, ArrowDown, Target, Ban, RefreshCw, WifiOff, Clock, Brain, ZoomIn, ZoomOut, Maximize2, Minimize2, Focus, Palette } from "lucide-react";
+import { DataSourceBadge } from "@/components/DataSourceBadge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -2062,27 +2063,7 @@ export const ProChartKit = ({
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 items-center">
         {/* Chart Data Source Indicator - Always visible */}
-        <Badge 
-          variant={chartDataSource === 'schwab' ? "default" : chartDataSource === 'polygon' ? "secondary" : chartDataSource === 'mock' ? "destructive" : "outline"}
-          className="flex items-center gap-1.5 px-2.5 py-1"
-        >
-          <span className={`w-2 h-2 rounded-full ${
-            chartDataSource === 'schwab' ? 'bg-green-500 animate-pulse' :
-            chartDataSource === 'polygon' ? 'bg-blue-500 animate-pulse' :
-            chartDataSource === 'alphavantage' ? 'bg-yellow-500 animate-pulse' :
-            chartDataSource === 'mock' ? 'bg-red-500' :
-            'bg-gray-400'
-          }`} />
-          <span className="text-xs font-medium uppercase">
-            {chartDataSource === 'schwab' ? 'LIVE (Schwab)' :
-             chartDataSource === 'polygon' ? 'LIVE (Polygon)' :
-             chartDataSource === 'alphavantage' ? 'LIVE (Alpha Vantage)' :
-             chartDataSource === 'polygon-fallback' ? 'DELAYED (Polygon)' :
-             chartDataSource === 'mock' ? 'MOCK DATA' :
-             chartDataSource === 'loading' ? 'Loading...' :
-             chartDataSource.toUpperCase()}
-          </span>
-        </Badge>
+        <DataSourceBadge source={chartDataSource} lastUpdate={lastDataUpdate} />
 
         <CandleTypeSelector 
           value={candleType}

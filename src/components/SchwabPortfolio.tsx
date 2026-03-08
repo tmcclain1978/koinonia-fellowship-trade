@@ -111,76 +111,14 @@ export const SchwabPortfolio = () => {
         return;
       }
       
-      // Use mock data for demo
-      const mockPortfolio: PortfolioData = {
-        accountNumber: "DEMO-123456",
-        accountHash: "demo-hash-123",
-        accountType: "MARGIN",
-        currentBalances: {
-          liquidationValue: 125750.42,
-          cashBalance: 15234.56,
-          availableFunds: 12500.00,
-          buyingPower: 25000.00,
-          dayTradingBuyingPower: 50000.00,
-          maintenanceRequirement: 5000.00,
-        },
-        positions: [
-          {
-            shortQuantity: 0,
-            averagePrice: 175.50,
-            currentDayProfitLoss: 245.30,
-            currentDayProfitLossPercentage: 1.32,
-            longQuantity: 100,
-            settledLongQuantity: 100,
-            settledShortQuantity: 0,
-            instrument: { assetType: "EQUITY", cusip: "037833100", symbol: "AAPL", netChange: 2.45 },
-            marketValue: 18945.00,
-            maintenanceRequirement: 4736.25,
-          },
-          {
-            shortQuantity: 0,
-            averagePrice: 425.00,
-            currentDayProfitLoss: -125.50,
-            currentDayProfitLossPercentage: -0.58,
-            longQuantity: 50,
-            settledLongQuantity: 50,
-            settledShortQuantity: 0,
-            instrument: { assetType: "EQUITY", cusip: "88160R101", symbol: "TSLA", netChange: -2.51 },
-            marketValue: 21375.00,
-            maintenanceRequirement: 5343.75,
-          },
-          {
-            shortQuantity: 0,
-            averagePrice: 145.25,
-            currentDayProfitLoss: 567.80,
-            currentDayProfitLossPercentage: 2.15,
-            longQuantity: 150,
-            settledLongQuantity: 150,
-            settledShortQuantity: 0,
-            instrument: { assetType: "EQUITY", cusip: "594918104", symbol: "MSFT", netChange: 3.79 },
-            marketValue: 26968.50,
-            maintenanceRequirement: 6742.13,
-          },
-          {
-            shortQuantity: 0,
-            averagePrice: 178.00,
-            currentDayProfitLoss: 89.25,
-            currentDayProfitLossPercentage: 0.75,
-            longQuantity: 75,
-            settledLongQuantity: 75,
-            settledShortQuantity: 0,
-            instrument: { assetType: "EQUITY", cusip: "46625H100", symbol: "JPM", netChange: 1.19 },
-            marketValue: 12051.75,
-            maintenanceRequirement: 3012.94,
-          },
-        ],
-        dailyPnL: 776.85,
-        totalPnL: 8542.50,
-      };
-      setPortfolios([mockPortfolio]);
-      setSelectedAccount(mockPortfolio.accountHash);
+      // Show empty state instead of mock data
+      setPortfolios([]);
       if (showToast) {
-        toast({ title: "Demo Mode", description: "Showing sample portfolio data" });
+        toast({ 
+          title: "Portfolio Unavailable", 
+          description: "Unable to load portfolio data. Please connect your brokerage account in Settings.",
+          variant: "destructive",
+        });
       }
     } finally {
       setLoading(false);

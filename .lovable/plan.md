@@ -1,23 +1,26 @@
 # Koinonia Fellowship Trading Platform — Market Readiness Plan
 
-## Phase 1: Critical Safety & Trust (Week 1-2)
+## Phase 1: Critical Safety & Trust ✅ COMPLETE
 > Prevent harm, establish trust signals
 
-### 1.1 Remove Silent Mock Data Fallback
-- Replace mock data generation with clear error states across all data fetchers
-- Add persistent LIVE / DELAYED / SIMULATED badge on every chart, quote, and position display
-- Show explicit "No Data Available" UI instead of fake candles
-- Add connection health indicator in navigation bar
+### 1.1 Remove Silent Mock Data Fallback ✅
+- ✅ Replaced mock data generation with clear error states (SchwabPortfolio, SchwabOrderEntry)
+- ✅ Added persistent LIVE / DELAYED / SIMULATED badge via reusable `DataSourceBadge` component
+- ✅ Show explicit error toasts instead of fake data
+- ✅ Added `ConnectionHealthIndicator` in navigation bar
 
-### 1.2 Data Source Transparency
-- Add a "Data Source" chip on charts (e.g., "Polygon Live", "FMP Delayed 15m")
-- Log and surface last-successful-fetch timestamp
-- Alert user when data is stale (>5 min old during market hours)
+### 1.2 Data Source Transparency ✅
+- ✅ `DataSourceBadge` component shows source chip on charts, quotes, live prices
+- ✅ Surfaces last-successful-fetch timestamp with tooltip
+- ✅ Stale data detection (>5 min) with visual warning
 
-### 1.3 Legal & Compliance Foundations
-- Add Terms of Service page with trading risk disclaimers
-- Add proper SEC/FINRA disclaimers on AI signals and trade suggestions
-- Add "Not Investment Advice" banner on all AI analysis components
+### 1.3 Legal & Compliance Foundations ✅
+- ✅ Added Terms of Service modal with comprehensive trading disclaimers
+- ✅ Added SEC/FINRA disclaimers on AI signals and trade suggestions
+- ✅ Added "Not Investment Advice" banners on all AI analysis components
+- ✅ Added global `DisclaimerBanner` component
+- ✅ Removed false "SEC Compliant" / "FINRA Registered" claims
+- ✅ Reframed all language as educational software tool
 - Research RIA registration requirements (external legal task)
 
 ---
