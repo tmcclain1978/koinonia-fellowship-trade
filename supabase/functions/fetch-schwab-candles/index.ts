@@ -187,7 +187,8 @@ async function fetchFromPolygon(
       
       if (polyConfig.timespan === 'minute') {
         const from = new Date(now);
-        from.setDate(from.getDate() - 14);
+        // When extended hours enabled, go back fewer days but ensure we capture full pre-market (4AM ET)
+        from.setDate(from.getDate() - (premarket ? 7 : 14));
         fromDate = from.toISOString().split('T')[0];
       } else if (polyConfig.timespan === 'hour') {
         const from = new Date(now);
@@ -488,8 +489,28 @@ serve(async (req) => {
       ? fetchFromPolygon(symbol, interval, polygonApiKey, startDate, endDate, premarket)
       : Promise.resolve(null);
 
-    // Race both sources - first successful response wins
-    const raceResult = await fetchWithRace(schwabPromise, polygonPromise);
+    // When extended hours is on, prefer Schwab since it natively supports needExtendedHoursData
+    // Polygon aggregates include extended hours trades but may have delays on free tier
+    let raceResult;
+    if (premarket && accessToken) {
+      console.log('⏰ Extended hours ON — prioritizing Schwab for pre/post market data');
+      // Give Schwab priority: wait for it first, fall back to Polygon
+      const schwabResult = await schwabPromise;
+      if (schwabResult && schwabResult.data.length > 0) {
+        raceResult = { data: schwabResult.data, source: schwabResult.source, racingSource: 'schwab-priority' };
+      } else {
+        // Schwab failed, try Polygon
+        const polygonResult = await polygonPromise;
+        if (polygonResult && polygonResult.data.length > 0) {
+          raceResult = { data: polygonResult.data, source: polygonResult.source, racingSource: 'polygon-fallback' };
+        } else {
+          raceResult = { data: [], source: 'none' };
+        }
+      }
+    } else {
+      // Regular hours: race both sources
+      raceResult = await fetchWithRace(schwabPromise, polygonPromise);
+    }
     
     if (raceResult.data.length > 0) {
       console.log(`🏆 Parallel fetch complete in ${Date.now() - overallStart}ms (winner: ${raceResult.racingSource})`);
