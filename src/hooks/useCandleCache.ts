@@ -44,6 +44,7 @@ interface UseCandleCacheOptions {
   symbol: string;
   interval: string;
   enabled?: boolean;
+  includeExtendedHours?: boolean;
 }
 
 // Cache expiry times based on interval type
@@ -67,8 +68,9 @@ const getCacheExpiryMs = (interval: string): number => {
 };
 
 // Generate cache key
-const getCacheKey = (symbol: string, interval: string): string => {
-  return `candle_cache_${symbol.toUpperCase()}_${interval}`;
+const getCacheKey = (symbol: string, interval: string, includeExtendedHours: boolean): string => {
+  const sessionKey = includeExtendedHours ? 'extended' : 'regular';
+  return `candle_cache_${symbol.toUpperCase()}_${interval}_${sessionKey}`;
 };
 
 // Check if market is open (proper US market hours check in Eastern Time)
@@ -201,13 +203,14 @@ export const useCandleCache = ({
   symbol,
   interval,
   enabled = true,
+  includeExtendedHours = false,
 }: UseCandleCacheOptions) => {
   const [cachedData, setCachedData] = useState<KLineData[]>([]);
   const [lastCacheUpdate, setLastCacheUpdate] = useState<number>(0);
   const [cacheSource, setCacheSource] = useState<string>('none');
   const isCacheValidRef = useRef(false);
 
-  const cacheKey = getCacheKey(symbol, interval);
+  const cacheKey = getCacheKey(symbol, interval, includeExtendedHours);
 
   // Load from cache on mount or when symbol/interval changes
   useEffect(() => {

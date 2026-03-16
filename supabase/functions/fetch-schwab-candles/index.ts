@@ -46,6 +46,88 @@ async function fetchWithRace(
   }
 }
 
+const getIntervalMinutes = (interval: string): number | null => {
+  const normalized = String(interval).toLowerCase();
+  const intervalMap: Record<string, number> = {
+    '1': 1, '1m': 1, 'minute': 1,
+    '5': 5, '5m': 5, '5minute': 5,
+    '15': 15, '15m': 15, '15minute': 15,
+    '30': 30, '30m': 30, '30minute': 30,
+    '60': 60, '1h': 60, 'hour': 60,
+  };
+
+  return intervalMap[normalized] ?? null;
+};
+
+const getEasternParts = (timestampSeconds: number) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(timestampSeconds * 1000));
+
+  const getPart = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+
+  return {
+    dateKey: `${getPart('year')}-${getPart('month')}-${getPart('day')}`,
+    minutes: Number(getPart('hour')) * 60 + Number(getPart('minute')),
+  };
+};
+
+const getLatestSessionCoverage = (candles: any[]) => {
+  if (!Array.isArray(candles) || candles.length === 0) return null;
+
+  let latestDateKey = '';
+  let earliestMinutes = Number.POSITIVE_INFINITY;
+
+  for (const candle of candles) {
+    if (!candle?.time) continue;
+    const { dateKey, minutes } = getEasternParts(candle.time);
+
+    if (dateKey > latestDateKey) {
+      latestDateKey = dateKey;
+      earliestMinutes = minutes;
+      continue;
+    }
+
+    if (dateKey === latestDateKey && minutes < earliestMinutes) {
+      earliestMinutes = minutes;
+    }
+  }
+
+  if (!latestDateKey || !Number.isFinite(earliestMinutes)) return null;
+
+  return { latestDateKey, earliestMinutes };
+};
+
+const hasStrongPremarketCoverage = (candles: any[], interval: string): boolean => {
+  const intervalMinutes = getIntervalMinutes(interval);
+  const coverage = getLatestSessionCoverage(candles);
+
+  if (!intervalMinutes || !coverage) return false;
+
+  const premarketOpenMinutes = 4 * 60;
+  const toleratedDelay = Math.max(intervalMinutes, 15);
+
+  return coverage.earliestMinutes <= premarketOpenMinutes + toleratedDelay;
+};
+
+const hasEarlierPremarketCoverage = (candidateCandles: any[], baselineCandles: any[]): boolean => {
+  const candidateCoverage = getLatestSessionCoverage(candidateCandles);
+  const baselineCoverage = getLatestSessionCoverage(baselineCandles);
+
+  if (!candidateCoverage) return false;
+  if (!baselineCoverage) return true;
+  if (candidateCoverage.latestDateKey > baselineCoverage.latestDateKey) return true;
+  if (candidateCoverage.latestDateKey < baselineCoverage.latestDateKey) return false;
+
+  return candidateCoverage.earliestMinutes < baselineCoverage.earliestMinutes;
+};
+
 // Fetch from Schwab API
 async function fetchFromSchwab(
   symbol: string,
@@ -489,17 +571,26 @@ serve(async (req) => {
       ? fetchFromPolygon(symbol, interval, polygonApiKey, startDate, endDate, premarket)
       : Promise.resolve(null);
 
-    // When extended hours is on, prefer Schwab since it natively supports needExtendedHoursData
-    // Polygon aggregates include extended hours trades but may have delays on free tier
+    // When extended hours is on, prefer the source with the fullest pre/post-market coverage
     let raceResult;
-    if (premarket && accessToken) {
-      console.log('⏰ Extended hours ON — prioritizing Schwab for pre/post market data');
-      // Give Schwab priority: wait for it first, fall back to Polygon
+    if (premarket) {
+      console.log('⏰ Extended hours ON — evaluating source coverage for pre/post market data');
       const schwabResult = await schwabPromise;
+
       if (schwabResult && schwabResult.data.length > 0) {
-        raceResult = { data: schwabResult.data, source: schwabResult.source, racingSource: 'schwab-priority' };
+        if (hasStrongPremarketCoverage(schwabResult.data, interval)) {
+          raceResult = { data: schwabResult.data, source: schwabResult.source, racingSource: 'schwab-priority' };
+        } else {
+          console.log('⚠️ Schwab data starts late for the latest extended session, checking Polygon coverage');
+          const polygonResult = await polygonPromise;
+
+          if (polygonResult && polygonResult.data.length > 0 && hasEarlierPremarketCoverage(polygonResult.data, schwabResult.data)) {
+            raceResult = { data: polygonResult.data, source: polygonResult.source, racingSource: 'polygon-extended-hours' };
+          } else {
+            raceResult = { data: schwabResult.data, source: schwabResult.source, racingSource: 'schwab-late-start-fallback' };
+          }
+        }
       } else {
-        // Schwab failed, try Polygon
         const polygonResult = await polygonPromise;
         if (polygonResult && polygonResult.data.length > 0) {
           raceResult = { data: polygonResult.data, source: polygonResult.source, racingSource: 'polygon-fallback' };
