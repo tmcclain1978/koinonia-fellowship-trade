@@ -642,8 +642,23 @@ export const ProChartKit = ({
         }
         lastVolumeUpdateRef.current = streamVolume;
         
+        // Determine the last candle's interval start
+        const lastCandleIntervalStart = Math.floor(lastCandle.timestamp / intervalMs) * intervalMs;
+        
+        // If currentIntervalStartRef isn't set yet, initialize from last candle
+        if (!currentIntervalStartRef.current) {
+          currentIntervalStartRef.current = lastCandleIntervalStart;
+        }
+        
+        // Detect if streaming price is from a significantly newer time than the last candle
+        // This handles gaps like weekends, pre-market after overnight, etc.
+        const timeSinceLastCandle = now - lastCandle.timestamp;
+        const isLargeGap = timeSinceLastCandle > intervalMs * 2;
+        
         // Check if we need to create a new candle
-        if (currentIntervalStartRef.current && currentIntervalStart > currentIntervalStartRef.current) {
+        const needsNewCandle = currentIntervalStart > currentIntervalStartRef.current || isLargeGap;
+        
+        if (needsNewCandle) {
           // New interval started - reset volume tracking and create new candle
           baseVolumeRef.current = 0;
           accumulatedVolumeRef.current = volumeDelta;
@@ -660,7 +675,7 @@ export const ProChartKit = ({
           scheduleChartUpdate(newCandle, true);
           currentIntervalStartRef.current = currentIntervalStart;
           setStreamingVolume(accumulatedVolumeRef.current);
-          console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
+          console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString(), isLargeGap ? '(gap detected)' : '');
         } else {
           // Same interval - update smoothly with streaming data
           accumulatedVolumeRef.current += volumeDelta;
@@ -676,10 +691,6 @@ export const ProChartKit = ({
           // Use debounced update for smooth animation
           scheduleChartUpdate(updatedCandle, false);
           setStreamingVolume(totalVolume);
-          
-          if (!currentIntervalStartRef.current) {
-            currentIntervalStartRef.current = Math.floor(lastCandle.timestamp / intervalMs) * intervalMs;
-          }
         }
       }
     }
