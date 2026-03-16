@@ -459,6 +459,7 @@ export const ProChartKit = ({
     symbol,
     interval,
     enabled: true,
+    includeExtendedHours: showPremarket,
   });
 
   // Crosshair sync - handle incoming crosshair changes from other charts
