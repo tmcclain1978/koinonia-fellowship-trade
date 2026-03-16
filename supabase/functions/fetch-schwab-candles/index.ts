@@ -187,7 +187,8 @@ async function fetchFromPolygon(
       
       if (polyConfig.timespan === 'minute') {
         const from = new Date(now);
-        from.setDate(from.getDate() - 14);
+        // When extended hours enabled, go back fewer days but ensure we capture full pre-market (4AM ET)
+        from.setDate(from.getDate() - (premarket ? 7 : 14));
         fromDate = from.toISOString().split('T')[0];
       } else if (polyConfig.timespan === 'hour') {
         const from = new Date(now);
