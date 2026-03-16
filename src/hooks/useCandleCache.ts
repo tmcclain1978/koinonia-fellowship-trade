@@ -203,13 +203,14 @@ export const useCandleCache = ({
   symbol,
   interval,
   enabled = true,
+  includeExtendedHours = false,
 }: UseCandleCacheOptions) => {
   const [cachedData, setCachedData] = useState<KLineData[]>([]);
   const [lastCacheUpdate, setLastCacheUpdate] = useState<number>(0);
   const [cacheSource, setCacheSource] = useState<string>('none');
   const isCacheValidRef = useRef(false);
 
-  const cacheKey = getCacheKey(symbol, interval);
+  const cacheKey = getCacheKey(symbol, interval, includeExtendedHours);
 
   // Load from cache on mount or when symbol/interval changes
   useEffect(() => {
