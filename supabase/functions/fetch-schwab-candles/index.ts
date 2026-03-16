@@ -46,6 +46,88 @@ async function fetchWithRace(
   }
 }
 
+const getIntervalMinutes = (interval: string): number | null => {
+  const normalized = String(interval).toLowerCase();
+  const intervalMap: Record<string, number> = {
+    '1': 1, '1m': 1, 'minute': 1,
+    '5': 5, '5m': 5, '5minute': 5,
+    '15': 15, '15m': 15, '15minute': 15,
+    '30': 30, '30m': 30, '30minute': 30,
+    '60': 60, '1h': 60, 'hour': 60,
+  };
+
+  return intervalMap[normalized] ?? null;
+};
+
+const getEasternParts = (timestampSeconds: number) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(timestampSeconds * 1000));
+
+  const getPart = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+
+  return {
+    dateKey: `${getPart('year')}-${getPart('month')}-${getPart('day')}`,
+    minutes: Number(getPart('hour')) * 60 + Number(getPart('minute')),
+  };
+};
+
+const getLatestSessionCoverage = (candles: any[]) => {
+  if (!Array.isArray(candles) || candles.length === 0) return null;
+
+  let latestDateKey = '';
+  let earliestMinutes = Number.POSITIVE_INFINITY;
+
+  for (const candle of candles) {
+    if (!candle?.time) continue;
+    const { dateKey, minutes } = getEasternParts(candle.time);
+
+    if (dateKey > latestDateKey) {
+      latestDateKey = dateKey;
+      earliestMinutes = minutes;
+      continue;
+    }
+
+    if (dateKey === latestDateKey && minutes < earliestMinutes) {
+      earliestMinutes = minutes;
+    }
+  }
+
+  if (!latestDateKey || !Number.isFinite(earliestMinutes)) return null;
+
+  return { latestDateKey, earliestMinutes };
+};
+
+const hasStrongPremarketCoverage = (candles: any[], interval: string): boolean => {
+  const intervalMinutes = getIntervalMinutes(interval);
+  const coverage = getLatestSessionCoverage(candles);
+
+  if (!intervalMinutes || !coverage) return false;
+
+  const premarketOpenMinutes = 4 * 60;
+  const toleratedDelay = Math.max(intervalMinutes, 15);
+
+  return coverage.earliestMinutes <= premarketOpenMinutes + toleratedDelay;
+};
+
+const hasEarlierPremarketCoverage = (candidateCandles: any[], baselineCandles: any[]): boolean => {
+  const candidateCoverage = getLatestSessionCoverage(candidateCandles);
+  const baselineCoverage = getLatestSessionCoverage(baselineCandles);
+
+  if (!candidateCoverage) return false;
+  if (!baselineCoverage) return true;
+  if (candidateCoverage.latestDateKey > baselineCoverage.latestDateKey) return true;
+  if (candidateCoverage.latestDateKey < baselineCoverage.latestDateKey) return false;
+
+  return candidateCoverage.earliestMinutes < baselineCoverage.earliestMinutes;
+};
+
 // Fetch from Schwab API
 async function fetchFromSchwab(
   symbol: string,
