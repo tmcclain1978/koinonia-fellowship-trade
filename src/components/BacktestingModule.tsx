@@ -1712,6 +1712,11 @@ export function BacktestingModule() {
               </div>
             )}
           </TabsContent>
+
+          {/* WLSM Hi/Low Testing Tab */}
+          <TabsContent value="wlsm">
+            <WLSMBacktester />
+          </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
