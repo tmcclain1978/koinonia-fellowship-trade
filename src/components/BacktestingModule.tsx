@@ -682,7 +682,7 @@ export function BacktestingModule() {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="builder" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="builder">Strategy Builder</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
             <TabsTrigger value="comparison">
@@ -694,6 +694,10 @@ export function BacktestingModule() {
               Walk-Forward
             </TabsTrigger>
             <TabsTrigger value="montecarlo">Monte Carlo</TabsTrigger>
+            <TabsTrigger value="wlsm">
+              <Calendar className="w-3 h-3 mr-1" />
+              Hi/Low Testing
+            </TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
