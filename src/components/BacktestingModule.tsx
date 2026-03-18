@@ -696,7 +696,7 @@ export function BacktestingModule() {
             <TabsTrigger value="montecarlo">Monte Carlo</TabsTrigger>
             <TabsTrigger value="wlsm">
               <Calendar className="w-3 h-3 mr-1" />
-              Hi/Low Testing
+              Liquidity Sweep
             </TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
