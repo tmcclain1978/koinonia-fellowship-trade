@@ -2488,6 +2488,39 @@ export type Database = {
         }
         Relationships: []
       }
+      wlsm_backtest_results: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          results_json: Json
+          start_date: string
+          symbol: string
+          test_variant: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          results_json?: Json
+          start_date: string
+          symbol?: string
+          test_variant?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          results_json?: Json
+          start_date?: string
+          symbol?: string
+          test_variant?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
