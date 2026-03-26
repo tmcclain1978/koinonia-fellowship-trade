@@ -52,7 +52,10 @@ export function usePennyStockScanner() {
           maxPrice: filters.maxPrice,
           minVolume: filters.minVolume,
           maxFloat: filters.maxFloat,
-          patterns: filters.patterns.length > 0 ? filters.patterns : undefined
+          patterns: filters.patterns.length > 0 ? filters.patterns : undefined,
+          unusualVolumeOnly: filters.unusualVolumeOnly || false,
+          floatRotationMin: filters.floatRotationMin,
+          preLaunchOnly: filters.preLaunchOnly || false,
         }
       });
 
