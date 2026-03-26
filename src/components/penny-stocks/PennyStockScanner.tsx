@@ -5,8 +5,10 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Settings2, Loader2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Search, Settings2, Loader2, Zap, Activity, TrendingUp } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Badge } from '@/components/ui/badge';
 
 interface ScannerFilters {
   minPrice: number;
@@ -14,6 +16,9 @@ interface ScannerFilters {
   minVolume: number;
   maxFloat?: number;
   patterns: string[];
+  unusualVolumeOnly?: boolean;
+  floatRotationMin?: number;
+  preLaunchOnly?: boolean;
 }
 
 interface PennyStockScannerProps {
@@ -36,6 +41,11 @@ export function PennyStockScanner({ onScan, isScanning }: PennyStockScannerProps
   const [selectedPatterns, setSelectedPatterns] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // New advanced filters
+  const [unusualVolumeOnly, setUnusualVolumeOnly] = useState(false);
+  const [floatRotationMin, setFloatRotationMin] = useState<number | undefined>(undefined);
+  const [preLaunchOnly, setPreLaunchOnly] = useState(false);
+
   const handlePatternToggle = (patternId: string) => {
     setSelectedPatterns(prev =>
       prev.includes(patternId)
@@ -50,7 +60,10 @@ export function PennyStockScanner({ onScan, isScanning }: PennyStockScannerProps
       maxPrice: priceRange[1],
       minVolume,
       maxFloat,
-      patterns: selectedPatterns
+      patterns: selectedPatterns,
+      unusualVolumeOnly,
+      floatRotationMin,
+      preLaunchOnly,
     });
   };
 
@@ -59,6 +72,8 @@ export function PennyStockScanner({ onScan, isScanning }: PennyStockScannerProps
     if (vol >= 1000) return `${(vol / 1000).toFixed(0)}K`;
     return vol.toString();
   };
+
+  const activeFilterCount = [unusualVolumeOnly, preLaunchOnly, !!floatRotationMin, !!maxFloat].filter(Boolean).length;
 
   return (
     <Card className="bg-card/50 backdrop-blur border-border/50">
@@ -105,6 +120,46 @@ export function PennyStockScanner({ onScan, isScanning }: PennyStockScannerProps
           />
         </div>
 
+        {/* NEW: Smart Detection Toggles */}
+        <div className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-400" />
+            Smart Detection
+            {activeFilterCount > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {activeFilterCount} active
+              </Badge>
+            )}
+          </Label>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="unusual-vol" className="text-xs cursor-pointer">Unusual Volume Only</Label>
+              <p className="text-[10px] text-muted-foreground">≥3 std devs above mean (institutional activity)</p>
+            </div>
+            <Switch
+              id="unusual-vol"
+              checked={unusualVolumeOnly}
+              onCheckedChange={setUnusualVolumeOnly}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="pre-launch" className="text-xs cursor-pointer flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                Pre-Launch Detection
+              </Label>
+              <p className="text-[10px] text-muted-foreground">Coiled springs: compressed price + rising volume</p>
+            </div>
+            <Switch
+              id="pre-launch"
+              checked={preLaunchOnly}
+              onCheckedChange={setPreLaunchOnly}
+            />
+          </div>
+        </div>
+
         {/* Pattern Filters */}
         <div className="space-y-2">
           <Label className="text-sm">Chart Patterns</Label>
@@ -146,6 +201,22 @@ export function PennyStockScanner({ onScan, isScanning }: PennyStockScannerProps
               />
               <p className="text-xs text-muted-foreground">
                 Lower float = more volatile (typical penny stock is under 20M)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <Label className="text-sm">Min Float Rotation %</Label>
+              </div>
+              <Input
+                type="number"
+                placeholder="e.g., 25 (25% of float traded)"
+                value={floatRotationMin || ''}
+                onChange={(e) => setFloatRotationMin(e.target.value ? Number(e.target.value) : undefined)}
+              />
+              <p className="text-xs text-muted-foreground">
+                High float rotation = intense trading interest. 100%+ means entire float has changed hands.
               </p>
             </div>
           </CollapsibleContent>
