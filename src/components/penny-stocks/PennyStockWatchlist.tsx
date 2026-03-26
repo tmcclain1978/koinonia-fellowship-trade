@@ -50,6 +50,17 @@ export interface PennyStockCandidate {
     riskFlags: string[];
   };
   totalScore: number;
+  advancedMetrics?: {
+    volumeZScore: number;
+    floatRotation: number;
+    accumulationScore: number;
+    preLaunchScore: number;
+    volumeProfile: string;
+    marketStructure: string;
+    daysSinceBase: number;
+    compressionRatio: number;
+    smartMoneySignal: boolean;
+  };
 }
 
 interface PennyStockWatchlistProps {
