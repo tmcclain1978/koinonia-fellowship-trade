@@ -10,6 +10,9 @@ interface ScannerFilters {
   minVolume: number;
   maxFloat?: number;
   patterns: string[];
+  unusualVolumeOnly?: boolean;
+  floatRotationMin?: number;
+  preLaunchOnly?: boolean;
 }
 
 export function usePennyStockScanner() {
