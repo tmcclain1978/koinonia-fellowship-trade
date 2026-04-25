@@ -126,4 +126,3 @@ describe("QuizComponent answer normalization", () => {
     expect(onComplete).toHaveBeenCalledWith(3, 3);
   });
 });
-});
