@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "npm:resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { buildInviteSignupUrl } from "../_shared/invite-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,8 +62,7 @@ serve(async (req) => {
     }
 
     // Build the signup URL — always point to the production custom domain
-    const appUrl = Deno.env.get("APP_URL") || "https://koinoniatrading.org";
-    const signupUrl = `${appUrl.replace(/\/$/, "")}/auth?invite=${encodeURIComponent(memberEmail)}`;
+    const signupUrl = buildInviteSignupUrl(memberEmail, Deno.env.get("APP_URL"));
 
     console.log(`Sending family invite to: ${memberEmail}`);
 
