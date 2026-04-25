@@ -19,6 +19,9 @@ export interface QuizQuestion {
   options: string[];
   correctIndex: number;
   explanation?: string;
+  // Legacy field aliases that may appear in stored quiz data
+  correct_answer?: number;
+  correctAnswer?: number;
 }
 
 interface QuizComponentProps {
@@ -27,11 +30,37 @@ interface QuizComponentProps {
   previousScore?: number | null;
 }
 
+/**
+ * Normalize a stored quiz question to a canonical shape.
+ * Different generations of seed data used `correctIndex`, `correct_answer`,
+ * or `correctAnswer` — accept all three so correct answers register as correct.
+ */
+const normalizeQuestion = (q: QuizQuestion): QuizQuestion => {
+  const idx =
+    typeof q.correctIndex === "number"
+      ? q.correctIndex
+      : typeof q.correct_answer === "number"
+        ? q.correct_answer
+        : typeof q.correctAnswer === "number"
+          ? q.correctAnswer
+          : 0;
+  return {
+    question: q.question,
+    options: Array.isArray(q.options) ? q.options : [],
+    correctIndex: idx,
+    explanation: q.explanation,
+  };
+};
+
 export const QuizComponent: React.FC<QuizComponentProps> = ({
-  questions,
+  questions: rawQuestions,
   onComplete,
   previousScore
 }) => {
+  const questions = React.useMemo(
+    () => (rawQuestions || []).map(normalizeQuestion),
+    [rawQuestions]
+  );
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
