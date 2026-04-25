@@ -104,12 +104,21 @@ const LessonPlayer = () => {
       return;
     }
 
-    // Parse quiz_questions from JSON
+    // Parse quiz_questions from JSON. Some legacy rows store the array as a
+    // JSON-encoded string instead of a true JSON array — handle both shapes.
+    let rawQuiz: unknown = lessonData.quiz_questions;
+    if (typeof rawQuiz === "string") {
+      try {
+        rawQuiz = JSON.parse(rawQuiz);
+      } catch {
+        rawQuiz = null;
+      }
+    }
     const parsedLesson: Lesson = {
       ...lessonData,
-      quiz_questions: Array.isArray(lessonData.quiz_questions) 
-        ? (lessonData.quiz_questions as unknown as QuizQuestion[])
-        : null
+      quiz_questions: Array.isArray(rawQuiz)
+        ? (rawQuiz as unknown as QuizQuestion[])
+        : null,
     };
     setLesson(parsedLesson);
 
