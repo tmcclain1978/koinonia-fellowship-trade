@@ -9,8 +9,10 @@ import { PrivacyPolicyModal } from "@/components/PrivacyPolicyModal";
 import { Label } from "@/components/ui/label";
 
 const Auth = () => {
+  const [searchParams] = useSearchParams();
+  const inviteEmail = searchParams.get("invite") || "";
   const [isLogin, setIsLogin] = useState(false); // Default to signup for new users
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(inviteEmail);
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
