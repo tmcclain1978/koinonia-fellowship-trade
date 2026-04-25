@@ -60,9 +60,9 @@ serve(async (req) => {
       throw new Error("Member email is required");
     }
 
-    // Get the signup URL
-    const appUrl = Deno.env.get("VITE_SUPABASE_URL")?.replace("/rest/v1", "").replace("https://", "https://") || "https://koinonia-trading.lovable.app";
-    const signupUrl = `${appUrl.replace('.supabase.co', '.lovable.app')}/auth`;
+    // Build the signup URL — always point to the production custom domain
+    const appUrl = Deno.env.get("APP_URL") || "https://koinoniatrading.org";
+    const signupUrl = `${appUrl.replace(/\/$/, "")}/auth?invite=${encodeURIComponent(memberEmail)}`;
 
     console.log(`Sending family invite to: ${memberEmail}`);
 
