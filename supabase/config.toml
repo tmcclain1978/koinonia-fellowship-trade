@@ -146,3 +146,6 @@ verify_jwt = true
 
 [functions.penny-stock-engine]
 verify_jwt = false
+
+[functions.link-family-member]
+verify_jwt = true

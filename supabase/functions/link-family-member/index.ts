@@ -13,18 +13,57 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const { userId, email } = await req.json();
-
-    if (!userId || !email) {
-      throw new Error("Missing userId or email");
+    // 1. Verify JWT from Authorization header
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log(`Checking family membership for email: ${email}`);
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: userData, error: userErr } = await authClient.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or expired token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const authedUser = userData.user;
 
-    // Check if this email is in family_members as pending
+    const { userId, email } = await req.json();
+    if (!userId || !email) {
+      return new Response(
+        JSON.stringify({ error: "Missing userId or email" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 2. Caller must match the userId AND email they are claiming to link
+    if (
+      authedUser.id !== userId ||
+      (authedUser.email || "").toLowerCase() !== String(email).toLowerCase()
+    ) {
+      console.warn("link-family-member identity mismatch", {
+        authedId: authedUser.id,
+        claimedId: userId,
+      });
+      return new Response(
+        JSON.stringify({ error: "Forbidden: identity mismatch" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 3. Use service-role for the privileged update only after auth checks pass
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
     const { data: familyMember, error: fetchError } = await supabase
       .from("family_members")
       .select("*")
@@ -38,20 +77,18 @@ serve(async (req) => {
     }
 
     if (!familyMember) {
-      console.log("No family membership found for this email");
       return new Response(
         JSON.stringify({ linked: false, message: "No family membership found" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Link the user to the family membership and activate
     const { error: updateError } = await supabase
       .from("family_members")
-      .update({ 
-        member_user_id: userId, 
+      .update({
+        member_user_id: userId,
         status: "active",
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
       .eq("id", familyMember.id);
 
@@ -60,13 +97,11 @@ serve(async (req) => {
       throw updateError;
     }
 
-    console.log(`Successfully linked user ${userId} to family membership`);
-
     return new Response(
-      JSON.stringify({ 
-        linked: true, 
+      JSON.stringify({
+        linked: true,
         message: "Family membership linked and activated",
-        tier: "enterprise"
+        tier: "enterprise",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
