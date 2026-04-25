@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { safeDecrypt } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
   let heartbeatInterval: number | null = null;
   let currentEndpointIndex = 0;
   let connectionAttempts = 0;
-  const ssid = creds.pocketoption_ssid;
+  const ssid = (await safeDecrypt(creds.pocketoption_ssid)) as string;
 
   // Parse SSID to extract auth data - improved to handle all formats
   const parseSSID = (ssidString: string): { session: string; isDemo: number; uid: string } | null => {
