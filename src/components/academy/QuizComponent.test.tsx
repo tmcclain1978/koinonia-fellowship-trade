@@ -15,10 +15,19 @@ const renderQuiz = (questions: QuizQuestion[], onComplete = vi.fn()) =>
   render(<QuizComponent questions={questions} onComplete={onComplete} />);
 
 const submitAnswer = (optionIndex: number) => {
-  // Click the option label
   const radios = screen.getAllByRole("radio");
   fireEvent.click(radios[optionIndex]);
   fireEvent.click(screen.getByRole("button", { name: /submit answer/i }));
+};
+
+/**
+ * After submitting, the chosen option's container gets a green background
+ * (`bg-green-500/10`) when correct, red (`bg-red-500/10`) when wrong.
+ */
+const wasMarkedCorrect = (optionIndex: number) => {
+  const radios = screen.getAllByRole("radio");
+  const container = radios[optionIndex].closest("div");
+  return container?.className.includes("bg-green-500/10") ?? false;
 };
 
 describe("QuizComponent answer normalization", () => {
@@ -39,8 +48,7 @@ describe("QuizComponent answer normalization", () => {
       onComplete,
     );
     submitAnswer(1);
-    // Result panel should reflect "Correct!" and not "Explanation:"
-    expect(screen.getByText(/correct!/i)).toBeInTheDocument();
+    expect(wasMarkedCorrect(1)).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /see results/i }));
     expect(onComplete).toHaveBeenCalledWith(1, 1);
   });
@@ -52,14 +60,13 @@ describe("QuizComponent answer normalization", () => {
         {
           question: "Capital of France?",
           options: ["Berlin", "Madrid", "Paris", "Rome"],
-          // Legacy snake_case field — must still register as correct
           correct_answer: 2,
         } as unknown as QuizQuestion,
       ],
       onComplete,
     );
     submitAnswer(2);
-    expect(screen.getByText(/correct!/i)).toBeInTheDocument();
+    expect(wasMarkedCorrect(2)).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /see results/i }));
     expect(onComplete).toHaveBeenCalledWith(1, 1);
   });
@@ -77,7 +84,7 @@ describe("QuizComponent answer normalization", () => {
       onComplete,
     );
     submitAnswer(2);
-    expect(screen.getByText(/correct!/i)).toBeInTheDocument();
+    expect(wasMarkedCorrect(2)).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /see results/i }));
     expect(onComplete).toHaveBeenCalledWith(1, 1);
   });
@@ -94,10 +101,8 @@ describe("QuizComponent answer normalization", () => {
       ],
       onComplete,
     );
-    submitAnswer(0); // Berlin — wrong
-    // Should NOT show "Correct!" header — should show "Explanation:" if any,
-    // but we asserted no explanation, so just verify "Correct!" is absent.
-    expect(screen.queryByText(/^correct!$/i)).not.toBeInTheDocument();
+    submitAnswer(0);
+    expect(wasMarkedCorrect(0)).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: /see results/i }));
     expect(onComplete).toHaveBeenCalledWith(0, 1);
   });
@@ -112,12 +117,13 @@ describe("QuizComponent answer normalization", () => {
       ],
       onComplete,
     );
-    submitAnswer(0); // Q1 right
+    submitAnswer(0);
     fireEvent.click(screen.getByRole("button", { name: /next question/i }));
-    submitAnswer(1); // Q2 right
+    submitAnswer(1);
     fireEvent.click(screen.getByRole("button", { name: /next question/i }));
-    submitAnswer(0); // Q3 right
+    submitAnswer(0);
     fireEvent.click(screen.getByRole("button", { name: /see results/i }));
     expect(onComplete).toHaveBeenCalledWith(3, 3);
   });
+});
 });
