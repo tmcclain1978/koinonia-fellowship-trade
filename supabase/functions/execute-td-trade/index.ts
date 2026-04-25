@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { safeDecrypt } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,9 @@ serve(async (req) => {
       throw new Error('TD Ameritrade credentials not found');
     }
 
+    const tdClientId = await safeDecrypt(credentials.td_client_id) as string;
+    const tdRefreshToken = await safeDecrypt(credentials.td_refresh_token) as string;
+
     // Get access token using refresh token
     const tokenResponse = await fetch('https://api.tdameritrade.com/v1/oauth2/token', {
       method: 'POST',
@@ -46,8 +50,8 @@ serve(async (req) => {
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
-        refresh_token: credentials.td_refresh_token,
-        client_id: credentials.td_client_id,
+        refresh_token: tdRefreshToken,
+        client_id: tdClientId,
       }),
     });
 
@@ -73,7 +77,7 @@ serve(async (req) => {
     };
 
     const orderResponse = await fetch(
-      `https://api.tdameritrade.com/v1/accounts/${credentials.td_client_id}/orders`,
+      `https://api.tdameritrade.com/v1/accounts/${tdClientId}/orders`,
       {
         method: 'POST',
         headers: {

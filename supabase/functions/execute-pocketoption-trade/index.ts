@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { safeDecrypt } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,14 +39,17 @@ serve(async (req) => {
       throw new Error("PocketOption credentials not found");
     }
 
+    const apiKey = await safeDecrypt(credentials.pocketoption_api_key) as string;
+    const ssid = await safeDecrypt(credentials.pocketoption_ssid) as string;
+
     // Execute trade via PocketOption API
     // Note: Replace with actual PocketOption trading endpoint
     const tradeResponse = await fetch("https://api.po.trade/api/v2/trade", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": credentials.pocketoption_api_key,
-        "X-SSID": credentials.pocketoption_ssid,
+        "X-API-Key": apiKey,
+        "X-SSID": ssid,
       },
       body: JSON.stringify({
         asset: pair,

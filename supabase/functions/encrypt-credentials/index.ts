@@ -70,12 +70,23 @@ serve(async (req) => {
         encryptedData.td_client_secret = await encryptText(credentials.td_client_secret);
       }
 
+      // TD Ameritrade refresh token
+      if (credentials.td_refresh_token) {
+        encryptedData.td_refresh_token = await encryptText(credentials.td_refresh_token);
+      }
+
       // E*TRADE credentials
       if (credentials.etrade_consumer_key) {
         encryptedData.etrade_consumer_key = await encryptText(credentials.etrade_consumer_key);
       }
       if (credentials.etrade_consumer_secret) {
         encryptedData.etrade_consumer_secret = await encryptText(credentials.etrade_consumer_secret);
+      }
+      if (credentials.etrade_access_token) {
+        encryptedData.etrade_access_token = await encryptText(credentials.etrade_access_token);
+      }
+      if (credentials.etrade_access_secret) {
+        encryptedData.etrade_access_secret = await encryptText(credentials.etrade_access_secret);
       }
 
       // Alpaca credentials
@@ -96,6 +107,22 @@ serve(async (req) => {
       }
       if (credentials.ib_access_token) {
         encryptedData.ib_access_token = await encryptText(credentials.ib_access_token);
+      }
+
+      // PocketOption credentials
+      if (credentials.pocketoption_api_key) {
+        encryptedData.pocketoption_api_key = await encryptText(credentials.pocketoption_api_key);
+      }
+      if (credentials.pocketoption_ssid) {
+        encryptedData.pocketoption_ssid = await encryptText(credentials.pocketoption_ssid);
+      }
+
+      // Non-secret account metadata (no encryption)
+      if (credentials.account_type !== undefined) {
+        encryptedData.account_type = credentials.account_type;
+      }
+      if (credentials.account_value !== undefined) {
+        encryptedData.account_value = credentials.account_value;
       }
 
       const { error } = await supabase
@@ -160,10 +187,13 @@ serve(async (req) => {
       // TD Ameritrade
       decryptedData.td_client_id = await safeDecrypt(data.td_client_id);
       decryptedData.td_client_secret = await safeDecrypt(data.td_client_secret);
+      decryptedData.td_refresh_token = await safeDecrypt(data.td_refresh_token);
 
       // E*TRADE
       decryptedData.etrade_consumer_key = await safeDecrypt(data.etrade_consumer_key);
       decryptedData.etrade_consumer_secret = await safeDecrypt(data.etrade_consumer_secret);
+      decryptedData.etrade_access_token = await safeDecrypt(data.etrade_access_token);
+      decryptedData.etrade_access_secret = await safeDecrypt(data.etrade_access_secret);
 
       // Alpaca
       decryptedData.alpaca_api_key = await safeDecrypt(data.alpaca_api_key);
@@ -172,6 +202,11 @@ serve(async (req) => {
       // Interactive Brokers
       decryptedData.ib_account_id = await safeDecrypt(data.ib_account_id);
       decryptedData.ib_access_token = await safeDecrypt(data.ib_access_token);
+
+      // PocketOption — never return raw SSID/API key to client; just expose presence
+      decryptedData.pocketoption_configured = !!data.pocketoption_ssid || !!data.pocketoption_api_key;
+      decryptedData.account_type = data.account_type;
+      decryptedData.account_value = data.account_value;
 
       return new Response(
         JSON.stringify({ credentials: decryptedData }),

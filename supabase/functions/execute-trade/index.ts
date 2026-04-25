@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { safeDecrypt } from "../_shared/encryption.ts";
 import { logAudit } from "../_shared/audit.ts";
 import { checkRateLimit, rateLimitResponse } from "../_shared/rate-limiter.ts";
 const corsHeaders = {
@@ -284,6 +285,10 @@ async function executeAlpacaTrade(
     };
   }
 
+  // Server-only decryption
+  const apiKey = (await safeDecrypt(credentials.alpaca_api_key)) as string;
+  const secretKey = (await safeDecrypt(credentials.alpaca_secret_key)) as string;
+
   // Determine API endpoint
   const baseUrl = credentials.alpaca_paper_mode
     ? 'https://paper-api.alpaca.markets'
@@ -303,8 +308,8 @@ async function executeAlpacaTrade(
     const orderResponse = await fetch(`${baseUrl}/v2/orders`, {
       method: 'POST',
       headers: {
-        'APCA-API-KEY-ID': credentials.alpaca_api_key,
-        'APCA-API-SECRET-KEY': credentials.alpaca_secret_key,
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': secretKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(orderPayload),

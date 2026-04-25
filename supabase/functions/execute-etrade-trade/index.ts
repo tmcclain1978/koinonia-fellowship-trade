@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { safeDecrypt } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,6 +38,12 @@ serve(async (req) => {
     if (credsError || !credentials) {
       throw new Error('E*TRADE credentials not found');
     }
+
+    // Server-only decryption — used to OAuth-sign requests below
+    const _consumerKey = await safeDecrypt(credentials.etrade_consumer_key) as string;
+    const _consumerSecret = await safeDecrypt(credentials.etrade_consumer_secret) as string;
+    const _accessToken = await safeDecrypt(credentials.etrade_access_token) as string;
+    const _accessSecret = await safeDecrypt(credentials.etrade_access_secret) as string;
 
     // E*TRADE uses OAuth 1.0a - would need OAuth signature generation
     // This is a simplified example - production would need full OAuth implementation
