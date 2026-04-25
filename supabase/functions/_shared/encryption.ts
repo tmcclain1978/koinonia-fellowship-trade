@@ -24,7 +24,7 @@ export async function getEncryptionKey(): Promise<CryptoKey> {
 
   return crypto.subtle.importKey(
     "raw",
-    keyData,
+    keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength) as ArrayBuffer,
     { name: "AES-GCM", length: 256 },
     false,
     ["encrypt", "decrypt"]
