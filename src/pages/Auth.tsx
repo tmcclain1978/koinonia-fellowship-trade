@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,10 @@ import { PrivacyPolicyModal } from "@/components/PrivacyPolicyModal";
 import { Label } from "@/components/ui/label";
 
 const Auth = () => {
+  const [searchParams] = useSearchParams();
+  const inviteEmail = searchParams.get("invite") || "";
   const [isLogin, setIsLogin] = useState(false); // Default to signup for new users
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(inviteEmail);
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
