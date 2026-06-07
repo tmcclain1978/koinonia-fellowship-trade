@@ -25,6 +25,9 @@ export function StockOrderTicket({ onPlaced }: Props) {
   const [trailAmount, setTrailAmount] = useState("");
   const [trailPercent, setTrailPercent] = useState("");
   const [tif, setTif] = useState<"DAY" | "GTC">("DAY");
+  const [bracket, setBracket] = useState(false);
+  const [takeProfit, setTakeProfit] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const showLimit = orderType === "LIMIT" || orderType === "STOP_LIMIT";
@@ -55,6 +58,8 @@ export function StockOrderTicket({ onPlaced }: Props) {
           trailAmount: showTrail && trailAmount ? Number(trailAmount) : undefined,
           trailPercent: showTrail && trailPercent ? Number(trailPercent) : undefined,
           timeInForce: tif,
+          takeProfit: bracket && Number(takeProfit) > 0 ? Number(takeProfit) : undefined,
+          stopLoss: bracket && Number(stopLoss) > 0 ? Number(stopLoss) : undefined,
         },
       });
       if (error) throw error;
@@ -66,6 +71,7 @@ export function StockOrderTicket({ onPlaced }: Props) {
         toast({ title: "Working order placed", description: `${side.toUpperCase()} ${qty} ${sym} (${orderType.replace("_", " ").toLowerCase()}) resting until triggered.` });
       }
       setLimitPrice(""); setStopPrice(""); setTrailAmount(""); setTrailPercent("");
+      setTakeProfit(""); setStopLoss("");
       onPlaced?.();
     } catch (e: any) {
       toast({ title: "Order error", description: e?.message || "Failed to place order", variant: "destructive" });
@@ -162,6 +168,30 @@ export function StockOrderTicket({ onPlaced }: Props) {
             </Select>
           </div>
         )}
+
+        <div className="space-y-2 rounded-lg border p-3">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={bracket} onChange={(e) => setBracket(e.target.checked)} />
+            Bracket (auto take-profit + stop-loss)
+          </label>
+          {bracket && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Take Profit</Label>
+                  <Input type="number" step="0.01" value={takeProfit} onChange={(e) => setTakeProfit(e.target.value)} placeholder="exit price" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Stop Loss</Label>
+                  <Input type="number" step="0.01" value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} placeholder="exit price" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Two exit orders are created opposite your entry. When one fills, the other cancels automatically. With a working entry, they arm once the entry fills.
+              </p>
+            </>
+          )}
+        </div>
 
         <Button className="w-full" onClick={submit} disabled={submitting}>
           {submitting ? "Placing…" : orderType === "MARKET" ? "Place Market Order" : "Place Working Order"}

@@ -2,6 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unrealizedPnl, marketValue, buyingPower, liveEquity, type Position } from "../_shared/paper-account.ts";
 import { fetchQuote } from "../_shared/quote.ts";
+import { fetchOptionChain, findContract, type OptionChain } from "../_shared/option-quote.ts";
+import { bsGreeks, yearsToExpiry } from "../_shared/greeks.ts";
+
+const RISK_FREE = 0.04;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,18 +45,45 @@ serve(async (req) => {
     const positions: any[] = [];
     const liveList: Array<{ qty: number; mark: number; mult: number }> = [];
     let unrealizedTotal = 0;
+    const totals = { delta: 0, gamma: 0, theta: 0, vega: 0 };
+    const chainCache = new Map<string, OptionChain | null>();
+    const getChain = async (sym: string) => {
+      if (chainCache.has(sym)) return chainCache.get(sym)!;
+      const c = await fetchOptionChain(supabase, sym);
+      chainCache.set(sym, c);
+      return c;
+    };
 
     for (const r of rows || []) {
       const pos: Position = { qty: Number(r.quantity), avgCost: Number(r.avg_cost), mult: Number(r.multiplier) };
       const isOption = !!r.contract_key;
 
-      // Stocks get a live mark; options fall back to cost (live option marking is Phase 3).
       let mark = pos.avgCost;
-      let source = isOption ? 'cost (option marking: Phase 3)' : 'cost';
-      if (!isOption) {
+      let source = 'cost';
+      let greeks: { delta: number; gamma: number; theta: number; vega: number } | null = null;
+
+      if (isOption) {
+        const chain = await getChain(r.symbol);
+        const c = chain ? findContract(chain, r.contract_key) : null;
+        if (c && c.mark && c.mark > 0) { mark = c.mark; source = 'schwab-option'; }
+        else source = 'cost (no option quote)';
+
+        if (c && chain?.underlyingPrice && c.iv && c.expiration) {
+          const T = yearsToExpiry(c.expiration);
+          const g = bsGreeks(chain.underlyingPrice, c.strike, T, RISK_FREE, c.iv, c.type === 'PUT' ? 'put' : 'call');
+          const scale = pos.qty * pos.mult; // dollar Greeks for the position
+          greeks = { delta: g.delta * scale, gamma: g.gamma * scale, theta: g.theta * scale, vega: g.vega * scale };
+        }
+      } else {
         const q = await fetchQuote(supabase, user.id, r.symbol);
         const m = q ? (q.mark || q.last || ((q.bid && q.ask) ? (q.bid + q.ask) / 2 : null)) : null;
         if (m && m > 0) { mark = m; source = q!.source; }
+        greeks = { delta: pos.qty, gamma: 0, theta: 0, vega: 0 }; // a share is 1 delta
+      }
+
+      if (greeks) {
+        totals.delta += greeks.delta; totals.gamma += greeks.gamma;
+        totals.theta += greeks.theta; totals.vega += greeks.vega;
       }
 
       const upl = unrealizedPnl(pos, mark);
@@ -68,6 +99,7 @@ serve(async (req) => {
         marketValue: marketValue(pos.qty, mark, pos.mult),
         unrealizedPnl: upl,
         markSource: source,
+        greeks,
       });
     }
 
@@ -83,6 +115,7 @@ serve(async (req) => {
       unrealizedPnl: unrealizedTotal,
       equity: liveEquity(cash, liveList),
       buyingPower: buyingPower(cash, positionsForBp),
+      greeks: totals,
       positions,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

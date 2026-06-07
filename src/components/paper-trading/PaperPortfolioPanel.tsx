@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Wallet, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+interface Greeks { delta: number; gamma: number; theta: number; vega: number; }
+
 interface PaperPosition {
   symbol: string;
   contractKey: string | null;
@@ -15,6 +17,7 @@ interface PaperPosition {
   marketValue: number;
   unrealizedPnl: number;
   markSource: string;
+  greeks: Greeks | null;
 }
 
 interface Portfolio {
@@ -24,6 +27,7 @@ interface Portfolio {
   unrealizedPnl: number;
   equity: number;
   buyingPower: number;
+  greeks?: Greeks;
   positions: PaperPosition[];
 }
 
@@ -105,6 +109,16 @@ export function PaperPortfolioPanel({ refreshKey = 0 }: Props) {
                 </span>
               </span>
             </div>
+
+            {data.greeks && (data.greeks.gamma !== 0 || data.greeks.theta !== 0 || data.greeks.vega !== 0) && (
+              <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border bg-card/50 p-3 text-sm">
+                <span className="text-xs font-medium text-muted-foreground self-center">Portfolio Greeks</span>
+                <span>Δ <span className="font-medium">{data.greeks.delta.toFixed(1)}</span></span>
+                <span>Γ <span className="font-medium">{data.greeks.gamma.toFixed(3)}</span></span>
+                <span>Θ <span className="font-medium">{data.greeks.theta.toFixed(2)}/day</span></span>
+                <span>V <span className="font-medium">{data.greeks.vega.toFixed(2)}/1%</span></span>
+              </div>
+            )}
 
             {data.positions.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
