@@ -171,14 +171,14 @@ export const PaperOptionsOrderEntry = ({
     return total;
   };
 
-  // Calculate aggregate Greeks
+  // Calculate aggregate Greeks using live IV when available
   const calculateAggregateGreeks = () => {
     let delta = 0, gamma = 0, theta = 0, vega = 0;
     const riskFreeRate = 0.05;
-    const iv = 0.3;
 
     legs.forEach(leg => {
       const timeToExpiry = Math.max(0.01, (new Date(leg.expiration).getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
+      const { iv } = ivFor(leg);
       const greeks = calculateGreeks(leg.type.toLowerCase() as 'call' | 'put', underlyingPrice, leg.strike, riskFreeRate, iv, timeToExpiry);
       const multiplier = leg.action.includes('SELL') ? -1 : 1;
       
