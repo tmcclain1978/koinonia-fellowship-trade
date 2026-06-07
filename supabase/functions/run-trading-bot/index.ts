@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { isCronCall, isInternalCall, internalHeaders } from "../_shared/internal-auth.ts";
+import {
+  isDailyLossBreached,
+  isWeeklyLossBreached,
+  portfolioDrawdownPercent as calcDrawdownPercent,
+  isSessionLimitReached,
+} from "../_shared/risk-math.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,7 +114,7 @@ serve(async (req) => {
         }, 0) || 0;
 
         const maxDailyLoss = (settings as any).max_daily_loss || 500;
-        if (todayPnL < -maxDailyLoss) {
+        if (isDailyLossBreached(todayPnL, maxDailyLoss)) {
           console.log(`[Trading Bot] User ${settings.user_id} hit daily loss limit: $${todayPnL.toFixed(2)} (limit: -$${maxDailyLoss})`);
           results.push({
             userId: settings.user_id,
@@ -134,7 +140,7 @@ serve(async (req) => {
         }, 0) || 0;
 
         const maxWeeklyLoss = (settings as any).max_weekly_loss || 2000;
-        if (weekPnL < -maxWeeklyLoss) {
+        if (isWeeklyLossBreached(weekPnL, maxWeeklyLoss)) {
           console.log(`[Trading Bot] User ${settings.user_id} hit weekly loss limit: $${weekPnL.toFixed(2)} (limit: -$${maxWeeklyLoss})`);
           results.push({
             userId: settings.user_id,
@@ -152,7 +158,7 @@ serve(async (req) => {
           .maybeSingle();
 
         if (accountData) {
-          const portfolioDrawdownPercent = ((accountData.starting_balance - accountData.balance) / accountData.starting_balance) * 100;
+          const portfolioDrawdownPercent = calcDrawdownPercent(accountData.starting_balance, accountData.balance);
           const maxPortfolioDrawdown = (settings as any).portfolio_stop_loss_percent || 5;
           
           if (portfolioDrawdownPercent >= maxPortfolioDrawdown) {
@@ -174,7 +180,7 @@ serve(async (req) => {
           .eq("user_id", settings.user_id)
           .gte("executed_at", new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()); // Last 4 hours
 
-        if (sessionTrades && sessionTrades.length >= maxSessionTrades) {
+        if (sessionTrades && isSessionLimitReached(sessionTrades.length, maxSessionTrades)) {
           console.log(`[Trading Bot] User ${settings.user_id} hit session trade limit: ${sessionTrades.length} trades`);
           results.push({
             userId: settings.user_id,

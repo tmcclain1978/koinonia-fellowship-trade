@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import botConfig from "../_shared/trading-bot-config.json" assert { type: "json" };
 import { isInternalCall, internalHeaders } from "../_shared/internal-auth.ts";
+import { calculatePositionSize, exceedsMaxPositionSize, priceDeviationPercent } from "../_shared/risk-math.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -405,7 +406,7 @@ Respond with JSON in this format:
 
     // PHASE 6: Validate entry price against live price
     if (livePrice && recommendation.entry_price) {
-      const priceDeviation = Math.abs((recommendation.entry_price - livePrice) / livePrice) * 100;
+      const priceDeviation = priceDeviationPercent(recommendation.entry_price, livePrice);
       if (priceDeviation > MAX_PRICE_DEVIATION_PERCENT) {
         console.log(`[Bot] Price deviation ${priceDeviation.toFixed(2)}% exceeds ${MAX_PRICE_DEVIATION_PERCENT}%`);
         
@@ -434,8 +435,8 @@ Respond with JSON in this format:
     }
 
     // Validate against policy before executing
-    const positionSize = recommendation.entry_price * recommendation.quantity;
-    if (positionSize > settings.max_position_size) {
+    const positionSize = calculatePositionSize(recommendation.entry_price, recommendation.quantity);
+    if (exceedsMaxPositionSize(recommendation.entry_price, recommendation.quantity, settings.max_position_size)) {
       console.log("[Bot] Position size exceeds limit");
       return new Response(
         JSON.stringify({ 
