@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { pdtDecision } from "../_shared/risk-math.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,35 +105,40 @@ serve(async (req) => {
     // In production, you'd check open positions to see if bought today
     const wouldBeDayTrade = isSell; // Simplified logic
 
-    if (wouldBeDayTrade) {
-      // Warning at 2 day trades
-      if (dayTradeCount === 2) {
-        return new Response(
-          JSON.stringify({ 
-            canTrade: true,
-            warning: true,
-            dayTradeCount,
-            message: '⚠️ WARNING: This will be your 3rd day trade. One more within 5 trading days will flag you as a Pattern Day Trader and may restrict your account.',
-            accountValue
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    const decision = pdtDecision({
+      accountType: credentials.account_type,
+      accountValue,
+      dayTradeCount,
+      wouldBeDayTrade,
+    });
 
-      // Block at 3+ day trades
-      if (dayTradeCount >= 3) {
-        return new Response(
-          JSON.stringify({ 
-            canTrade: false,
-            blocked: true,
-            dayTradeCount,
-            message: '🚫 BLOCKED: You have made 3 day trades in the last 5 trading days. Pattern Day Trading rules prevent additional day trades until your account value exceeds $25,000 or the 5-day window resets.',
-            accountValue,
-            requiresMinimum: 25000
-          }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    // Block at 3+ day trades
+    if (decision.blocked) {
+      return new Response(
+        JSON.stringify({ 
+          canTrade: false,
+          blocked: true,
+          dayTradeCount,
+          message: '🚫 BLOCKED: You have made 3 day trades in the last 5 trading days. Pattern Day Trading rules prevent additional day trades until your account value exceeds $25,000 or the 5-day window resets.',
+          accountValue,
+          requiresMinimum: 25000
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Warning at 2 day trades (next is the 3rd)
+    if (decision.warning) {
+      return new Response(
+        JSON.stringify({ 
+          canTrade: true,
+          warning: true,
+          dayTradeCount,
+          message: '⚠️ WARNING: This will be your 3rd day trade. One more within 5 trading days will flag you as a Pattern Day Trader and may restrict your account.',
+          accountValue
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Allow trade

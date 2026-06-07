@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { isInternalCall, internalHeaders } from "../_shared/internal-auth.ts";
+import { recommendationFromScore } from "../_shared/risk-math.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -167,14 +168,7 @@ serve(async (req) => {
             matchScore += 5;
           }
 
-          let recommendation = "no_trade";
-          if (matchScore >= 85) {
-            recommendation = "strong_opportunity";
-          } else if (matchScore >= 70) {
-            recommendation = "moderate_opportunity";
-          } else if (matchScore >= 55) {
-            recommendation = "watchlist";
-          }
+          const recommendation = recommendationFromScore(matchScore);
 
           return {
             symbol,
