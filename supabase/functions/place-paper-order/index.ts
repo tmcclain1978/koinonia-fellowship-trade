@@ -21,6 +21,35 @@ function normType(t: string): WorkingOrder["orderType"] {
   return "market";
 }
 
+// Create the take-profit (limit) and stop-loss (stop) exits for a bracket.
+// If the entry is still a working order, children wait as 'pending_parent' and
+// the evaluator activates them when the entry fills; if the entry already
+// filled (market), children go straight to 'working'. The two exits share an
+// OCO group so the evaluator cancels the other when one fills.
+async function createBracket(
+  supabase: any,
+  base: Record<string, unknown>,
+  entryOrderId: string | null,
+  exitSide: "buy" | "sell",
+  qty: number,
+  takeProfit: number | null,
+  stopLoss: number | null,
+) {
+  const ocoGroup = crypto.randomUUID();
+  const childStatus = entryOrderId ? "pending_parent" : "working";
+  const rows: Record<string, unknown>[] = [];
+  if (takeProfit && takeProfit > 0) {
+    rows.push({ ...base, side: exitSide, order_type: "limit", quantity: qty, limit_price: takeProfit,
+      time_in_force: "GTC", status: childStatus, oco_group: ocoGroup, parent_order_id: entryOrderId, notes: "bracket take-profit" });
+  }
+  if (stopLoss && stopLoss > 0) {
+    rows.push({ ...base, side: exitSide, order_type: "stop", quantity: qty, stop_price: stopLoss,
+      time_in_force: "GTC", status: childStatus, oco_group: ocoGroup, parent_order_id: entryOrderId, notes: "bracket stop-loss" });
+  }
+  if (rows.length) await supabase.from("paper_orders").insert(rows);
+  return rows.length ? ocoGroup : null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   try {
@@ -33,14 +62,14 @@ serve(async (req) => {
 
     const body = await req.json();
     const { symbol, action, quantity, strike, side, expiration, isStock, notes,
-      limitPrice, stopPrice, trailAmount, trailPercent, timeInForce, ocoGroup, parentOrderId, status: requestedStatus } = body;
+      limitPrice, stopPrice, trailAmount, trailPercent, timeInForce, ocoGroup,
+      takeProfit, stopLoss } = body;
     if (!symbol || !action || !quantity) return reject('Missing required fields');
     if (action !== 'buy' && action !== 'sell') return reject('action must be "buy" or "sell"');
     const qty = Number(quantity);
     if (!(qty > 0)) return reject('quantity must be positive');
     const orderType = normType(body.orderType);
     const tif = (timeInForce === 'GTC' || timeInForce === 'GOOD_TILL_CANCEL') ? 'GTC' : 'DAY';
-    const initStatus = requestedStatus === 'pending_parent' ? 'pending_parent' : 'working';
 
     const isOption = !isStock && strike && strike !== '0' && strike !== 0 && side;
     const mult = isOption ? 100 : 1;
@@ -70,7 +99,12 @@ serve(async (req) => {
       const check = validateOrder(Number(account.balance), existing, action, qty, fillPrice, mult, others);
       if (!check.ok) return reject(check.reason);
       const res = await settleFill({ supabase, userId: user.id, account, symbol, contractKey, mult, side: action, qty, fillPrice, notes, existingRow });
-      return new Response(JSON.stringify({ success: true, status: 'filled', fillPrice, trade: res.trade, realizedPnl: res.fill.realized, newBalance: res.newCash }),
+      const exitSide = action === 'buy' ? 'sell' : 'buy';
+      const bracketBase = { user_id: user.id, account_id: account.id, symbol, contract_key: contractKey, multiplier: mult };
+      const bracketGroup = (takeProfit || stopLoss)
+        ? await createBracket(supabase, bracketBase, null, exitSide, qty, Number(takeProfit) || null, Number(stopLoss) || null)
+        : null;
+      return new Response(JSON.stringify({ success: true, status: 'filled', fillPrice, trade: res.trade, realizedPnl: res.fill.realized, newBalance: res.newCash, bracketGroup }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -100,12 +134,18 @@ serve(async (req) => {
       side: action, order_type: orderType, quantity: qty,
       limit_price: Number(limitPrice) || null, stop_price: initStop,
       trail_amount: Number(trailAmount) || null, trail_percent: Number(trailPercent) || null,
-      watermark: initWatermark, time_in_force: tif, status: initStatus,
-      oco_group: ocoGroup || null, parent_order_id: parentOrderId || null, notes: notes || null,
+      watermark: initWatermark, time_in_force: tif, status: 'working',
+      oco_group: ocoGroup || null, notes: notes || null,
     }).select().single();
     if (orderErr) throw orderErr;
 
-    return new Response(JSON.stringify({ success: true, status: initStatus, order }),
+    const exitSide = action === 'buy' ? 'sell' : 'buy';
+    const bracketBase = { user_id: user.id, account_id: account.id, symbol, contract_key: contractKey, multiplier: mult };
+    const bracketGroup = (takeProfit || stopLoss)
+      ? await createBracket(supabase, bracketBase, order.id, exitSide, qty, Number(takeProfit) || null, Number(stopLoss) || null)
+      : null;
+
+    return new Response(JSON.stringify({ success: true, status: 'working', order, bracketGroup }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('place-paper-order error:', e);
