@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart2, TrendingUp, ChevronDown, ChevronUp, Wallet, LineChart, Activity, Search, Shield } from "lucide-react";
+import { BarChart2, TrendingUp, ChevronDown, ChevronUp, Wallet, LineChart, Activity, Search, Shield, ListOrdered } from "lucide-react";
+import { WorkingOrdersPanel } from "@/components/paper-trading/WorkingOrdersPanel";
 import { PhroureoHelpButton } from "@/components/phroureo";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
@@ -452,7 +453,7 @@ const PaperTrading = () => {
 
           {/* Tab Navigation - Same style as Trading page */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6 mb-4">
+            <TabsList className="grid w-full grid-cols-7 mb-4">
               <TabsTrigger value="options" className="flex items-center gap-2">
                 <BarChart2 className="w-4 h-4" />
                 <span className="hidden sm:inline">Options</span>
@@ -460,6 +461,10 @@ const PaperTrading = () => {
               <TabsTrigger value="positions" className="flex items-center gap-2">
                 <Wallet className="w-4 h-4" />
                 <span className="hidden sm:inline">Positions</span>
+              </TabsTrigger>
+              <TabsTrigger value="orders" className="flex items-center gap-2">
+                <ListOrdered className="w-4 h-4" />
+                <span className="hidden sm:inline">Orders</span>
               </TabsTrigger>
               <TabsTrigger value="analysis" className="flex items-center gap-2">
                 <LineChart className="w-4 h-4" />
@@ -478,6 +483,10 @@ const PaperTrading = () => {
                 <span className="hidden sm:inline">Trades</span>
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="orders" className="space-y-6">
+              <WorkingOrdersPanel defaultSymbol={symbol} onOrderChange={() => { loadAccount(); loadTrades(); }} />
+            </TabsContent>
 
             {/* Options Tab - Same layout as Trading page */}
             <TabsContent value="options" className="space-y-6">
