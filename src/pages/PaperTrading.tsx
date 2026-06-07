@@ -490,6 +490,7 @@ const PaperTrading = () => {
 
             <TabsContent value="orders" className="space-y-6">
               <WorkingOrdersPanel refreshKey={paperRefresh} onChange={() => { setPaperRefresh((k) => k + 1); loadAccount(); loadTrades(); }} />
+              <OrderActivityTimeline refreshKey={paperRefresh} />
             </TabsContent>
 
             {/* Options Tab - Same layout as Trading page */}
