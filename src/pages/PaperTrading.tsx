@@ -86,6 +86,25 @@ const PaperTrading = () => {
     };
   }, [user?.id]);
 
+  // Refresh portfolio + Greeks immediately on every paper-order status change
+  // (working → filled by the cron evaluator, manual cancels, bracket activations).
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel('paper-order-events-refresh')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'paper_order_events', filter: `user_id=eq.${user.id}` },
+        () => {
+          setPaperRefresh((k) => k + 1);
+          loadAccount();
+          loadTrades();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
+
   // Persist symbol to localStorage
   useEffect(() => {
     if (symbol && symbol.length >= 1) {
