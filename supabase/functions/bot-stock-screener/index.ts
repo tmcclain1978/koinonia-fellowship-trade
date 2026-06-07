@@ -160,12 +160,21 @@ serve(async (req) => {
             }
           }
 
-          // 6. IV rank favorable (5 points) - approximate
-          // Low IV for buying options, high IV for selling
-          details.ivRank = Math.random() * 100; // Placeholder - would need real IV data
-          if (details.ivRank < 30 || details.ivRank > 70) {
-            criteria.ivFavorable = true;
-            matchScore += 5;
+          // 6. IV rank favorable (5 points)
+          // NOTE: a correct IV rank is the current implied volatility's
+          // percentile vs its ~52-week range, which needs historical IV data
+          // this app does not yet store. Until a real source is wired in (e.g.
+          // an IV-rank value attached to `analysis`), leave this criterion
+          // UNSCORED. Previously it used Math.random(), which made ~60% of
+          // scores include 5 random points and could flip a symbol across the
+          // strong/moderate/watchlist thresholds between identical runs.
+          const ivRank = analysis.ivRank ?? analysis.livePrice?.ivRank ?? null;
+          if (ivRank !== null && ivRank !== undefined) {
+            details.ivRank = ivRank;
+            if (ivRank < 30 || ivRank > 70) {
+              criteria.ivFavorable = true;
+              matchScore += 5;
+            }
           }
 
           const recommendation = recommendationFromScore(matchScore);
