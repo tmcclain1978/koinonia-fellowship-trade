@@ -18,6 +18,7 @@ import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAnalytics";
 import { PositionsRiskModule } from "@/components/paper-trading/PositionsRiskModule";
 import { PaperPortfolioPanel } from "@/components/paper-trading/PaperPortfolioPanel";
+import { StockOrderTicket } from "@/components/paper-trading/StockOrderTicket";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 import { StreamingPositionsTracker } from "@/components/StreamingPositionsTracker";
 import { PerformanceStreakTracker } from "@/components/analytics/PerformanceStreakTracker";
@@ -41,6 +42,7 @@ const PaperTrading = () => {
     return localStorage.getItem('trading_symbol') || "AAPL";
   });
   const [account, setAccount] = useState<any>(null);
+  const [paperRefresh, setPaperRefresh] = useState(0);
   const [user, setUser] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -485,7 +487,7 @@ const PaperTrading = () => {
             </TabsList>
 
             <TabsContent value="orders" className="space-y-6">
-              <WorkingOrdersPanel defaultSymbol={symbol} onOrderChange={() => { loadAccount(); loadTrades(); }} />
+              <WorkingOrdersPanel refreshKey={paperRefresh} onChange={() => { setPaperRefresh((k) => k + 1); loadAccount(); loadTrades(); }} />
             </TabsContent>
 
             {/* Options Tab - Same layout as Trading page */}
@@ -534,7 +536,11 @@ const PaperTrading = () => {
 
             {/* Positions Tab */}
             <TabsContent value="positions" className="space-y-6">
-              <PaperPortfolioPanel />
+              <PaperPortfolioPanel refreshKey={paperRefresh} />
+              <div className="grid gap-6 lg:grid-cols-2">
+                <StockOrderTicket onPlaced={() => { setPaperRefresh((k) => k + 1); loadAccount(); loadTrades(); }} />
+                <WorkingOrdersPanel refreshKey={paperRefresh} onChange={() => { setPaperRefresh((k) => k + 1); loadAccount(); loadTrades(); }} />
+              </div>
               <RealtimePnLTracker
                 positions={openPositions.map(pos => ({
                   symbol: pos.symbol,
