@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart2, TrendingUp, ChevronDown, ChevronUp, Wallet, LineChart, Activity, Search, Shield, ListOrdered } from "lucide-react";
 import { WorkingOrdersPanel } from "@/components/paper-trading/WorkingOrdersPanel";
+import { OrderActivityTimeline } from "@/components/paper-trading/OrderActivityTimeline";
+import { PaperPerformancePanel } from "@/components/paper-trading/PaperPerformancePanel";
 import { PhroureoHelpButton } from "@/components/phroureo";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
