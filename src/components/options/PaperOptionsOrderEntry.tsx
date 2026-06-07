@@ -63,6 +63,9 @@ export const PaperOptionsOrderEntry = ({
   // Greeks display
   const [showGreeks, setShowGreeks] = useState(true);
   const [underlyingPrice, setUnderlyingPrice] = useState<number>(100);
+  const [chainOptions, setChainOptions] = useState<any[]>([]);
+  const [loadingChain, setLoadingChain] = useState(false);
+  const FALLBACK_IV = 0.30;
 
   // Add leg from chain selection
   useEffect(() => {
@@ -92,6 +95,47 @@ export const PaperOptionsOrderEntry = ({
       }
     }
   }, [selectedOption]);
+
+  // Fetch the live Schwab option chain so Greeks/IV reflect real market values
+  // instead of the previous placeholder underlying=100, iv=0.30.
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+    setLoadingChain(true);
+    supabase.functions
+      .invoke('fetch-schwab-options', { body: { symbol } })
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data?.underlyingPrice && Number(data.underlyingPrice) > 0) {
+          setUnderlyingPrice(Number(data.underlyingPrice));
+        }
+        setChainOptions(Array.isArray(data?.options) ? data.options : []);
+      })
+      .catch(() => { /* graceful fallback to placeholders */ })
+      .finally(() => { if (!cancelled) setLoadingChain(false); });
+    return () => { cancelled = true; };
+  }, [symbol]);
+
+  // Find a matching contract in the cached chain to pull bid/ask/IV/delta.
+  const matchContract = (leg: OptionLegInput) => {
+    if (!chainOptions.length || !leg.strike || !leg.expiration) return null;
+    return chainOptions.find((o: any) =>
+      String(o.type).toUpperCase() === leg.type &&
+      Math.abs(Number(o.strike) - leg.strike) < 0.001 &&
+      String(o.expiration) === leg.expiration
+    ) || null;
+  };
+
+  // Normalize Schwab IV (returned as a percentage like 32.5) to a decimal.
+  const ivFor = (leg: OptionLegInput): { iv: number; source: 'live' | 'fallback' } => {
+    const c = matchContract(leg);
+    let iv = c?.impliedVolatility != null ? Number(c.impliedVolatility) : NaN;
+    if (Number.isFinite(iv) && iv > 0) {
+      if (iv > 3) iv = iv / 100;
+      return { iv, source: 'live' };
+    }
+    return { iv: FALLBACK_IV, source: 'fallback' };
+  };
 
   // Add a new empty leg
   const addLeg = () => {
