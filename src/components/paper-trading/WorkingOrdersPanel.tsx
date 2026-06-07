@@ -10,7 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, RefreshCw, X, Plus, Play, Eye, Search } from "lucide-react";
+import {
+  Loader2, RefreshCw, X, Plus, Play, Eye, Search,
+  Target, ShieldAlert, TrendingUp, TrendingDown, Link2,
+  ArrowUpFromLine, ArrowDownFromLine, RotateCcw
+} from "lucide-react";
 import { safeToFixed } from "@/lib/safeNumber";
 
 type OrderType = "limit" | "stop" | "stop_limit" | "trailing_stop";
@@ -101,6 +105,192 @@ function validateOrder(input: z.infer<typeof baseSchema>): string | null {
   return null;
 }
 
+// ---- Presets --------------------------------------------------------------
+interface OrderPreset {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  isMultiOrder: boolean;
+  configure: (symbol: string, priceHint?: number) => Partial<FormState> & { bracket?: BracketParams };
+}
+
+interface FormState {
+  side: Side;
+  orderType: OrderType;
+  quantity: string;
+  limitPrice: string;
+  stopPrice: string;
+  trailAmount: string;
+  trailPercent: string;
+  tif: TIF;
+}
+
+interface BracketParams {
+  stopLossPrice: string;
+  takeProfitPrice: string;
+}
+
+function computeBracketPrices(side: Side, entryPrice: number, riskPct: number, rr: number): BracketParams {
+  const sl = side === "buy"
+    ? entryPrice * (1 - riskPct / 100)
+    : entryPrice * (1 + riskPct / 100);
+  const risk = Math.abs(entryPrice - sl);
+  const tp = side === "buy"
+    ? entryPrice + risk * rr
+    : entryPrice - risk * rr;
+  return {
+    stopLossPrice: safeToFixed(sl, 2),
+    takeProfitPrice: safeToFixed(tp, 2),
+  };
+}
+
+const PRESETS: OrderPreset[] = [
+  {
+    id: "bracket_buy",
+    label: "Bracket Buy",
+    description: "Limit entry + stop loss + take profit",
+    icon: <Target className="h-3.5 w-3.5" />,
+    isMultiOrder: true,
+    configure: (symbol, priceHint = 100) => {
+      const entry = priceHint;
+      const qty = Math.max(1, Math.floor(5000 / entry));
+      const bracket = computeBracketPrices("buy", entry, 2, 2);
+      return {
+        side: "buy",
+        orderType: "limit" as OrderType,
+        quantity: String(qty),
+        limitPrice: safeToFixed(entry * 0.995, 2),
+        stopPrice: "",
+        trailAmount: "",
+        trailPercent: "",
+        tif: "GTC",
+        bracket,
+      };
+    },
+  },
+  {
+    id: "bracket_sell",
+    label: "Bracket Sell",
+    description: "Short limit entry + stop + target",
+    icon: <ShieldAlert className="h-3.5 w-3.5" />,
+    isMultiOrder: true,
+    configure: (symbol, priceHint = 100) => {
+      const entry = priceHint;
+      const qty = Math.max(1, Math.floor(5000 / entry));
+      const bracket = computeBracketPrices("sell", entry, 2, 2);
+      return {
+        side: "sell",
+        orderType: "limit" as OrderType,
+        quantity: String(qty),
+        limitPrice: safeToFixed(entry * 1.005, 2),
+        stopPrice: "",
+        trailAmount: "",
+        trailPercent: "",
+        tif: "GTC",
+        bracket,
+      };
+    },
+  },
+  {
+    id: "entry_tp_buy",
+    label: "Buy Limit + TP",
+    description: "Limit entry with take-profit limit",
+    icon: <TrendingUp className="h-3.5 w-3.5" />,
+    isMultiOrder: true,
+    configure: (symbol, priceHint = 100) => {
+      const entry = priceHint;
+      const qty = Math.max(1, Math.floor(5000 / entry));
+      const bracket = computeBracketPrices("buy", entry, 0, 2); // no SL, just TP
+      return {
+        side: "buy",
+        orderType: "limit" as OrderType,
+        quantity: String(qty),
+        limitPrice: safeToFixed(entry * 0.995, 2),
+        stopPrice: "",
+        trailAmount: "",
+        trailPercent: "",
+        tif: "GTC",
+        bracket: { stopLossPrice: "", takeProfitPrice: bracket.takeProfitPrice },
+      };
+    },
+  },
+  {
+    id: "entry_tp_sell",
+    label: "Sell Limit + TP",
+    description: "Short limit entry with take-profit limit",
+    icon: <TrendingDown className="h-3.5 w-3.5" />,
+    isMultiOrder: true,
+    configure: (symbol, priceHint = 100) => {
+      const entry = priceHint;
+      const qty = Math.max(1, Math.floor(5000 / entry));
+      const bracket = computeBracketPrices("sell", entry, 0, 2);
+      return {
+        side: "sell",
+        orderType: "limit" as OrderType,
+        quantity: String(qty),
+        limitPrice: safeToFixed(entry * 1.005, 2),
+        stopPrice: "",
+        trailAmount: "",
+        trailPercent: "",
+        tif: "GTC",
+        bracket: { stopLossPrice: "", takeProfitPrice: bracket.takeProfitPrice },
+      };
+    },
+  },
+  {
+    id: "buy_stop",
+    label: "Buy Stop Entry",
+    description: "Stop order above market (breakout)",
+    icon: <ArrowUpFromLine className="h-3.5 w-3.5" />,
+    isMultiOrder: false,
+    configure: (symbol, priceHint = 100) => ({
+      side: "buy",
+      orderType: "stop" as OrderType,
+      quantity: String(Math.max(1, Math.floor(5000 / priceHint))),
+      limitPrice: "",
+      stopPrice: safeToFixed(priceHint * 1.01, 2),
+      trailAmount: "",
+      trailPercent: "",
+      tif: "DAY",
+    }),
+  },
+  {
+    id: "sell_stop",
+    label: "Sell Stop Entry",
+    description: "Stop order below market (breakdown)",
+    icon: <ArrowDownFromLine className="h-3.5 w-3.5" />,
+    isMultiOrder: false,
+    configure: (symbol, priceHint = 100) => ({
+      side: "sell",
+      orderType: "stop" as OrderType,
+      quantity: String(Math.max(1, Math.floor(5000 / priceHint))),
+      limitPrice: "",
+      stopPrice: safeToFixed(priceHint * 0.99, 2),
+      trailAmount: "",
+      trailPercent: "",
+      tif: "DAY",
+    }),
+  },
+  {
+    id: "trailing_exit",
+    label: "Trailing Stop Exit",
+    description: "Trailing stop to protect a position",
+    icon: <Link2 className="h-3.5 w-3.5" />,
+    isMultiOrder: false,
+    configure: (symbol, priceHint = 100) => ({
+      side: "sell",
+      orderType: "trailing_stop" as OrderType,
+      quantity: String(Math.max(1, Math.floor(5000 / priceHint))),
+      limitPrice: "",
+      stopPrice: "",
+      trailAmount: "1.00",
+      trailPercent: "",
+      tif: "GTC",
+    }),
+  },
+];
+
 // ---- Component ------------------------------------------------------------
 export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Props) => {
   const { toast } = useToast();
@@ -114,6 +304,11 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
   const [detailOrder, setDetailOrder] = useState<PaperOrder | null>(null);
   const [detailFills, setDetailFills] = useState<PaperTrade[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Preset state
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [bracketParams, setBracketParams] = useState<BracketParams | null>(null);
+  const [priceHint, setPriceHint] = useState(100);
 
   // Form state
   const [symbol, setSymbol] = useState(defaultSymbol);
@@ -133,6 +328,23 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
   const [typeFilter, setTypeFilter] = useState<"all" | OrderType | "market">("all");
 
   useEffect(() => { setSymbol(defaultSymbol); }, [defaultSymbol]);
+
+  // Fetch a rough price hint for presets
+  const fetchPriceHint = useCallback(async (sym: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-market-data", {
+        body: { symbols: [sym.toUpperCase()] },
+      });
+      if (error) return;
+      const q = data?.quotes?.[0];
+      if (q?.price) setPriceHint(Number(q.price));
+      else if (q?.last) setPriceHint(Number(q.last));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (symbol) fetchPriceHint(symbol);
+  }, [symbol, fetchPriceHint]);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -180,7 +392,34 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
     });
   }, [orders, searchSymbol, typeFilter]);
 
-  const placeOrder = async () => {
+  const resetForm = () => {
+    setActivePreset(null);
+    setBracketParams(null);
+    setOrderType("limit");
+    setLimitPrice("");
+    setStopPrice("");
+    setTrailAmount("");
+    setTrailPercent("");
+    setFormError(null);
+  };
+
+  const applyPreset = (preset: OrderPreset) => {
+    const cfg = preset.configure(symbol, priceHint);
+    setActivePreset(preset.id);
+    setSide(cfg.side ?? "buy");
+    setOrderType(cfg.orderType ?? "limit");
+    setQuantity(cfg.quantity ?? "1");
+    setLimitPrice(cfg.limitPrice ?? "");
+    setStopPrice(cfg.stopPrice ?? "");
+    setTrailAmount(cfg.trailAmount ?? "");
+    setTrailPercent(cfg.trailPercent ?? "");
+    setTif(cfg.tif ?? "DAY");
+    if (cfg.bracket) setBracketParams(cfg.bracket);
+    else setBracketParams(null);
+    setFormError(null);
+  };
+
+  const placeSingleOrder = async () => {
     setFormError(null);
     const input = {
       symbol: symbol.trim().toUpperCase(),
@@ -213,6 +452,8 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
 
       toast({ title: "Order placed", description: `${input.side.toUpperCase()} ${input.quantity} ${input.symbol} ${input.orderType}` });
       setLimitPrice(""); setStopPrice(""); setTrailAmount(""); setTrailPercent("");
+      setActivePreset(null);
+      setBracketParams(null);
       await loadOrders();
       onOrderChange?.();
     } catch (err: any) {
@@ -223,9 +464,85 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
     }
   };
 
+  const placeBracket = async () => {
+    if (!bracketParams) return;
+    setFormError(null);
+    const sym = symbol.trim().toUpperCase();
+    const qty = Number(quantity);
+    const input = {
+      symbol: sym, side, orderType, quantity: qty, tif,
+      limitPrice: limitPrice === "" ? null : Number(limitPrice),
+      stopPrice: stopPrice === "" ? null : Number(stopPrice),
+      trailAmount: trailAmount === "" ? null : Number(trailAmount),
+      trailPercent: trailPercent === "" ? null : Number(trailPercent),
+    };
+    const err = validateOrder(input);
+    if (err) { setFormError(err); return; }
+
+    setPlacing(true);
+    try {
+      const ocoGroup = crypto.randomUUID();
+      const notesBase = activePreset ? `Preset: ${PRESETS.find(p => p.id === activePreset)?.label ?? activePreset}` : "";
+
+      // 1. Entry order (parent)
+      const entryBody: Record<string, any> = {
+        symbol: sym, action: side, quantity: qty,
+        orderType, timeInForce: tif, isStock: true, ocoGroup,
+        notes: notesBase,
+      };
+      if (input.limitPrice != null) entryBody.limitPrice = input.limitPrice;
+      if (input.stopPrice != null) entryBody.stopPrice = input.stopPrice;
+
+      const { data: entryRes, error: entryErr } = await supabase.functions.invoke("place-paper-order", { body: entryBody });
+      if (entryErr) throw entryErr;
+      if (entryRes?.success === false) throw new Error(entryRes.error || "Entry order rejected");
+      const parentId = entryRes?.order?.id;
+      if (!parentId) throw new Error("Entry order did not return an ID");
+
+      // 2. Stop loss child (if provided)
+      if (bracketParams.stopLossPrice && Number(bracketParams.stopLossPrice) > 0) {
+        const slSide = side === "buy" ? "sell" : "buy";
+        const slBody = {
+          symbol: sym, action: slSide, quantity: qty,
+          orderType: "stop", timeInForce: "GTC", isStock: true,
+          ocoGroup, parentOrderId: parentId, status: "pending_parent",
+          stopPrice: Number(bracketParams.stopLossPrice),
+          notes: notesBase ? `${notesBase} | Stop Loss` : "Stop Loss",
+        };
+        const { data: slRes, error: slErr } = await supabase.functions.invoke("place-paper-order", { body: slBody });
+        if (slErr) throw slErr;
+        if (slRes?.success === false) console.warn("Stop-loss placement warning:", slRes.error);
+      }
+
+      // 3. Take profit child (if provided)
+      if (bracketParams.takeProfitPrice && Number(bracketParams.takeProfitPrice) > 0) {
+        const tpSide = side === "buy" ? "sell" : "buy";
+        const tpBody = {
+          symbol: sym, action: tpSide, quantity: qty,
+          orderType: "limit", timeInForce: "GTC", isStock: true,
+          ocoGroup, parentOrderId: parentId, status: "pending_parent",
+          limitPrice: Number(bracketParams.takeProfitPrice),
+          notes: notesBase ? `${notesBase} | Take Profit` : "Take Profit",
+        };
+        const { data: tpRes, error: tpErr } = await supabase.functions.invoke("place-paper-order", { body: tpBody });
+        if (tpErr) throw tpErr;
+        if (tpRes?.success === false) console.warn("Take-profit placement warning:", tpRes.error);
+      }
+
+      toast({ title: "Bracket placed", description: `${sym} ${side} ${qty} with OCO group` });
+      resetForm();
+      await loadOrders();
+      onOrderChange?.();
+    } catch (err: any) {
+      setFormError(err.message);
+      toast({ title: "Bracket failed", description: err.message, variant: "destructive" });
+    } finally {
+      setPlacing(false);
+    }
+  };
+
   const cancelOrder = async (id: string) => {
     setCancellingId(id);
-    // Optimistic remove from visible list
     const previous = orders;
     setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status: "cancelled" } : o));
     try {
@@ -255,7 +572,7 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
       if (s) setLastEvalSummary(s);
       toast({
         title: "Evaluated working orders",
-        description: s ? `Filled ${s.filled} · Triggered ${s.triggered} · Expired ${s.expired} · Cancelled ${s.cancelled}` : "Done",
+        description: s ? `Filled ${s.filled} \u00b7 Triggered ${s.triggered} \u00b7 Expired ${s.expired} \u00b7 Cancelled ${s.cancelled}` : "Done",
       });
       await loadOrders();
       onOrderChange?.();
@@ -271,7 +588,6 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
     setDetailFills([]);
     setDetailLoading(true);
     try {
-      // Fetch fills for this symbol/contract around/after the order was placed
       let q = supabase.from("paper_trades").select("*")
         .eq("symbol", o.symbol)
         .gte("executed_at", o.created_at)
@@ -287,6 +603,7 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
   const needsLimit = orderType === "limit" || orderType === "stop_limit";
   const needsStop = orderType === "stop" || orderType === "stop_limit";
   const isTrail = orderType === "trailing_stop";
+  const isBracketMode = !!activePreset && PRESETS.find(p => p.id === activePreset)?.isMultiOrder;
 
   const statusBadgeVariant = (s: string): "default" | "secondary" | "destructive" | "outline" => {
     if (s === "filled") return "default";
@@ -321,6 +638,33 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Presets */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs uppercase text-muted-foreground">Quick Presets</Label>
+              {activePreset && (
+                <Button size="sm" variant="ghost" onClick={resetForm} className="h-6 px-2 text-xs">
+                  <RotateCcw className="h-3 w-3 mr-1" /> Reset
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  size="sm"
+                  variant={activePreset === preset.id ? "default" : "outline"}
+                  onClick={() => applyPreset(preset)}
+                  className="h-8 text-xs gap-1"
+                  title={preset.description}
+                >
+                  {preset.icon}
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
           {/* Order entry */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-lg border bg-muted/30">
             <div>
@@ -355,7 +699,9 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
             </div>
             {needsLimit && (
               <div>
-                <Label className="text-xs">Limit Price</Label>
+                <Label className="text-xs">
+                  Limit Price {isBracketMode && bracketParams?.takeProfitPrice && <span className="text-muted-foreground">(entry)</span>}
+                </Label>
                 <Input type="number" step="0.01" min="0" value={limitPrice} onChange={(e) => setLimitPrice(e.target.value)} />
               </div>
             )}
@@ -389,13 +735,40 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Bracket params display */}
+            {isBracketMode && bracketParams && (
+              <>
+                {bracketParams.stopLossPrice && (
+                  <div>
+                    <Label className="text-xs flex items-center gap-1 text-red-500">
+                      <ShieldAlert className="h-3 w-3" /> Stop Loss
+                    </Label>
+                    <div className="h-9 px-3 flex items-center rounded-md border bg-red-500/10 text-red-400 font-mono text-sm">
+                      ${bracketParams.stopLossPrice}
+                    </div>
+                  </div>
+                )}
+                {bracketParams.takeProfitPrice && (
+                  <div>
+                    <Label className="text-xs flex items-center gap-1 text-green-500">
+                      <Target className="h-3 w-3" /> Take Profit
+                    </Label>
+                    <div className="h-9 px-3 flex items-center rounded-md border bg-green-500/10 text-green-400 font-mono text-sm">
+                      ${bracketParams.takeProfitPrice}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {formError && (
               <div className="col-span-2 md:col-span-4 text-sm text-destructive">{formError}</div>
             )}
             <div className="col-span-2 md:col-span-4">
-              <Button onClick={placeOrder} disabled={placing} className="w-full">
+              <Button onClick={isBracketMode ? placeBracket : placeSingleOrder} disabled={placing} className="w-full">
                 {placing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                Place Working Order
+                {isBracketMode ? "Place Bracket" : "Place Working Order"}
               </Button>
             </div>
           </div>
@@ -440,6 +813,7 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
             ) : (
               filteredOrders.map((o) => {
                 const isWorking = o.status === "working" || o.status === "pending_parent";
+                const isChild = !!o.parent_order_id;
                 return (
                   <div key={o.id} className="flex items-center justify-between p-3 rounded-lg border bg-card gap-3">
                     <div className="flex-1 min-w-0">
@@ -449,14 +823,16 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
                         <Badge variant="outline" className="uppercase">{o.order_type.replace("_", " ")}</Badge>
                         <Badge variant="secondary">{o.time_in_force}</Badge>
                         <Badge variant={statusBadgeVariant(o.status)} className="uppercase">{o.status.replace("_", " ")}</Badge>
+                        {o.oco_group && <Badge variant="outline" className="text-xs"><Link2 className="h-3 w-3 mr-1" />OCO</Badge>}
+                        {isChild && <Badge variant="outline" className="text-xs">Child</Badge>}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         Qty {Number(o.quantity)}
-                        {o.limit_price != null && ` · Limit $${safeToFixed(o.limit_price, 2)}`}
-                        {o.stop_price != null && ` · Stop $${safeToFixed(o.stop_price, 2)}`}
-                        {o.trail_amount != null && ` · Trail $${safeToFixed(o.trail_amount, 2)}`}
-                        {o.trail_percent != null && ` · Trail ${safeToFixed(o.trail_percent, 2)}%`}
-                        {o.filled_price != null && ` · Filled @ $${safeToFixed(o.filled_price, 2)}`}
+                        {o.limit_price != null && ` \u00b7 Limit $${safeToFixed(o.limit_price, 2)}`}
+                        {o.stop_price != null && ` \u00b7 Stop $${safeToFixed(o.stop_price, 2)}`}
+                        {o.trail_amount != null && ` \u00b7 Trail $${safeToFixed(o.trail_amount, 2)}`}
+                        {o.trail_percent != null && ` \u00b7 Trail ${safeToFixed(o.trail_percent, 2)}%`}
+                        {o.filled_price != null && ` \u00b7 Filled @ $${safeToFixed(o.filled_price, 2)}`}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Placed {new Date(o.created_at).toLocaleString()}
@@ -504,6 +880,8 @@ export const WorkingOrdersPanel = ({ defaultSymbol = "AAPL", onOrderChange }: Pr
                 <DetailRow label="Quantity" value={String(detailOrder.quantity)} />
                 <DetailRow label="Time in Force" value={detailOrder.time_in_force} />
                 {detailOrder.contract_key && <DetailRow label="Contract" value={detailOrder.contract_key} />}
+                {detailOrder.oco_group && <DetailRow label="OCO Group" value={detailOrder.oco_group.slice(0, 8) + "..."} />}
+                {detailOrder.parent_order_id && <DetailRow label="Parent" value={detailOrder.parent_order_id.slice(0, 8) + "..."} />}
 
                 <Separator />
                 <div className="font-medium text-xs uppercase text-muted-foreground">Parameters</div>
