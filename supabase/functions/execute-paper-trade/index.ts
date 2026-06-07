@@ -4,6 +4,7 @@ import {
   resolveFillPrice, applyFill, cashDelta, validateOrder,
   type Position, type Quote,
 } from "../_shared/paper-account.ts";
+import { fetchQuote } from "../_shared/quote.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,27 +15,6 @@ function reject(message: string, status = 400) {
   return new Response(JSON.stringify({ success: false, error: message }), {
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
-}
-
-// Fetch a real quote server-side. Tries Schwab, then Alpaca. Never trusts a
-// client-supplied price. Returns a normalized Quote or null if unavailable.
-async function fetchQuote(supabase: any, userId: string, symbol: string): Promise<Quote | null> {
-  try {
-    const { data } = await supabase.functions.invoke("schwab-quotes", { body: { symbols: [symbol], userId } });
-    const q = data?.quotes?.[symbol];
-    if (q) {
-      const quote: Quote = { bid: q.bidPrice ?? null, ask: q.askPrice ?? null, last: q.lastPrice ?? null, mark: q.mark ?? null };
-      if (quote.bid || quote.ask || quote.last || quote.mark) return quote;
-    }
-  } catch (_) { /* fall through to Alpaca */ }
-  try {
-    const { data } = await supabase.functions.invoke("alpaca-quotes", { body: { symbols: [symbol] } });
-    const lq = data?.quotes?.[0]?.latestQuote;
-    if (lq && (lq.ap || lq.bp)) {
-      return { bid: lq.bp ?? null, ask: lq.ap ?? null, last: (lq.ap && lq.bp) ? (lq.ap + lq.bp) / 2 : null, mark: null };
-    }
-  } catch (_) { /* no quote available */ }
-  return null;
 }
 
 serve(async (req) => {

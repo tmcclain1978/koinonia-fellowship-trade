@@ -16,6 +16,7 @@ import { OpenPositions } from "@/components/OpenPositions";
 import { KoinoniaIndicator } from "@/components/KoinoniaIndicator";
 import { PaperTradingAnalytics } from "@/components/paper-trading/PaperTradingAnalytics";
 import { PositionsRiskModule } from "@/components/paper-trading/PositionsRiskModule";
+import { PaperPortfolioPanel } from "@/components/paper-trading/PaperPortfolioPanel";
 import { LivePriceDisplay } from "@/components/LivePriceDisplay";
 import { StreamingPositionsTracker } from "@/components/StreamingPositionsTracker";
 import { PerformanceStreakTracker } from "@/components/analytics/PerformanceStreakTracker";
@@ -524,6 +525,7 @@ const PaperTrading = () => {
 
             {/* Positions Tab */}
             <TabsContent value="positions" className="space-y-6">
+              <PaperPortfolioPanel />
               <RealtimePnLTracker
                 positions={openPositions.map(pos => ({
                   symbol: pos.symbol,
