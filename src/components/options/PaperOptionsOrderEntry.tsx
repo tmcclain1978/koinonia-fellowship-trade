@@ -443,10 +443,15 @@ export const PaperOptionsOrderEntry = ({
 
         {/* Greeks Display */}
         {showGreeks && legs.length > 0 && (
-          <div className="p-3 border rounded-lg space-y-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Calculator className="h-4 w-4" />
-              <span className="text-sm font-medium">Position Greeks</span>
+          <div className="p-3 border rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                <span className="text-sm font-medium">Position Greeks</span>
+              </div>
+              <Badge variant="outline" className="text-[10px]">
+                {loadingChain ? "Loading chain…" : `Underlying $${underlyingPrice.toFixed(2)}`}
+              </Badge>
             </div>
             <div className="grid grid-cols-4 gap-2 text-xs">
               <div>
@@ -465,6 +470,50 @@ export const PaperOptionsOrderEntry = ({
                 <span className="text-muted-foreground">Vega:</span>
                 <span className="ml-1 font-mono">{greeks.vega.toFixed(2)}</span>
               </div>
+            </div>
+
+            {/* Per-leg Greeks + IV from the live Schwab chain */}
+            <div className="space-y-1 border-t pt-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Per leg</p>
+              {legs.map((leg, idx) => {
+                if (!leg.strike || !leg.expiration) {
+                  return (
+                    <div key={leg.id} className="text-[11px] text-muted-foreground">
+                      Leg {idx + 1}: fill in strike + expiration to see Greeks
+                    </div>
+                  );
+                }
+                const { iv, source } = ivFor(leg);
+                const T = Math.max(
+                  0.01,
+                  (new Date(leg.expiration).getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000)
+                );
+                const g = calculateGreeks(
+                  leg.type.toLowerCase() as 'call' | 'put',
+                  underlyingPrice,
+                  leg.strike,
+                  0.05,
+                  iv,
+                  T
+                );
+                return (
+                  <div key={leg.id} className="grid grid-cols-6 gap-1 text-[11px]">
+                    <span className="col-span-1 font-medium">
+                      L{idx + 1} {leg.type[0]}${leg.strike}
+                    </span>
+                    <span className="font-mono">Δ {g.delta.toFixed(3)}</span>
+                    <span className="font-mono">Γ {g.gamma.toFixed(4)}</span>
+                    <span className="font-mono">Θ {g.theta.toFixed(3)}</span>
+                    <span className="font-mono">V {g.vega.toFixed(3)}</span>
+                    <span className={`font-mono ${source === 'live' ? '' : 'text-muted-foreground'}`}>
+                      IV {(iv * 100).toFixed(1)}%{source === 'fallback' ? '*' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+              <p className="text-[10px] text-muted-foreground">
+                Greeks per contract (×100 share multiplier). IV{legs.some(l => ivFor(l).source === 'fallback') ? '* falls back to 30% when the chain has no value.' : ' sourced from the live Schwab chain.'}
+              </p>
             </div>
           </div>
         )}
