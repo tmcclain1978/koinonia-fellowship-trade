@@ -1,10 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import botConfig from "../_shared/trading-bot-config.json" assert { type: "json" };
+import { isInternalCall, internalHeaders } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
 const MAX_PRICE_DEVIATION_PERCENT = 2;
@@ -12,6 +14,16 @@ const MAX_PRICE_DEVIATION_PERCENT = 2;
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Internal-only. This function trusts the userId in its body and can place
+  // trades, so it must never be reachable by end users or the public anon key.
+  // Only run-trading-bot (service role + internal secret) may call it.
+  if (!isInternalCall(req)) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -61,6 +73,7 @@ serve(async (req) => {
     if (!analysis) {
       console.log("[Bot] Fetching enhanced analysis...");
       const analysisResponse = await supabase.functions.invoke("enhanced-bot-analysis", {
+        headers: internalHeaders(),
         body: { userId, symbols: [symbol] }
       });
       
