@@ -1,9 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { isCronCall, isInternalCall, internalHeaders } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-cron-secret, x-internal-secret",
 };
 
 serve(async (req) => {
@@ -11,18 +13,41 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Only the scheduler (cron secret) or another edge function (internal
+  // secret) may run the fleet. End users reach their OWN bot via run-my-bot,
+  // which calls back in with the internal secret + a targetUserId.
+  if (!isCronCall(req) && !isInternalCall(req)) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log("[Trading Bot] Running scheduled check with enhanced screening...");
+    // Optional single-user target (set by run-my-bot for a manual run).
+    let targetUserId: string | null = null;
+    try {
+      const body = await req.json();
+      targetUserId = body?.targetUserId ?? null;
+    } catch (_) {
+      // no body (cron) — process all enabled users
+    }
 
-    // Get all users with enabled auto-trading
-    const { data: activeSettings } = await supabase
+    console.log(
+      `[Trading Bot] Running check${targetUserId ? ` for user ${targetUserId}` : " (all enabled users)"}...`,
+    );
+
+    // Get enabled auto-trading users (optionally just the targeted one)
+    let settingsQuery = supabase
       .from("auto_trading_settings")
       .select("*")
       .eq("enabled", true);
+    if (targetUserId) settingsQuery = settingsQuery.eq("user_id", targetUserId);
+    const { data: activeSettings } = await settingsQuery;
 
     if (!activeSettings || activeSettings.length === 0) {
       console.log("[Trading Bot] No active bots found");
@@ -167,6 +192,7 @@ serve(async (req) => {
         console.log(`[Trading Bot] Running screener for user ${settings.user_id} (threshold: ${userThreshold}%, screener min: ${minScreenerConfidence}%)...`);
         
         const { data: screenerData, error: screenerError } = await supabase.functions.invoke("bot-stock-screener", {
+          headers: internalHeaders(),
           body: {
             userId: settings.user_id,
             customSymbols: settings.allowed_symbols?.length ? settings.allowed_symbols : undefined,
@@ -223,6 +249,7 @@ serve(async (req) => {
           console.log(`[Trading Bot] Getting enhanced analysis for ${opportunity.symbol}...`);
           
           const { data: analysisData } = await supabase.functions.invoke("enhanced-bot-analysis", {
+            headers: internalHeaders(),
             body: {
               userId: settings.user_id,
               symbols: [opportunity.symbol]
@@ -235,6 +262,7 @@ serve(async (req) => {
           console.log(`[Trading Bot] Calling auto-trading-bot for ${opportunity.symbol}...`);
           
           const { data: botData, error: botError } = await supabase.functions.invoke("auto-trading-bot", {
+            headers: internalHeaders(),
             body: {
               userId: settings.user_id,
               symbol: opportunity.symbol,

@@ -152,3 +152,6 @@ verify_jwt = false
 
 [functions.link-family-member]
 verify_jwt = true
+
+[functions.run-my-bot]
+verify_jwt = true
