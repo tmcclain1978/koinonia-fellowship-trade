@@ -1042,6 +1042,53 @@ export type Database = {
         }
         Relationships: []
       }
+      paper_positions: {
+        Row: {
+          account_id: string
+          avg_cost: number
+          contract_key: string | null
+          id: string
+          multiplier: number
+          opened_at: string
+          quantity: number
+          symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          avg_cost: number
+          contract_key?: string | null
+          id?: string
+          multiplier?: number
+          opened_at?: string
+          quantity: number
+          symbol: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          avg_cost?: number
+          contract_key?: string | null
+          id?: string
+          multiplier?: number
+          opened_at?: string
+          quantity?: number
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paper_positions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "paper_trading_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paper_trades: {
         Row: {
           account_id: string
@@ -1100,6 +1147,7 @@ export type Database = {
           balance: number
           created_at: string
           id: string
+          realized_pnl: number
           starting_balance: number
           updated_at: string
           user_id: string
@@ -1108,6 +1156,7 @@ export type Database = {
           balance?: number
           created_at?: string
           id?: string
+          realized_pnl?: number
           starting_balance?: number
           updated_at?: string
           user_id: string
@@ -1116,6 +1165,7 @@ export type Database = {
           balance?: number
           created_at?: string
           id?: string
+          realized_pnl?: number
           starting_balance?: number
           updated_at?: string
           user_id?: string
