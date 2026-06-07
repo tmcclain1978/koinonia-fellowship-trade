@@ -1,10 +1,41 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  resolveFillPrice, applyFill, cashDelta, validateOrder,
+  type Position, type Quote,
+} from "../_shared/paper-account.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+function reject(message: string, status = 400) {
+  return new Response(JSON.stringify({ success: false, error: message }), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// Fetch a real quote server-side. Tries Schwab, then Alpaca. Never trusts a
+// client-supplied price. Returns a normalized Quote or null if unavailable.
+async function fetchQuote(supabase: any, userId: string, symbol: string): Promise<Quote | null> {
+  try {
+    const { data } = await supabase.functions.invoke("schwab-quotes", { body: { symbols: [symbol], userId } });
+    const q = data?.quotes?.[symbol];
+    if (q) {
+      const quote: Quote = { bid: q.bidPrice ?? null, ask: q.askPrice ?? null, last: q.lastPrice ?? null, mark: q.mark ?? null };
+      if (quote.bid || quote.ask || quote.last || quote.mark) return quote;
+    }
+  } catch (_) { /* fall through to Alpaca */ }
+  try {
+    const { data } = await supabase.functions.invoke("alpaca-quotes", { body: { symbols: [symbol] } });
+    const lq = data?.quotes?.[0]?.latestQuote;
+    if (lq && (lq.ap || lq.bp)) {
+      return { bid: lq.bp ?? null, ask: lq.ap ?? null, last: (lq.ap && lq.bp) ? (lq.ap + lq.bp) / 2 : null, mark: null };
+    }
+  } catch (_) { /* no quote available */ }
+  return null;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,219 +46,130 @@ serve(async (req) => {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('Unauthorized');
+    if (!user) return reject('Unauthorized', 401);
+
+    const { symbol, action, quantity, strike, side, expiration, isStock, notes, slippageBps } = await req.json();
+    if (!symbol || !action || !quantity) return reject('Missing required fields');
+    if (action !== 'buy' && action !== 'sell') return reject('action must be "buy" or "sell"');
+    const qty = Number(quantity);
+    if (!(qty > 0)) return reject('quantity must be a positive number');
+
+    // Options vs stock (single-leg options carry strike/side; full multi-leg is Phase 3)
+    const isOption = !isStock && strike && strike !== '0' && strike !== 0 && side;
+    const mult = isOption ? 100 : 1;
+    const contractKey = isOption ? `${side} ${strike} ${expiration || ''}`.trim() : null;
+
+    // Get or create the paper account
+    let { data: account, error: accErr } = await supabase
+      .from('paper_trading_accounts').select('*').eq('user_id', user.id).single();
+    if (accErr && accErr.code === 'PGRST116') {
+      const { data: created, error: createErr } = await supabase
+        .from('paper_trading_accounts').insert({ user_id: user.id }).select().single();
+      if (createErr) throw createErr;
+      account = created;
+    } else if (accErr) {
+      throw accErr;
     }
 
-    const { symbol, action, quantity, price, strike, side, expiration, notes, isStock } = await req.json();
+    // REAL quote — the fill price comes from the market, not the client.
+    const quote = await fetchQuote(supabase, user.id, symbol);
+    if (!quote) return reject(`Unable to get a live quote for ${symbol}. Order not filled.`);
+    const fillPrice = resolveFillPrice(action, quote, Number(slippageBps) || 0);
+    if (!fillPrice || fillPrice <= 0) return reject(`No tradable price available for ${symbol}.`);
 
-    if (!symbol || !action || !quantity || !price) {
-      throw new Error('Missing required fields');
-    }
+    // Load positions for this account
+    const { data: allRows } = await supabase
+      .from('paper_positions').select('*').eq('account_id', account.id);
+    const keyMatch = (p: any) => p.symbol === symbol && (p.contract_key ?? null) === (contractKey ?? null);
+    const existingRow = (allRows || []).find(keyMatch) || null;
+    const existing: Position | null = existingRow
+      ? { qty: Number(existingRow.quantity), avgCost: Number(existingRow.avg_cost), mult }
+      : null;
+    const others: Position[] = (allRows || []).filter((p: any) => !keyMatch(p))
+      .map((p: any) => ({ qty: Number(p.quantity), avgCost: Number(p.avg_cost), mult: Number(p.multiplier) }));
 
-    // Get or create paper trading account
-    let { data: account, error: accountError } = await supabase
-      .from('paper_trading_accounts')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
+    // Buying-power check (includes legitimate shorting; closing is never blocked)
+    const check = validateOrder(Number(account.balance), existing, action, qty, fillPrice, mult, others);
+    if (!check.ok) return reject(check.reason);
 
-    if (accountError && accountError.code === 'PGRST116') {
-      // Create new account if doesn't exist
-      const { data: newAccount, error: createError } = await supabase
-        .from('paper_trading_accounts')
-        .insert({ user_id: user.id })
-        .select()
-        .single();
+    // Apply the fill
+    const delta = action === 'buy' ? qty : -qty;
+    const fill = applyFill(existing ?? { qty: 0, avgCost: 0, mult }, delta, fillPrice, mult);
+    const newCash = Number(account.balance) + cashDelta(action, qty, fillPrice, mult, 0);
+    const newRealized = Number(account.realized_pnl || 0) + fill.realized;
+    const nowIso = new Date().toISOString();
 
-      if (createError) throw createError;
-      account = newAccount;
-    }
-
-    // Detect if this is an options trade based on strike/side or explicit isStock flag
-    const isOptionsTradeDetected = !isStock && strike && strike !== '0' && strike !== 0 && side;
-    const multiplier = isOptionsTradeDetected ? 100 : 1;
-    
-    // Build contract key for matching (only for options)
-    const contractKey = isOptionsTradeDetected ? `${side} ${strike} ${expiration || ''}`.trim() : null;
-    
-    const totalValue = Number(quantity) * Number(price) * multiplier;
-    let profitLoss = null;
-
-    // Check if user has enough balance for buy
-    if (action === 'buy' && account.balance < totalValue) {
-      throw new Error('Insufficient balance');
-    }
-
-    // Calculate profit/loss for sell orders using FIFO matching
-    if (action === 'sell') {
-      let matchQuery = supabase
-        .from('paper_trades')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('symbol', symbol)
-        .eq('action', 'buy')
-        .order('executed_at', { ascending: true }); // FIFO ordering
-
-      // For options, match by exact contract specification
-      if (isOptionsTradeDetected && contractKey) {
-        matchQuery = matchQuery.eq('notes', contractKey);
-      }
-
-      const { data: matchingBuys, error: matchError } = await matchQuery;
-
-      if (matchError) {
-        console.error('Error finding matching buys:', matchError);
-      }
-
-      if (matchingBuys && matchingBuys.length > 0) {
-        // Calculate weighted average entry price using FIFO
-        let remainingQtyToSell = Number(quantity);
-        let totalCostBasis = 0;
-        let qtyMatched = 0;
-
-        for (const buy of matchingBuys) {
-          if (remainingQtyToSell <= 0) break;
-          
-          const buyQty = Number(buy.quantity);
-          const qtyToUse = Math.min(buyQty, remainingQtyToSell);
-          
-          totalCostBasis += Number(buy.price) * qtyToUse;
-          qtyMatched += qtyToUse;
-          remainingQtyToSell -= qtyToUse;
-        }
-
-        if (qtyMatched > 0) {
-          const avgEntryPrice = totalCostBasis / qtyMatched;
-          // P/L = (sell price - avg entry price) * quantity * multiplier
-          profitLoss = (Number(price) - avgEntryPrice) * Number(quantity) * multiplier;
-          
-          console.log('P/L Calculation:', {
-            symbol,
-            contractKey,
-            avgEntryPrice,
-            sellPrice: Number(price),
-            quantity: Number(quantity),
-            multiplier,
-            profitLoss,
-            matchedBuys: matchingBuys.length,
-          });
-        }
-      } else {
-        console.log('No matching buy trades found for:', { symbol, contractKey });
-        // If no matching buys found, calculate P/L as just the sell value
-        // This handles edge cases where buy trades may have been deleted or not tracked
-        profitLoss = 0;
-      }
-    }
-
-    // Update account balance
-    const newBalance = action === 'buy' 
-      ? account.balance - totalValue 
-      : account.balance + totalValue;
-
-    await supabase
-      .from('paper_trading_accounts')
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+    // Persist account
+    await supabase.from('paper_trading_accounts')
+      .update({ balance: newCash, realized_pnl: newRealized, updated_at: nowIso })
       .eq('id', account.id);
 
-    // Build notes for trade record
-    const tradeNotes = notes || contractKey || symbol;
-
-    // Insert trade record
-    const { data: trade, error: tradeError } = await supabase
-      .from('paper_trades')
-      .insert({
-        user_id: user.id,
-        account_id: account.id,
-        symbol,
-        action,
-        quantity: Number(quantity),
-        price: Number(price),
-        total_value: totalValue,
-        profit_loss: profitLoss,
-        notes: tradeNotes,
-      })
-      .select()
-      .single();
-
-    if (tradeError) throw tradeError;
-
-    // Log to bot performance for learning (both opens and closes)
-    const performanceLog: Record<string, unknown> = {
-      user_id: user.id,
-      trade_id: trade.id,
-      symbol,
-      strategy: action === 'buy' ? 'paper_buy' : 'paper_sell',
-      entry_price: Number(price),
-      quantity: Number(quantity),
-      trade_opened_at: new Date().toISOString(),
-    };
-
-    // If it's a sell (close), calculate performance metrics
-    if (action === 'sell' && profitLoss !== null) {
-      performanceLog.exit_price = Number(price);
-      performanceLog.trade_closed_at = new Date().toISOString();
-      performanceLog.profit_factor = profitLoss > 0 ? (profitLoss / totalValue) * 100 : null;
-      performanceLog.actual_rr = totalValue > 0 ? profitLoss / totalValue : null;
-      
-      // Simple execution quality score based on profit
-      performanceLog.execution_quality_score = profitLoss > 0 ? 85 : 50;
-      performanceLog.discipline_score = 75; // Default for paper trades
+    // Persist position (delete if flat, else update/insert)
+    if (fill.qty === 0) {
+      if (existingRow) await supabase.from('paper_positions').delete().eq('id', existingRow.id);
+    } else if (existingRow) {
+      await supabase.from('paper_positions')
+        .update({ quantity: fill.qty, avg_cost: fill.avgCost, updated_at: nowIso })
+        .eq('id', existingRow.id);
+    } else {
+      await supabase.from('paper_positions').insert({
+        user_id: user.id, account_id: account.id, symbol, contract_key: contractKey,
+        multiplier: mult, quantity: fill.qty, avg_cost: fill.avgCost,
+      });
     }
 
-    // Insert into bot_performance_log for learning
-    await supabase
-      .from('bot_performance_log')
-      .insert(performanceLog);
+    // Record the trade at the REAL fill price
+    const totalValue = qty * fillPrice * mult;
+    const tradeNotes = notes || contractKey || symbol;
+    const { data: trade, error: tradeErr } = await supabase.from('paper_trades').insert({
+      user_id: user.id, account_id: account.id, symbol, action,
+      quantity: qty, price: fillPrice, total_value: totalValue,
+      profit_loss: fill.realized !== 0 ? fill.realized : null, notes: tradeNotes,
+    }).select().single();
+    if (tradeErr) throw tradeErr;
 
-    // Auto-create trading journal entry
-    const journalContent = action === 'buy' 
-      ? `Opened position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. ${tradeNotes}`
-      : `Closed position: ${action.toUpperCase()} ${quantity} ${symbol} @ $${price}. P&L: ${profitLoss !== null ? (profitLoss >= 0 ? '+' : '') + '$' + profitLoss.toFixed(2) : 'N/A'}. ${tradeNotes}`;
-    
-    await supabase
-      .from('trading_journal')
-      .insert({
-        user_id: user.id,
-        entry_type: 'trade',
-        symbol,
-        trade_id: trade.id,
-        content: journalContent,
-        entry_date: new Date().toISOString().split('T')[0],
-      });
+    // Learning log (unchanged intent, real fill price)
+    const perf: Record<string, unknown> = {
+      user_id: user.id, trade_id: trade.id, symbol,
+      strategy: action === 'buy' ? 'paper_buy' : 'paper_sell',
+      entry_price: fillPrice, quantity: qty, trade_opened_at: nowIso,
+    };
+    if (fill.realized !== 0) {
+      perf.exit_price = fillPrice;
+      perf.trade_closed_at = nowIso;
+      perf.profit_factor = fill.realized > 0 ? (fill.realized / totalValue) * 100 : null;
+      perf.actual_rr = totalValue > 0 ? fill.realized / totalValue : null;
+      perf.execution_quality_score = fill.realized > 0 ? 85 : 50;
+      perf.discipline_score = 75;
+    }
+    await supabase.from('bot_performance_log').insert(perf);
 
-    console.log('Paper trade executed:', { symbol, action, quantity, price, profitLoss, newBalance });
+    // Journal entry
+    const journal = fill.realized !== 0
+      ? `${action.toUpperCase()} ${qty} ${symbol} @ $${fillPrice.toFixed(2)} (filled from live quote). Realized P&L: ${fill.realized >= 0 ? '+' : ''}$${fill.realized.toFixed(2)}. ${tradeNotes}`
+      : `${action.toUpperCase()} ${qty} ${symbol} @ $${fillPrice.toFixed(2)} (filled from live quote). ${tradeNotes}`;
+    await supabase.from('trading_journal').insert({
+      user_id: user.id, entry_type: 'trade', symbol, trade_id: trade.id,
+      content: journal, entry_date: nowIso.split('T')[0],
+    });
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        trade,
-        newBalance,
-        profitLoss,
-        journalLogged: true,
-        multiplierUsed: multiplier,
-        isOptions: isOptionsTradeDetected,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({
+      success: true,
+      trade,
+      fillPrice,
+      newBalance: newCash,
+      realizedPnl: fill.realized,
+      position: fill.qty === 0 ? null : { quantity: fill.qty, avgCost: fill.avgCost },
+      isOptions: !!isOption,
+      multiplierUsed: mult,
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('Error in execute-paper-trade:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return reject(error instanceof Error ? error.message : 'Unknown error', 400);
   }
 });
