@@ -33,13 +33,14 @@ serve(async (req) => {
 
     const body = await req.json();
     const { symbol, action, quantity, strike, side, expiration, isStock, notes,
-      limitPrice, stopPrice, trailAmount, trailPercent, timeInForce, ocoGroup } = body;
+      limitPrice, stopPrice, trailAmount, trailPercent, timeInForce, ocoGroup, parentOrderId, status: requestedStatus } = body;
     if (!symbol || !action || !quantity) return reject('Missing required fields');
     if (action !== 'buy' && action !== 'sell') return reject('action must be "buy" or "sell"');
     const qty = Number(quantity);
     if (!(qty > 0)) return reject('quantity must be positive');
     const orderType = normType(body.orderType);
     const tif = (timeInForce === 'GTC' || timeInForce === 'GOOD_TILL_CANCEL') ? 'GTC' : 'DAY';
+    const initStatus = requestedStatus === 'pending_parent' ? 'pending_parent' : 'working';
 
     const isOption = !isStock && strike && strike !== '0' && strike !== 0 && side;
     const mult = isOption ? 100 : 1;
@@ -99,12 +100,12 @@ serve(async (req) => {
       side: action, order_type: orderType, quantity: qty,
       limit_price: Number(limitPrice) || null, stop_price: initStop,
       trail_amount: Number(trailAmount) || null, trail_percent: Number(trailPercent) || null,
-      watermark: initWatermark, time_in_force: tif, status: 'working',
-      oco_group: ocoGroup || null, notes: notes || null,
+      watermark: initWatermark, time_in_force: tif, status: initStatus,
+      oco_group: ocoGroup || null, parent_order_id: parentOrderId || null, notes: notes || null,
     }).select().single();
     if (orderErr) throw orderErr;
 
-    return new Response(JSON.stringify({ success: true, status: 'working', order }),
+    return new Response(JSON.stringify({ success: true, status: initStatus, order }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('place-paper-order error:', e);
