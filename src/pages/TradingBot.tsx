@@ -81,43 +81,33 @@ const TradingBot = () => {
     loadPerformanceLogs();
   }, []);
 
-  // Bot execution loop - runs every 2 minutes when enabled
-  useEffect(() => {
-    if (!botEnabled) return;
-
-    const runBot = async () => {
-      setBotRunning(true);
-      try {
-        console.log("[TradingBot] Triggering bot run...");
-        const { data, error } = await supabase.functions.invoke("run-trading-bot");
-        if (error) {
-          console.error("[TradingBot] Run error:", error);
-          setLastRunResult(`Error: ${error.message}`);
-        } else {
-          console.log("[TradingBot] Run result:", data);
-          const summary = data?.summary;
-          setLastRunResult(
-            `Screened: ${summary?.totalBots || 0} bot(s) | Trades attempted: ${summary?.totalTradesAttempted || 0} | No opportunities: ${summary?.noOpportunities || 0}`
-          );
-          // Reload trades and stats after a run
-          loadTrades();
-          reloadStats();
-        }
-      } catch (err: any) {
-        console.error("[TradingBot] Exception:", err);
-        setLastRunResult(`Exception: ${err.message}`);
-      } finally {
-        setBotRunning(false);
+  // Manual, per-user run. Scheduled execution now happens server-side via
+  // cron (every 15 min, market hours) for every enabled enterprise user, so
+  // the bot keeps running even when this page is closed. This button only
+  // triggers an immediate run of THIS user's bot via run-my-bot.
+  const handleRunNow = async () => {
+    setBotRunning(true);
+    try {
+      console.log("[TradingBot] Triggering my bot run...");
+      const { data, error } = await supabase.functions.invoke("run-my-bot");
+      if (error) {
+        console.error("[TradingBot] Run error:", error);
+        setLastRunResult(`Error: ${error.message}`);
+      } else {
+        const summary = data?.result?.summary;
+        setLastRunResult(
+          `Screened: ${summary?.totalBots || 0} bot(s) | Trades attempted: ${summary?.totalTradesAttempted || 0} | No opportunities: ${summary?.noOpportunities || 0}`
+        );
+        loadTrades();
+        reloadStats();
       }
-    };
-
-    // Run immediately on enable
-    runBot();
-
-    // Then run every 2 minutes
-    const interval = setInterval(runBot, 2 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [botEnabled]);
+    } catch (err: any) {
+      console.error("[TradingBot] Exception:", err);
+      setLastRunResult(`Exception: ${err.message}`);
+    } finally {
+      setBotRunning(false);
+    }
+  };
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -375,6 +365,19 @@ const TradingBot = () => {
               </>
             )}
           </Button>
+
+          {botEnabled && (
+            <Button
+              onClick={handleRunNow}
+              variant="outline"
+              size="lg"
+              disabled={botRunning}
+              className="ml-3"
+            >
+              <Bot className="w-5 h-5 mr-2" />
+              {botRunning ? "Running..." : "Run Now"}
+            </Button>
+          )}
         </div>
 
         {/* Trading Mode Toggle */}
