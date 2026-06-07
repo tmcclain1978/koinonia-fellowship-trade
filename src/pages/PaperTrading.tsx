@@ -589,6 +589,8 @@ const PaperTrading = () => {
 
             {/* Analysis Tab */}
             <TabsContent value="analysis" className="space-y-6">
+              <PaperPerformancePanel refreshKey={paperRefresh} />
+
               <KoinoniaIndicator 
                 symbol={symbol}
                 onSignalGenerated={handleKoinoniaSignal}
