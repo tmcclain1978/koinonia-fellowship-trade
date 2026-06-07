@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { isInternalCall, getAuthedUser, internalHeaders } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,6 +65,16 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Allow either an internal call (from another bot function) or a signed-in
+    // user. Blocks anonymous callers using the public anon key from running up
+    // AI/model costs.
+    if (!isInternalCall(req) && !(await getAuthedUser(req, supabase))) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { userId, symbols } = await req.json();
 
     if (!userId || !symbols || !Array.isArray(symbols)) {
@@ -80,6 +91,7 @@ serve(async (req) => {
     let globalTradeSuggestions: TradeSuggestion[] = [];
     try {
       const suggestionsResponse = await supabase.functions.invoke("generate-trade-suggestions", {
+        headers: internalHeaders(),
         body: {}
       });
       if (suggestionsResponse.data?.suggestions) {
