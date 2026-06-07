@@ -63,6 +63,9 @@ export const PaperOptionsOrderEntry = ({
   // Greeks display
   const [showGreeks, setShowGreeks] = useState(true);
   const [underlyingPrice, setUnderlyingPrice] = useState<number>(100);
+  const [chainOptions, setChainOptions] = useState<any[]>([]);
+  const [loadingChain, setLoadingChain] = useState(false);
+  const FALLBACK_IV = 0.30;
 
   // Add leg from chain selection
   useEffect(() => {
@@ -92,6 +95,47 @@ export const PaperOptionsOrderEntry = ({
       }
     }
   }, [selectedOption]);
+
+  // Fetch the live Schwab option chain so Greeks/IV reflect real market values
+  // instead of the previous placeholder underlying=100, iv=0.30.
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+    setLoadingChain(true);
+    supabase.functions
+      .invoke('fetch-schwab-options', { body: { symbol } })
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data?.underlyingPrice && Number(data.underlyingPrice) > 0) {
+          setUnderlyingPrice(Number(data.underlyingPrice));
+        }
+        setChainOptions(Array.isArray(data?.options) ? data.options : []);
+      })
+      .catch(() => { /* graceful fallback to placeholders */ })
+      .finally(() => { if (!cancelled) setLoadingChain(false); });
+    return () => { cancelled = true; };
+  }, [symbol]);
+
+  // Find a matching contract in the cached chain to pull bid/ask/IV/delta.
+  const matchContract = (leg: OptionLegInput) => {
+    if (!chainOptions.length || !leg.strike || !leg.expiration) return null;
+    return chainOptions.find((o: any) =>
+      String(o.type).toUpperCase() === leg.type &&
+      Math.abs(Number(o.strike) - leg.strike) < 0.001 &&
+      String(o.expiration) === leg.expiration
+    ) || null;
+  };
+
+  // Normalize Schwab IV (returned as a percentage like 32.5) to a decimal.
+  const ivFor = (leg: OptionLegInput): { iv: number; source: 'live' | 'fallback' } => {
+    const c = matchContract(leg);
+    let iv = c?.impliedVolatility != null ? Number(c.impliedVolatility) : NaN;
+    if (Number.isFinite(iv) && iv > 0) {
+      if (iv > 3) iv = iv / 100;
+      return { iv, source: 'live' };
+    }
+    return { iv: FALLBACK_IV, source: 'fallback' };
+  };
 
   // Add a new empty leg
   const addLeg = () => {
@@ -127,14 +171,14 @@ export const PaperOptionsOrderEntry = ({
     return total;
   };
 
-  // Calculate aggregate Greeks
+  // Calculate aggregate Greeks using live IV when available
   const calculateAggregateGreeks = () => {
     let delta = 0, gamma = 0, theta = 0, vega = 0;
     const riskFreeRate = 0.05;
-    const iv = 0.3;
 
     legs.forEach(leg => {
       const timeToExpiry = Math.max(0.01, (new Date(leg.expiration).getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
+      const { iv } = ivFor(leg);
       const greeks = calculateGreeks(leg.type.toLowerCase() as 'call' | 'put', underlyingPrice, leg.strike, riskFreeRate, iv, timeToExpiry);
       const multiplier = leg.action.includes('SELL') ? -1 : 1;
       
@@ -399,10 +443,15 @@ export const PaperOptionsOrderEntry = ({
 
         {/* Greeks Display */}
         {showGreeks && legs.length > 0 && (
-          <div className="p-3 border rounded-lg space-y-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Calculator className="h-4 w-4" />
-              <span className="text-sm font-medium">Position Greeks</span>
+          <div className="p-3 border rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                <span className="text-sm font-medium">Position Greeks</span>
+              </div>
+              <Badge variant="outline" className="text-[10px]">
+                {loadingChain ? "Loading chain…" : `Underlying $${underlyingPrice.toFixed(2)}`}
+              </Badge>
             </div>
             <div className="grid grid-cols-4 gap-2 text-xs">
               <div>
@@ -421,6 +470,50 @@ export const PaperOptionsOrderEntry = ({
                 <span className="text-muted-foreground">Vega:</span>
                 <span className="ml-1 font-mono">{greeks.vega.toFixed(2)}</span>
               </div>
+            </div>
+
+            {/* Per-leg Greeks + IV from the live Schwab chain */}
+            <div className="space-y-1 border-t pt-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Per leg</p>
+              {legs.map((leg, idx) => {
+                if (!leg.strike || !leg.expiration) {
+                  return (
+                    <div key={leg.id} className="text-[11px] text-muted-foreground">
+                      Leg {idx + 1}: fill in strike + expiration to see Greeks
+                    </div>
+                  );
+                }
+                const { iv, source } = ivFor(leg);
+                const T = Math.max(
+                  0.01,
+                  (new Date(leg.expiration).getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000)
+                );
+                const g = calculateGreeks(
+                  leg.type.toLowerCase() as 'call' | 'put',
+                  underlyingPrice,
+                  leg.strike,
+                  0.05,
+                  iv,
+                  T
+                );
+                return (
+                  <div key={leg.id} className="grid grid-cols-6 gap-1 text-[11px]">
+                    <span className="col-span-1 font-medium">
+                      L{idx + 1} {leg.type[0]}${leg.strike}
+                    </span>
+                    <span className="font-mono">Δ {g.delta.toFixed(3)}</span>
+                    <span className="font-mono">Γ {g.gamma.toFixed(4)}</span>
+                    <span className="font-mono">Θ {g.theta.toFixed(3)}</span>
+                    <span className="font-mono">V {g.vega.toFixed(3)}</span>
+                    <span className={`font-mono ${source === 'live' ? '' : 'text-muted-foreground'}`}>
+                      IV {(iv * 100).toFixed(1)}%{source === 'fallback' ? '*' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+              <p className="text-[10px] text-muted-foreground">
+                Greeks per contract (×100 share multiplier). IV{legs.some(l => ivFor(l).source === 'fallback') ? '* falls back to 30% when the chain has no value.' : ' sourced from the live Schwab chain.'}
+              </p>
             </div>
           </div>
         )}

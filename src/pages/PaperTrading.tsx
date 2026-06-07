@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart2, TrendingUp, ChevronDown, ChevronUp, Wallet, LineChart, Activity, Search, Shield, ListOrdered } from "lucide-react";
 import { WorkingOrdersPanel } from "@/components/paper-trading/WorkingOrdersPanel";
+import { OrderActivityTimeline } from "@/components/paper-trading/OrderActivityTimeline";
+import { PaperPerformancePanel } from "@/components/paper-trading/PaperPerformancePanel";
 import { PhroureoHelpButton } from "@/components/phroureo";
 import Navigation from "@/components/Navigation";
 import { ProChartKit } from "@/components/charts/ProChartKit";
@@ -82,6 +84,25 @@ const PaperTrading = () => {
     return () => {
       supabase.removeChannel(channel);
     };
+  }, [user?.id]);
+
+  // Refresh portfolio + Greeks immediately on every paper-order status change
+  // (working → filled by the cron evaluator, manual cancels, bracket activations).
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel('paper-order-events-refresh')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'paper_order_events', filter: `user_id=eq.${user.id}` },
+        () => {
+          setPaperRefresh((k) => k + 1);
+          loadAccount();
+          loadTrades();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [user?.id]);
 
   // Persist symbol to localStorage
@@ -488,6 +509,7 @@ const PaperTrading = () => {
 
             <TabsContent value="orders" className="space-y-6">
               <WorkingOrdersPanel refreshKey={paperRefresh} onChange={() => { setPaperRefresh((k) => k + 1); loadAccount(); loadTrades(); }} />
+              <OrderActivityTimeline refreshKey={paperRefresh} />
             </TabsContent>
 
             {/* Options Tab - Same layout as Trading page */}
@@ -586,6 +608,8 @@ const PaperTrading = () => {
 
             {/* Analysis Tab */}
             <TabsContent value="analysis" className="space-y-6">
+              <PaperPerformancePanel refreshKey={paperRefresh} />
+
               <KoinoniaIndicator 
                 symbol={symbol}
                 onSignalGenerated={handleKoinoniaSignal}

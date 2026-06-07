@@ -1042,6 +1042,54 @@ export type Database = {
         }
         Relationships: []
       }
+      paper_order_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          fill_price: number | null
+          fill_quantity: number | null
+          id: string
+          metadata: Json | null
+          new_status: string
+          oco_group: string | null
+          order_id: string
+          parent_order_id: string | null
+          previous_status: string | null
+          reason: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          fill_price?: number | null
+          fill_quantity?: number | null
+          id?: string
+          metadata?: Json | null
+          new_status: string
+          oco_group?: string | null
+          order_id: string
+          parent_order_id?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          fill_price?: number | null
+          fill_quantity?: number | null
+          id?: string
+          metadata?: Json | null
+          new_status?: string
+          oco_group?: string | null
+          order_id?: string
+          parent_order_id?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       paper_orders: {
         Row: {
           account_id: string
