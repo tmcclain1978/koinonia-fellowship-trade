@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   resolveFillPrice, applyFill, unrealizedPnl, cashDelta,
-  buyingPower, validateOrder, equityAtCost, type Position,
+  buyingPower, validateOrder, equityAtCost, liveEquity, type Position,
 } from "../../supabase/functions/_shared/paper-account";
 
 const P = (qty: number, avgCost: number, mult = 1): Position => ({ qty, avgCost, mult });
@@ -108,5 +108,12 @@ describe("validateOrder — flips (regression: no realized double-count)", () =>
     // sell 1500 @120: close 1000 (+20k realized), open short 500@120.
     const r = validateOrder(0, P(1000, 100), "sell", 1500, 120, 1, []);
     expect(r.ok).toBe(true);
+  });
+});
+
+describe("liveEquity", () => {
+  it("values positions at live marks", () => {
+    expect(liveEquity(0, [{ qty: 10, mark: 60, mult: 1 }])).toBe(600); // 10*60
+    expect(liveEquity(1000, [{ qty: -5, mark: 20, mult: 1 }])).toBe(900); // short MV -100
   });
 });

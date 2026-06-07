@@ -120,6 +120,14 @@ export function equityAtCost(cash: number, positions: Position[]): number {
   return cash + positions.reduce((s, p) => s + marketValue(p.qty, p.avgCost, p.mult), 0);
 }
 
+/** Account equity, valuing positions at live marks (for display/account value). */
+export function liveEquity(
+  cash: number,
+  positions: Array<{ qty: number; mark: number; mult: number }>,
+): number {
+  return cash + positions.reduce((s, p) => s + marketValue(p.qty, p.mark, p.mult), 0);
+}
+
 /** Initial margin tied up by current positions. */
 export function marginUsed(positions: Position[], rate = INITIAL_MARGIN_RATE): number {
   return positions.reduce((s, p) => s + notional(p.qty, p.avgCost, p.mult) * rate, 0);
