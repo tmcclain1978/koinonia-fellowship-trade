@@ -129,6 +129,8 @@ export const ProChartKit = ({
   // Interval switch guard to prevent race conditions
   const isSwitchingIntervalRef = useRef(false);
   const previousIntervalRef = useRef<string>(interval);
+  const intervalRef = useRef<string>(interval); // always-current interval for the persistent chart's formatter
+  const fetchSeqRef = useRef<number>(0); // ignore stale fetch responses when interval/symbol changes fast
   const fetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
   // Volume tracking for real-time accumulation
@@ -773,24 +775,26 @@ export const ProChartKit = ({
                 day: 'numeric',
               };
               
-              // For x-axis labels, format based on current interval
+              // For x-axis labels, format based on current interval (read from ref
+              // so the persistent chart relabels correctly without being recreated)
               if (format === 'YYYY-MM-DD HH:mm' || format === 'HH:mm') {
+                const iv = intervalRef.current;
                 // Intraday intervals: show time in Eastern Time
-                if (['1m', '5m', '15m', '1', '5', '15', 'minute', '5minute', '15minute'].includes(interval)) {
+                if (['1m', '5m', '15m', '1', '5', '15', 'minute', '5minute', '15minute'].includes(iv)) {
                   return date.toLocaleTimeString('en-US', easternTimeOptions);
                 }
                 // Hourly intervals: show time with date hint in Eastern Time
-                if (['30m', '1h', '30', '60', '30minute', 'hour'].includes(interval)) {
+                if (['30m', '1h', '30', '60', '30minute', 'hour'].includes(iv)) {
                   const time = date.toLocaleTimeString('en-US', easternTimeOptions);
                   const dateStr = date.toLocaleDateString('en-US', easternDateOptions);
                   return `${time}\n${dateStr}`;
                 }
                 // Daily: show date only
-                if (['1D', 'D', 'daily'].includes(interval)) {
+                if (['1D', 'D', 'daily'].includes(iv)) {
                   return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
                 }
                 // Weekly/Monthly: show month and year
-                if (['1W', '1M', 'W', 'weekly', 'monthly'].includes(interval)) {
+                if (['1W', '1M', 'W', 'weekly', 'monthly'].includes(iv)) {
                   return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', year: '2-digit' });
                 }
               }
@@ -975,7 +979,22 @@ export const ProChartKit = ({
         chartRef.current = null;
       }
     };
-  }, [symbol, interval, theme, timeFormat, resetAllTrackingRefs, enableCrosshairSync, broadcastCrosshair]);
+  }, [symbol, theme, timeFormat, resetAllTrackingRefs, enableCrosshairSync, broadcastCrosshair]);
+
+  // Interval change: keep the chart instance alive (no dispose/recreate). Show
+  // cached candles for the new timeframe instantly so nothing blanks, then fetch
+  // fresh data which applyNewData replaces in one step. The initial load is
+  // handled by the init effect above, so skip until that has happened.
+  useEffect(() => {
+    intervalRef.current = interval;
+    if (isInitialLoadRef.current || !chartRef.current || replayMode) return;
+    resetAllTrackingRefs();
+    if (cachedData && cachedData.length > 0) {
+      chartRef.current.applyNewData(cachedData);
+    }
+    fetchAndLoadData(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interval]);
 
   // Handle candle type changes dynamically - also reapply after chart re-init (interval/symbol change)
   useEffect(() => {
@@ -1034,8 +1053,8 @@ export const ProChartKit = ({
     if (chartRef.current && !replayMode) {
       // Reset tracking refs when premarket changes (treat as new data load)
       resetAllTrackingRefs();
-      // Clear chart before loading new data for smooth transition
-      chartRef.current.clearData();
+      // Don't clear first — fetchAndLoadData's applyNewData replaces the dataset
+      // in one step, so the chart never blanks if the fetch is slow or empty.
       fetchAndLoadData(false);
     }
   }, [showPremarket, resetAllTrackingRefs]);
@@ -1279,6 +1298,9 @@ export const ProChartKit = ({
     if (!isUpdate) {
       setLoading(true);
     }
+
+    // Token to detect a stale response after a rapid interval/symbol switch
+    const seq = ++fetchSeqRef.current;
     
     console.log("📊 Fetching chart data for", symbol, interval, "premarket:", showPremarket, "isUpdate:", isUpdate);
     
@@ -1300,7 +1322,14 @@ export const ProChartKit = ({
 
       // Handle both formats: { data: [...] } from fetch-schwab-candles and { candles: [...] } from legacy
       const candles = data?.data || data?.candles;
-      
+
+      // A newer fetch started while this one was in flight (user switched
+      // interval/symbol) — drop this stale response so it can't overwrite.
+      if (seq !== fetchSeqRef.current) {
+        console.log("⏭️ Stale chart fetch ignored for", symbol, interval);
+        return;
+      }
+
       if (candles && Array.isArray(candles) && candles.length > 0) {
         const klineData: KLineData[] = candles
           .map(normalizeCandle)
@@ -1397,10 +1426,21 @@ export const ProChartKit = ({
           fetchKoinoniaSignals();
         }
       } else {
-        console.error("❌ No valid candles data received");
+        // No data for this interval: do NOT blank the chart. Keep what's shown;
+        // if the chart is actually empty, fall back to cached candles.
+        console.warn("⚠️ No candles returned for", symbol, interval, "- keeping existing chart data");
+        if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0) {
+          chartRef.current.applyNewData(cachedData);
+          setChartDataSource('cache');
+        }
       }
     } catch (error) {
       console.error("❌ Error fetching chart data:", error);
+      // Never leave a blank chart on error: keep current data, else use cache.
+      if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0) {
+        chartRef.current.applyNewData(cachedData);
+        setChartDataSource('cache');
+      }
     } finally {
       if (!isUpdate) {
         setLoading(false);
