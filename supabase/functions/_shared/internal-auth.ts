@@ -1,50 +1,47 @@
-// Shared helpers for authenticating edge function calls.
+// Auth helpers for server-to-server and scheduled calls.
 //
-// Two accepted call modes:
-//  1. Internal call from another edge function — proves it knows
-//     INTERNAL_FUNCTION_SECRET (sent via the `x-internal-secret` header).
-//  2. End-user call — carries a valid Supabase user JWT in `Authorization`.
+// Two secrets, set as Supabase Edge Function secrets:
+//   CRON_SECRET              - known only to the pg_cron job and run-trading-bot
+//   INTERNAL_FUNCTION_SECRET - known only to edge functions calling each other
 //
-// Anonymous calls using only the public anon key are rejected by callers
-// that gate on these helpers, which prevents abuse of paid AI endpoints.
+// Why these exist: the project's anon key is PUBLIC (it ships in the frontend
+// bundle), so `verify_jwt` alone does not stop an attacker who copies it.
+// These shared secrets gate the sensitive bot endpoints above the gateway.
 
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-
-const INTERNAL_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET") || "";
-
-/** True if the request carries the internal function secret. */
-export function isInternalCall(req: Request): boolean {
-  if (!INTERNAL_SECRET) return false;
-  const provided = req.headers.get("x-internal-secret") || "";
-  return provided.length > 0 && provided === INTERNAL_SECRET;
+/** True if the request carries the correct cron secret header. */
+export function isCronCall(req: Request): boolean {
+  const secret = Deno.env.get("CRON_SECRET");
+  if (!secret) return false; // fail closed if unconfigured
+  return req.headers.get("x-cron-secret") === secret;
 }
 
-/** Headers to attach when one edge function calls another internally. */
+/** True if the request carries the correct internal-function secret header. */
+export function isInternalCall(req: Request): boolean {
+  const secret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+  if (!secret) return false; // fail closed if unconfigured
+  return req.headers.get("x-internal-secret") === secret;
+}
+
+/** Header object to attach when one edge function invokes another. */
 export function internalHeaders(): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    "x-internal-secret": INTERNAL_SECRET,
-  };
+  return { "x-internal-secret": Deno.env.get("INTERNAL_FUNCTION_SECRET") ?? "" };
 }
 
 /**
- * Returns the authenticated user (if any) for a request bearing a user JWT.
- * Returns null when the token is missing, invalid, or belongs to the anon role.
+ * Resolve the authenticated user from the request's bearer token.
+ * Returns the user object or null. `supabase` must be a client created with
+ * the service-role key (used only to validate the token, not to elevate).
  */
 export async function getAuthedUser(
   req: Request,
-  supabase: SupabaseClient,
-): Promise<{ id: string } | null> {
-  const authHeader = req.headers.get("Authorization") || "";
-  const token = authHeader.toLowerCase().startsWith("bearer ")
-    ? authHeader.slice(7).trim()
-    : "";
-  if (!token) return null;
-
+  supabase: { auth: { getUser: (jwt: string) => Promise<{ data: { user: unknown } }> } },
+): Promise<unknown | null> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return null;
+  const token = authHeader.replace("Bearer ", "");
   try {
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user?.id) return null;
-    return { id: data.user.id };
+    const { data: { user } } = await supabase.auth.getUser(token);
+    return user ?? null;
   } catch {
     return null;
   }
