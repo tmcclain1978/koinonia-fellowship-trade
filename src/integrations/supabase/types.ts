@@ -1042,6 +1042,95 @@ export type Database = {
         }
         Relationships: []
       }
+      paper_orders: {
+        Row: {
+          account_id: string
+          contract_key: string | null
+          created_at: string
+          filled_at: string | null
+          filled_price: number | null
+          id: string
+          limit_price: number | null
+          multiplier: number
+          notes: string | null
+          oco_group: string | null
+          order_type: string
+          parent_order_id: string | null
+          quantity: number
+          side: string
+          status: string
+          stop_price: number | null
+          stop_triggered: boolean
+          symbol: string
+          time_in_force: string
+          trail_amount: number | null
+          trail_percent: number | null
+          updated_at: string
+          user_id: string
+          watermark: number | null
+        }
+        Insert: {
+          account_id: string
+          contract_key?: string | null
+          created_at?: string
+          filled_at?: string | null
+          filled_price?: number | null
+          id?: string
+          limit_price?: number | null
+          multiplier?: number
+          notes?: string | null
+          oco_group?: string | null
+          order_type: string
+          parent_order_id?: string | null
+          quantity: number
+          side: string
+          status?: string
+          stop_price?: number | null
+          stop_triggered?: boolean
+          symbol: string
+          time_in_force?: string
+          trail_amount?: number | null
+          trail_percent?: number | null
+          updated_at?: string
+          user_id: string
+          watermark?: number | null
+        }
+        Update: {
+          account_id?: string
+          contract_key?: string | null
+          created_at?: string
+          filled_at?: string | null
+          filled_price?: number | null
+          id?: string
+          limit_price?: number | null
+          multiplier?: number
+          notes?: string | null
+          oco_group?: string | null
+          order_type?: string
+          parent_order_id?: string | null
+          quantity?: number
+          side?: string
+          status?: string
+          stop_price?: number | null
+          stop_triggered?: boolean
+          symbol?: string
+          time_in_force?: string
+          trail_amount?: number | null
+          trail_percent?: number | null
+          updated_at?: string
+          user_id?: string
+          watermark?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paper_orders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "paper_trading_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paper_positions: {
         Row: {
           account_id: string

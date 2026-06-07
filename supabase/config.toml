@@ -158,3 +158,9 @@ verify_jwt = true
 
 [functions.paper-portfolio]
 verify_jwt = true
+
+[functions.place-paper-order]
+verify_jwt = true
+
+[functions.evaluate-paper-orders]
+verify_jwt = false
