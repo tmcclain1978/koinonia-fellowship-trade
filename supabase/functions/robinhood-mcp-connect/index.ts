@@ -93,6 +93,7 @@ serve(async (req) => {
       codeChallenge: challenge,
       state,
       scope,
+      resource: SERVER_URL,
     });
 
     await logAudit({ userId: user.id, action: "mcp.connect.initiated", resourceType: "mcp_connection",
