@@ -63,6 +63,7 @@ export class McpHttpClient {
         refreshToken: refreshTok,
         clientId: conn.client_id,
         clientSecret,
+        resource: conn.server_url,
       });
     };
 
