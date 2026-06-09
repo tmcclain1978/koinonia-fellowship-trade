@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import AutoTradingSettings from "@/components/AutoTradingSettings";
 import Navigation from "@/components/Navigation";
 import ThemeColorPicker from "@/components/settings/ThemeColorPicker";
+import RobinhoodMCPCard from "@/components/settings/RobinhoodMCPCard";
 
 interface OAuthDebugInfo {
   clientIdPresent: boolean;
@@ -343,6 +344,7 @@ const Settings = () => {
 
         <div className="space-y-6">
           <ThemeColorPicker />
+          <RobinhoodMCPCard />
           
           <Card>
             <CardHeader>
