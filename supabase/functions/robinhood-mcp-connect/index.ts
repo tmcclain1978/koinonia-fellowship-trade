@@ -52,7 +52,14 @@ serve(async (req) => {
     const verifier = randomString(64);
     const challenge = await pkceChallenge(verifier);
     const state = randomString(32);
-    const scope = scopeMode === "trading" ? "trading read" : "read";
+    // Robinhood MCP only advertises the `internal` scope in its discovery doc.
+    // Requesting anything else (e.g. "trading read" / "read") triggers invalid_scope at the
+    // authorization endpoint. The read-only vs trading distinction is enforced in
+    // robinhood-mcp-agent by filtering mutating tool names — not at OAuth scope level.
+    const supportedScopes = (meta as any).scopes_supported as string[] | undefined;
+    const scope = (supportedScopes && supportedScopes.length > 0)
+      ? supportedScopes.join(" ")
+      : "internal";
 
     const patch = {
       user_id: user.id,
