@@ -32,6 +32,7 @@ import PocketOption from "./pages/PocketOption";
 import PennyStocks from "./pages/PennyStocks";
 import NotFound from "./pages/NotFound";
 import Status from "./pages/Status";
+import RobinhoodMCPCallback from "./pages/RobinhoodMCPCallback";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,7 @@ const App = () => (
             <Route path="/academy/lesson/:lessonId" element={<LessonPlayer />} />
             <Route path="/podcast" element={<Podcast />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/robinhood-mcp-callback" element={<RobinhoodMCPCallback />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/help" element={<Help />} />
             <Route path="/status" element={<Status />} />
