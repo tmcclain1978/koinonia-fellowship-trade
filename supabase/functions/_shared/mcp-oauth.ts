@@ -87,6 +87,7 @@ export async function exchangeCodeForToken(opts: {
   clientId: string;
   clientSecret?: string;
   codeVerifier: string;
+  resource?: string;
 }): Promise<TokenResponse> {
   const form = new URLSearchParams({
     grant_type: "authorization_code",
@@ -96,6 +97,7 @@ export async function exchangeCodeForToken(opts: {
     code_verifier: opts.codeVerifier,
   });
   if (opts.clientSecret) form.set("client_secret", opts.clientSecret);
+  if (opts.resource) form.set("resource", opts.resource);
   const r = await fetch(opts.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
@@ -110,6 +112,7 @@ export async function refreshToken(opts: {
   refreshToken: string;
   clientId: string;
   clientSecret?: string;
+  resource?: string;
 }): Promise<TokenResponse> {
   const form = new URLSearchParams({
     grant_type: "refresh_token",
@@ -117,6 +120,7 @@ export async function refreshToken(opts: {
     client_id: opts.clientId,
   });
   if (opts.clientSecret) form.set("client_secret", opts.clientSecret);
+  if (opts.resource) form.set("resource", opts.resource);
   const r = await fetch(opts.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
@@ -133,6 +137,7 @@ export function buildAuthorizeUrl(opts: {
   codeChallenge: string;
   state: string;
   scope?: string;
+  resource?: string;
 }): string {
   const u = new URL(opts.authorizationEndpoint);
   u.searchParams.set("response_type", "code");
@@ -142,5 +147,6 @@ export function buildAuthorizeUrl(opts: {
   u.searchParams.set("code_challenge_method", "S256");
   u.searchParams.set("state", opts.state);
   if (opts.scope) u.searchParams.set("scope", opts.scope);
+  if (opts.resource) u.searchParams.set("resource", opts.resource);
   return u.toString();
 }
