@@ -56,14 +56,13 @@ export default function RobinhoodMCPCard() {
       });
       if (error) throw error;
       if (!data?.authUrl) throw new Error(data?.error || "No authorize URL returned");
-      const popup = window.open(data.authUrl, "robinhood-mcp", "width=520,height=720");
-      if (!popup) {
-        toast({ title: "Popup blocked", description: "Allow popups, then try again.", variant: "destructive" });
-      }
+      window.location.assign(data.authUrl);
     } catch (e: any) {
       toast({ title: "Connect failed", description: e?.message || String(e), variant: "destructive" });
-    } finally {
       setConnecting(false);
+      return;
+    } finally {
+      // When OAuth starts successfully, the browser leaves this page.
     }
   };
 
