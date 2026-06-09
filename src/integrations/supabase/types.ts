@@ -1042,6 +1042,78 @@ export type Database = {
         }
         Relationships: []
       }
+      mcp_connections: {
+        Row: {
+          access_token_enc: string | null
+          authorization_endpoint: string | null
+          client_id: string | null
+          client_secret_enc: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          metadata: Json | null
+          oauth_state: string | null
+          pkce_verifier_enc: string | null
+          provider: string
+          redirect_uri: string | null
+          refresh_token_enc: string | null
+          registration_endpoint: string | null
+          scope_mode: string
+          server_url: string
+          state: string
+          token_endpoint: string | null
+          token_expires_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_enc?: string | null
+          authorization_endpoint?: string | null
+          client_id?: string | null
+          client_secret_enc?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          metadata?: Json | null
+          oauth_state?: string | null
+          pkce_verifier_enc?: string | null
+          provider: string
+          redirect_uri?: string | null
+          refresh_token_enc?: string | null
+          registration_endpoint?: string | null
+          scope_mode?: string
+          server_url: string
+          state?: string
+          token_endpoint?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_enc?: string | null
+          authorization_endpoint?: string | null
+          client_id?: string | null
+          client_secret_enc?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          metadata?: Json | null
+          oauth_state?: string | null
+          pkce_verifier_enc?: string | null
+          provider?: string
+          redirect_uri?: string | null
+          refresh_token_enc?: string | null
+          registration_endpoint?: string | null
+          scope_mode?: string
+          server_url?: string
+          state?: string
+          token_endpoint?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       paper_order_events: {
         Row: {
           created_at: string
