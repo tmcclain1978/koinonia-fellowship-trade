@@ -34,6 +34,7 @@ serve(async (req) => {
       tokenEndpoint: conn.token_endpoint,
       code, redirectUri: conn.redirect_uri,
       clientId: conn.client_id, clientSecret, codeVerifier: verifier,
+      resource: conn.server_url,
     });
 
     const patch: Record<string, unknown> = {
