@@ -12,6 +12,16 @@ const corsHeaders = {
 };
 
 const SERVER_URL = "https://agent.robinhood.com/mcp/trading";
+const DEFAULT_APP_ORIGIN = "https://koinoniatrading.org";
+
+function appOriginFromRequest(req: Request): string {
+  const origin = req.headers.get("Origin") || Deno.env.get("APP_ORIGIN") || DEFAULT_APP_ORIGIN;
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol === "https:") return parsed.origin;
+  } catch (_) { /* fall through */ }
+  return DEFAULT_APP_ORIGIN;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -30,8 +40,10 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const scopeMode: "read_only" | "trading" = body.scope_mode === "trading" ? "trading" : "read_only";
 
-    const projectRef = Deno.env.get("SUPABASE_URL")!.split(".")[0].replace("https://", "");
-    const redirectUri = `https://${projectRef}.supabase.co/functions/v1/robinhood-mcp-callback`;
+    // Robinhood's authorize page is browser-session sensitive and has been rejecting
+    // backend-function callback domains before it reaches our callback. Register a
+    // first-party app route, then the app relays the code to the backend exchanger.
+    const redirectUri = `${appOriginFromRequest(req)}/robinhood-mcp-callback`;
 
     const meta = await discoverMetadata(SERVER_URL);
 
