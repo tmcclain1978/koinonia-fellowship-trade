@@ -164,3 +164,9 @@ verify_jwt = true
 
 [functions.evaluate-paper-orders]
 verify_jwt = false
+
+[functions.bot-engine]
+verify_jwt = false
+
+[functions.robinhood-bot-check]
+verify_jwt = true
