@@ -19,9 +19,7 @@ import {
   Waves,
   Target,
   Hash,
-  Grid3X3,
   Ruler,
-  CircleDot
 } from "lucide-react";
 import type { Chart } from "klinecharts";
 import { Separator } from "@/components/ui/separator";
@@ -37,10 +35,10 @@ interface DrawingTool {
   category: string;
 }
 
-const DRAWING_TOOLS: DrawingTool[] = [
+export const DRAWING_TOOLS: DrawingTool[] = [
   // Lines
   { id: "segment", label: "Line Segment", icon: Minus, category: "Lines" },
-  { id: "ray", label: "Ray", icon: ArrowRight, category: "Lines" },
+  { id: "rayLine", label: "Ray", icon: ArrowRight, category: "Lines" },
   { id: "straightLine", label: "Extended Line", icon: MoveHorizontal, category: "Lines" },
   { id: "horizontalRayLine", label: "Horizontal Ray", icon: MoveHorizontal, category: "Lines" },
   { id: "horizontalStraightLine", label: "Horizontal Line", icon: Minus, category: "Lines" },
@@ -51,24 +49,18 @@ const DRAWING_TOOLS: DrawingTool[] = [
   
   // Trend
   { id: "priceLine", label: "Price Line", icon: TrendingUp, category: "Trend" },
-  { id: "trendLine", label: "Trend Line", icon: TrendingUp, category: "Trend" },
+  { id: "segment", label: "Trend Line", icon: TrendingUp, category: "Trend" },
   { id: "regression", label: "Regression Trend", icon: TrendingUp, category: "Trend" },
   
   // Fibonacci
   { id: "fibonacciLine", label: "Fib Retracement", icon: Waves, category: "Fibonacci" },
-  { id: "fibonacciSegment", label: "Fib Extension", icon: Waves, category: "Fibonacci" },
-  { id: "fibonacciCircle", label: "Fib Circle", icon: CircleDot, category: "Fibonacci" },
-  { id: "fibonacciSpiral", label: "Fib Spiral", icon: Target, category: "Fibonacci" },
-  { id: "fibonacciSpeedResistanceFan", label: "Fib Fan", icon: Triangle, category: "Fibonacci" },
-  { id: "fibonacciExtension", label: "Fib Projection", icon: Waves, category: "Fibonacci" },
-  { id: "gannBox", label: "Gann Box", icon: Grid3X3, category: "Fibonacci" },
+  { id: "fibonacciExtension", label: "Fib Extension (3-point)", icon: Waves, category: "Fibonacci" },
   
   // Shapes
   { id: "rect", label: "Rectangle", icon: Square, category: "Shapes" },
   { id: "parallelogram", label: "Parallelogram", icon: Square, category: "Shapes" },
   { id: "circle", label: "Circle", icon: Circle, category: "Shapes" },
   { id: "triangle", label: "Triangle", icon: Triangle, category: "Shapes" },
-  { id: "arc", label: "Arc", icon: Circle, category: "Shapes" },
   
   // Patterns
   { id: "abcd", label: "ABCD Pattern", icon: GitBranch, category: "Patterns" },

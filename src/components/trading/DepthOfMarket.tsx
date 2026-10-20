@@ -144,6 +144,13 @@ export function DepthOfMarket({ symbol, currentPrice = 0, onPriceClick }: DOMPro
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <Layers className="h-4 w-4 text-primary" />
             Level 2 — {symbol}
+            <Badge
+              variant="outline"
+              className="text-[10px] border-amber-500/50 text-amber-500"
+              title="These order book levels are generated for practice. Real Level 2 data is not connected yet."
+            >
+              Simulated
+            </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs">

@@ -46,6 +46,14 @@ export const TimeAndSales = ({
   const [showBlocksOnly, setShowBlocksOnly] = useState(false);
   const [minSize, setMinSize] = useState("");
   const lastPriceRef = useRef<number | null>(null);
+  const lastCumulativeVolumeRef = useRef<number | null>(null);
+
+  // New symbol: start fresh so the first volume difference isn't across symbols.
+  useEffect(() => {
+    lastPriceRef.current = null;
+    lastCumulativeVolumeRef.current = null;
+    setTrades([]);
+  }, [symbol]);
   const tradeIdRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -66,15 +74,23 @@ export const TimeAndSales = ({
       }
       lastPriceRef.current = update.price;
 
-      // Create new trade record
+      // Quote updates carry the day's cumulative volume, not the size of one
+      // trade. The volume traded since the previous update is the difference.
+      const cumulative = update.volume || 0;
+      const prevCumulative = lastCumulativeVolumeRef.current;
+      lastCumulativeVolumeRef.current = cumulative;
+      const size = prevCumulative !== null && cumulative >= prevCumulative ? cumulative - prevCumulative : 0;
+      // Skip updates where nothing traded and the price did not move.
+      if (size === 0 && direction === 'unchanged') return;
+
+      // Create new trade record (no exchange: quote updates don't say where a trade printed)
       const newTrade: Trade = {
         id: `trade-${tradeIdRef.current++}`,
         time: new Date(),
         price: update.price,
-        size: update.volume || Math.floor(Math.random() * 500) + 100, // Simulated size if not available
+        size,
         direction,
-        exchange: ['NYSE', 'NASDAQ', 'ARCA', 'BATS', 'IEX'][Math.floor(Math.random() * 5)],
-        isBlockTrade: (update.volume || 0) >= blockTradeThreshold,
+        isBlockTrade: size >= blockTradeThreshold,
       };
 
       setTrades((prev) => {
@@ -131,6 +147,13 @@ export const TimeAndSales = ({
             <span>Time & Sales</span>
             <Badge variant="outline" className="font-mono text-xs">
               {symbol}
+            </Badge>
+            <Badge
+              variant="outline"
+              className="text-[10px] text-muted-foreground"
+              title="Built from quote updates: each row is the volume traded since the previous quote, not an individual exchange print."
+            >
+              From quotes
             </Badge>
           </div>
           <div className="flex items-center gap-2">

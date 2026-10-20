@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,21 @@ const Trading = () => {
   const [symbol, setSymbol] = useState(() => {
     return localStorage.getItem('trading_symbol') || "AAPL";
   });
+  // What the user is typing. The chart and data only switch when it's committed
+  // (Enter, leaving the box, or a pause in typing) instead of on every keystroke.
+  const [symbolInput, setSymbolInput] = useState(symbol);
+  const commitSymbol = useCallback((value: string) => {
+    const next = value.trim().toUpperCase();
+    if (next && next !== symbol) setSymbol(next);
+  }, [symbol]);
+  useEffect(() => {
+    setSymbolInput(symbol);
+  }, [symbol]);
+  useEffect(() => {
+    if (!symbolInput || symbolInput === symbol) return;
+    const t = setTimeout(() => commitSymbol(symbolInput), 800);
+    return () => clearTimeout(t);
+  }, [symbolInput, symbol, commitSymbol]);
   const [accountId, setAccountId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [orderType, setOrderType] = useState("CALL");
@@ -423,8 +438,12 @@ const Trading = () => {
                   <Label className="text-sm">Symbol:</Label>
                   <div className="flex gap-2">
                     <Input
-                      value={symbol}
-                      onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                      value={symbolInput}
+                      onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitSymbol(symbolInput);
+                      }}
+                      onBlur={() => commitSymbol(symbolInput)}
                       placeholder="AAPL"
                       className="w-24"
                     />

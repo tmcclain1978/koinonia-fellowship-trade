@@ -41,7 +41,7 @@ const OVERLAY_INDICATORS = [
   "SMA", "EMA", "WMA", "DEMA", "TEMA", "VWMA", // Moving averages
   "BB", "KC", "DC", // Bands/Channels
   "SAR", "PSAR", "Supertrend", "Ichimoku", // Trend overlays
-  "VWAP", "Pivot", "FibRetrace", "PivotHiLo", "ZigZag", // Price-based
+  "VWAP", "Pivot", "PivotHiLo", "ZigZag", // Price-based
   "LinearReg" // Statistical overlays
 ];
 
@@ -71,7 +71,6 @@ const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
   { id: "SAR", label: "Parabolic SAR", category: "Trend", description: "Stop and Reverse indicator", displayType: "overlay" },
   { id: "Supertrend", label: "Supertrend", category: "Trend", description: "Trend following indicator", displayType: "overlay" },
   { id: "Ichimoku", label: "Ichimoku Cloud", category: "Trend", description: "Ichimoku Kinko Hyo indicator", displayType: "overlay" },
-  { id: "PSAR", label: "Parabolic SAR", category: "Trend", description: "Parabolic Stop and Reverse", displayType: "overlay" },
   { id: "VWMA(20)", label: "VWMA 20", category: "Trend", description: "Volume Weighted Moving Average", displayType: "overlay" },
   
   // Momentum Indicators
@@ -113,40 +112,35 @@ const AVAILABLE_INDICATORS: IndicatorDefinition[] = [
   
   // Volume Indicators
   { id: "Volume", label: "Volume", category: "Volume", description: "Standard volume bars", displayType: "pane" },
-  { id: "VWAP", label: "VWAP", category: "Volume", description: "Volume Weighted Average Price", displayType: "overlay" },
+  { id: "VWAP", label: "VWAP", category: "Volume", description: "Session VWAP (resets each New York day) with ±1σ bands", displayType: "overlay" },
   { id: "OBV", label: "On Balance Volume", category: "Volume", description: "On Balance Volume", displayType: "pane" },
   { id: "AD", label: "Accumulation/Distribution", category: "Volume", description: "A/D Line", displayType: "pane" },
   { id: "CMF(20)", label: "Chaikin Money Flow", category: "Volume", description: "Chaikin Money Flow", displayType: "pane" },
   { id: "VROC(14)", label: "Volume ROC", category: "Volume", description: "Volume Rate of Change", displayType: "pane" },
-  { id: "PVT", label: "Price Volume Trend", category: "Volume", description: "Price Volume Trend", displayType: "pane" },
+  { id: "PVT", label: "Price Volume Trend", category: "Volume", description: "Price Volume Trend (also called Volume Price Trend)", displayType: "pane" },
   { id: "EOM", label: "Ease of Movement", category: "Volume", description: "Ease of Movement indicator", displayType: "pane" },
-  { id: "VPT", label: "Volume Price Trend", category: "Volume", description: "Volume Price Trend", displayType: "pane" },
   { id: "NVI", label: "Negative Volume Index", category: "Volume", description: "Negative Volume Index", displayType: "pane" },
   { id: "PVI", label: "Positive Volume Index", category: "Volume", description: "Positive Volume Index", displayType: "pane" },
-  { id: "VWMA(20)", label: "VWMA 20", category: "Volume", description: "Volume Weighted Moving Average", displayType: "overlay" },
   
   // Statistical Indicators
   { id: "LinearReg(14)", label: "Linear Regression 14", category: "Statistical", description: "Linear Regression", displayType: "overlay" },
   { id: "LinearRegSlope", label: "LR Slope", category: "Statistical", description: "Linear Regression Slope", displayType: "pane" },
-  { id: "Correlation", label: "Correlation", category: "Statistical", description: "Price Correlation", displayType: "pane" },
-  { id: "Beta", label: "Beta", category: "Statistical", description: "Beta coefficient", displayType: "pane" },
   { id: "R2", label: "R-Squared", category: "Statistical", description: "Coefficient of Determination", displayType: "pane" },
   
   // Oscillators
   { id: "DPO", label: "Detrended Price Osc", category: "Oscillators", description: "Detrended Price Oscillator", displayType: "pane" },
   { id: "KST", label: "Know Sure Thing", category: "Oscillators", description: "Know Sure Thing indicator", displayType: "pane" },
   { id: "PPO", label: "Price Oscillator", category: "Oscillators", description: "Percentage Price Oscillator", displayType: "pane" },
-  { id: "PO", label: "Price Oscillator", category: "Oscillators", description: "Price Oscillator", displayType: "pane" },
+  { id: "PO", label: "Absolute Price Oscillator", category: "Oscillators", description: "Fast EMA minus slow EMA (10, 21), in price units", displayType: "pane" },
   { id: "AROON", label: "Aroon Indicator", category: "Oscillators", description: "Aroon Up/Down indicator", displayType: "pane" },
   { id: "AroonOsc", label: "Aroon Oscillator", category: "Oscillators", description: "Aroon Oscillator", displayType: "pane" },
   { id: "DMI", label: "Directional Movement", category: "Oscillators", description: "DMI +DI/-DI", displayType: "pane" },
   { id: "ADX(14)", label: "ADX 14", category: "Oscillators", description: "Average Directional Index", displayType: "pane" },
   
   // Custom/Popular
-  { id: "Pivot", label: "Pivot Points", category: "Support/Resistance", description: "Classic Pivot Points", displayType: "overlay" },
-  { id: "FibRetrace", label: "Fib Retracement", category: "Support/Resistance", description: "Fibonacci Retracement levels", displayType: "overlay" },
-  { id: "PivotHiLo", label: "Pivot High/Low", category: "Support/Resistance", description: "Swing High/Low pivots", displayType: "overlay" },
-  { id: "ZigZag", label: "Zig Zag", category: "Support/Resistance", description: "Zig Zag indicator", displayType: "overlay" },
+  { id: "Pivot", label: "Pivot Points", category: "Support/Resistance", description: "Classic floor pivots from the prior day (intraday), week (daily) or month", displayType: "overlay" },
+  { id: "PivotHiLo", label: "Pivot High/Low", category: "Support/Resistance", description: "Latest confirmed swing high and low (5 bars each side)", displayType: "overlay" },
+  { id: "ZigZag", label: "Zig Zag", category: "Support/Resistance", description: "Connects swings that reverse 5% or more (last leg can still move)", displayType: "overlay" },
 ];
 
 // Indicator presets for quick selection

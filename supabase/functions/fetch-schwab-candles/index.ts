@@ -1,5 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aggregateCandles, intervalMinutes } from "../_shared/candle-buckets.ts";
+
+// Intervals no provider serves directly: fetch 30-minute bars and combine them
+// into session-anchored (9:30 ET) 1H / 4H bars.
+const NEEDS_AGGREGATION = (interval: string) => {
+  const m = intervalMinutes(interval);
+  return m === 60 || m === 240;
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -154,6 +162,8 @@ async function fetchFromSchwab(
       '15m': { periodType: 'day', frequencyType: 'minute', frequency: 15, period: 10 },
       '30m': { periodType: 'day', frequencyType: 'minute', frequency: 30, period: 10 },
       '1h': { periodType: 'month', frequencyType: 'minute', frequency: 30, period: 6 }, // Schwab doesn't support 60-min, use 30-min
+      '240': { periodType: 'month', frequencyType: 'minute', frequency: 30, period: 6 }, // aggregated to 4H below
+      '4h': { periodType: 'month', frequencyType: 'minute', frequency: 30, period: 6 },
       'D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
       '1D': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
       'daily': { periodType: 'year', frequencyType: 'daily', frequency: 1, period: 2 },
@@ -233,17 +243,19 @@ async function fetchFromPolygon(
       '5': { multiplier: 5, timespan: 'minute' },
       '15': { multiplier: 15, timespan: 'minute' },
       '30': { multiplier: 30, timespan: 'minute' },
-      '60': { multiplier: 1, timespan: 'hour' },
+      '60': { multiplier: 30, timespan: 'minute' }, // aggregated to 1H (9:30-anchored)
       '1m': { multiplier: 1, timespan: 'minute' },
       '5m': { multiplier: 5, timespan: 'minute' },
       '15m': { multiplier: 15, timespan: 'minute' },
       '30m': { multiplier: 30, timespan: 'minute' },
-      '1h': { multiplier: 1, timespan: 'hour' },
+      '1h': { multiplier: 30, timespan: 'minute' }, // aggregated to 1H (9:30-anchored)
       'minute': { multiplier: 1, timespan: 'minute' },
       '5minute': { multiplier: 5, timespan: 'minute' },
       '15minute': { multiplier: 15, timespan: 'minute' },
       '30minute': { multiplier: 30, timespan: 'minute' },
-      'hour': { multiplier: 1, timespan: 'hour' },
+      'hour': { multiplier: 30, timespan: 'minute' }, // aggregated to 1H (9:30-anchored)
+      '240': { multiplier: 30, timespan: 'minute' }, // aggregated to 4H
+      '4h': { multiplier: 30, timespan: 'minute' },
       'daily': { multiplier: 1, timespan: 'day' },
       'D': { multiplier: 1, timespan: 'day' },
       '1D': { multiplier: 1, timespan: 'day' },
@@ -267,7 +279,12 @@ async function fetchFromPolygon(
       tomorrow.setDate(tomorrow.getDate() + 1);
       toDate = tomorrow.toISOString().split('T')[0];
       
-      if (polyConfig.timespan === 'minute') {
+      if (polyConfig.timespan === 'minute' && NEEDS_AGGREGATION(interval)) {
+        // 30-minute bars that get combined into 1H/4H: ~6 months stays under the 5,000-bar limit.
+        const from = new Date(now);
+        from.setMonth(from.getMonth() - 6);
+        fromDate = from.toISOString().split('T')[0];
+      } else if (polyConfig.timespan === 'minute') {
         const from = new Date(now);
         // When extended hours enabled, go back fewer days but ensure we capture full pre-market (4AM ET)
         from.setDate(from.getDate() - (premarket ? 7 : 14));
@@ -603,6 +620,10 @@ serve(async (req) => {
       raceResult = await fetchWithRace(schwabPromise, polygonPromise);
     }
     
+    if (raceResult.data.length > 0 && NEEDS_AGGREGATION(interval)) {
+      raceResult = { ...raceResult, data: aggregateCandles(raceResult.data, interval) };
+    }
+
     if (raceResult.data.length > 0) {
       console.log(`🏆 Parallel fetch complete in ${Date.now() - overallStart}ms (winner: ${raceResult.racingSource})`);
       return new Response(
