@@ -5,6 +5,7 @@ import { fetchQuote } from "../_shared/quote.ts";
 import { settleFill } from "../_shared/settle-fill.ts";
 import { shouldFill, nextTrailingStop, type WorkingOrder } from "../_shared/paper-orders.ts";
 import { isCronCall } from "../_shared/internal-auth.ts";
+import { isRegularSessionTime } from "../_shared/candle-buckets.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +17,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   try {
     const cron = isCronCall(req);
+    // The schedule runs on UTC hours that cover the session in summer and
+    // winter time; the exact 9:30 am - 4:00 pm ET window is enforced here.
+    if (cron && !isRegularSessionTime(Date.now())) {
+      return new Response(JSON.stringify({ skipped: 'outside regular trading hours' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     let supabase: any;
     let scopeUserId: string | null = null;
 

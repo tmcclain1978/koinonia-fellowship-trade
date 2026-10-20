@@ -1957,6 +1957,14 @@ export type Database = {
       price_alerts: {
         Row: {
           alert_type: string
+          condition: Json | null
+          cooldown_minutes: number
+          frequency: string
+          last_checked_at: string | null
+          last_price: number | null
+          notify_email: boolean
+          trigger_count: number
+          trigger_message: string | null
           created_at: string
           current_value: number | null
           id: string
@@ -1972,6 +1980,14 @@ export type Database = {
         }
         Insert: {
           alert_type: string
+          condition?: Json | null
+          cooldown_minutes?: number
+          frequency?: string
+          last_checked_at?: string | null
+          last_price?: number | null
+          notify_email?: boolean
+          trigger_count?: number
+          trigger_message?: string | null
           created_at?: string
           current_value?: number | null
           id?: string
@@ -1987,6 +2003,14 @@ export type Database = {
         }
         Update: {
           alert_type?: string
+          condition?: Json | null
+          cooldown_minutes?: number
+          frequency?: string
+          last_checked_at?: string | null
+          last_price?: number | null
+          notify_email?: boolean
+          trigger_count?: number
+          trigger_message?: string | null
           created_at?: string
           current_value?: number | null
           id?: string
