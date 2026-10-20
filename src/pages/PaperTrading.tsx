@@ -451,6 +451,7 @@ const PaperTrading = () => {
             <CardContent className="p-0">
               <ProChartKit 
                 symbol={symbol}
+                tradingMode="paper"
                 height={500}
                 interval={chartInterval}
                 theme="dark"

@@ -36,6 +36,8 @@ export interface ChartPrefs {
   timeFormat: "12h" | "24h";
   /** Decimal places; -1 = automatic by price. */
   pricePrecision: number;
+  /** Show orders and positions on the chart (Trading / Paper Trading pages). */
+  tradeLines: boolean;
   signal: SignalStylePrefs;
 }
 
@@ -48,6 +50,7 @@ export const DEFAULT_PREFS: ChartPrefs = {
   priceScale: "normal",
   timeFormat: "12h",
   pricePrecision: -1,
+  tradeLines: true,
   signal: {
     entryColor: "#f97316",
     stopColor: "#3b82f6",
@@ -91,6 +94,7 @@ export function normalizePrefs(raw: unknown): ChartPrefs {
     priceScale: r.priceScale === "logarithm" || r.priceScale === "percentage" ? r.priceScale : "normal",
     timeFormat: r.timeFormat === "24h" ? "24h" : "12h",
     pricePrecision: r.pricePrecision === -1 ? -1 : clampNum(r.pricePrecision, 0, 8, d.pricePrecision),
+    tradeLines: typeof r.tradeLines === "boolean" ? r.tradeLines : d.tradeLines,
     signal: {
       entryColor: isColor(s.entryColor) ? s.entryColor : d.signal.entryColor,
       stopColor: isColor(s.stopColor) ? s.stopColor : d.signal.stopColor,

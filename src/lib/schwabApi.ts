@@ -443,6 +443,24 @@ class SchwabApiClient {
   }
 
   /**
+   * Get orders across all linked accounts (Schwab requires a date window).
+   */
+  async getAllOrders(options: { fromEnteredTime: string; toEnteredTime: string; maxResults?: number; status?: string }): Promise<any[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase.functions.invoke('schwab-orders', {
+      body: { action: 'get_orders_all', ...options },
+    });
+
+    if (error) throw new Error(error.message);
+    this.checkOAuthRequired(data);
+    if (data.error) throw new Error(data.error);
+
+    return data.data || [];
+  }
+
+  /**
    * Get a specific order
    */
   async getOrder(accountHash: string, orderId: string): Promise<any> {
@@ -535,7 +553,7 @@ class SchwabApiClient {
   /**
    * Replace an existing order
    */
-  async replaceOrder(accountHash: string, orderId: string, newOrder: SchwabOrder): Promise<{ orderId?: string; success: boolean }> {
+  async replaceOrder(accountHash: string, orderId: string, newOrder: SchwabOrder): Promise<{ orderId?: string; replacedOrderId?: string; success: boolean }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
 
