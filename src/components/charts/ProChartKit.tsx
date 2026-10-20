@@ -37,6 +37,47 @@ import { applyVolumeProfileToChart, calculateVolumeProfile, clearVolumeProfileOv
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
+import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS } from "./indicators/registry";
+import { registerKoinoniaOverlays } from "./overlays/registry";
+import { getBucketStart, getIntervalMs as intervalToMs } from "./candleBuckets";
+
+registerKoinoniaIndicators();
+registerKoinoniaOverlays();
+
+const EXTRA_LINE_COLORS = ["#FF9800", "#9C27B0", "#00BCD4", "#E91E63", "#8BC34A"];
+
+/**
+ * Draw the selected panel indicators on a chart. Pure helper so it can run
+ * from any closure (initial load, symbol change, settings change) without
+ * picking up stale React state.
+ */
+function applyIndicatorsToChart(chart: Chart, indicators: string[], settings: IndicatorSettingsMap) {
+  chart.removeIndicator();
+  indicators.forEach((indicator, index) => {
+    const resolved = resolveIndicator(indicator);
+    if (!resolved) return;
+    const custom = settings[indicator] || getDefaultIndicatorSettings(indicator, index);
+    // First line uses the user's color; extra lines (bands, signal lines) get distinct colors.
+    const lines = Array.from({ length: Math.max(figureCount(resolved.name), 1) }, (_, i) => ({
+      color: i === 0 ? custom.color : EXTRA_LINE_COLORS[(i - 1) % EXTRA_LINE_COLORS.length],
+      size: custom.width,
+    }));
+    try {
+      chart.createIndicator(
+        {
+          id: `ind_${indicator.replace(/[^a-z0-9]+/gi, "_")}`,
+          name: resolved.name,
+          ...(resolved.calcParams ? { calcParams: resolved.calcParams } : {}),
+          styles: { lines },
+        } as any,
+        true,
+        { id: resolved.overlay ? "candle_pane" : resolved.paneId },
+      );
+    } catch (error) {
+      console.warn(`Failed to create indicator ${indicator}:`, error);
+    }
+  });
+}
 
 interface ProChartKitProps {
   symbol: string;
@@ -85,7 +126,8 @@ export const ProChartKit = ({
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('prochartkit-indicators');
-      return saved ? JSON.parse(saved) : [];
+      const parsed: string[] = saved ? JSON.parse(saved) : [];
+      return parsed.filter((id) => !RETIRED_INDICATOR_IDS.has(id));
     } catch {
       return [];
     }
@@ -107,6 +149,11 @@ export const ProChartKit = ({
     }
   });
   
+  const indicatorSettingsRef = useRef<IndicatorSettingsMap>(indicatorSettings);
+  useEffect(() => {
+    indicatorSettingsRef.current = indicatorSettings;
+  }, [indicatorSettings]);
+
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
   const [showPremarket, setShowPremarket] = useState(() => isPremarket() || isAfterHours());
   const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
@@ -502,31 +549,8 @@ export const ProChartKit = ({
     }
   );
 
-  // Helper to get interval duration in milliseconds
-  const getIntervalMs = useCallback((intervalStr: string): number => {
-    const intervalMap: Record<string, number> = {
-      '1': 60 * 1000,
-      '5': 5 * 60 * 1000,
-      '15': 15 * 60 * 1000,
-      '30': 30 * 60 * 1000,
-      '60': 60 * 60 * 1000,
-      '1m': 60 * 1000,
-      '5m': 5 * 60 * 1000,
-      '15m': 15 * 60 * 1000,
-      '30m': 30 * 60 * 1000,
-      '1h': 60 * 60 * 1000,
-      'minute': 60 * 1000,
-      '5minute': 5 * 60 * 1000,
-      '15minute': 15 * 60 * 1000,
-      '30minute': 30 * 60 * 1000,
-      'hour': 60 * 60 * 1000,
-      'daily': 24 * 60 * 60 * 1000,
-      'D': 24 * 60 * 60 * 1000,
-      '1D': 24 * 60 * 60 * 1000,
-      '1W': 7 * 24 * 60 * 60 * 1000,
-    };
-    return intervalMap[intervalStr] || 5 * 60 * 1000;
-  }, []);
+  // Interval length in ms (D/W/M approximate). Bucket starts come from getBucketStart.
+  const getIntervalMs = useCallback((intervalStr: string): number => intervalToMs(intervalStr), []);
 
   // Track last processed price to avoid redundant updates
   const lastProcessedPriceRef = useRef<number | null>(null);
@@ -632,34 +656,26 @@ export const ProChartKit = ({
       
       if (lastCandle) {
         const now = Date.now();
-        const intervalMs = getIntervalMs(interval);
-        const currentIntervalStart = Math.floor(now / intervalMs) * intervalMs;
-        
+        // Session-aware bucket (9:30-anchored 1H/4H, New York day/week/month).
+        const currentIntervalStart = getBucketStart(now, interval);
+
         // Calculate volume delta from streaming data
         const streamVolume = price.volume || 0;
         let volumeDelta = 0;
-        
+
         if (lastVolumeUpdateRef.current > 0 && streamVolume > lastVolumeUpdateRef.current) {
           volumeDelta = streamVolume - lastVolumeUpdateRef.current;
         }
         lastVolumeUpdateRef.current = streamVolume;
-        
-        // Determine the last candle's interval start
-        const lastCandleIntervalStart = Math.floor(lastCandle.timestamp / intervalMs) * intervalMs;
-        
+
         // If currentIntervalStartRef isn't set yet, initialize from last candle
         if (!currentIntervalStartRef.current) {
-          currentIntervalStartRef.current = lastCandleIntervalStart;
+          currentIntervalStartRef.current = getBucketStart(lastCandle.timestamp, interval);
         }
-        
-        // Detect if streaming price is from a significantly newer time than the last candle
-        // This handles gaps like weekends, pre-market after overnight, etc.
-        const timeSinceLastCandle = now - lastCandle.timestamp;
-        const isLargeGap = timeSinceLastCandle > intervalMs * 2;
-        
-        // Check if we need to create a new candle
-        const needsNewCandle = currentIntervalStart > currentIntervalStartRef.current || isLargeGap;
-        
+
+        // New candle only when the quote falls in a later bucket than the last candle.
+        const needsNewCandle = currentIntervalStart > currentIntervalStartRef.current;
+
         if (needsNewCandle) {
           // New interval started - reset volume tracking and create new candle
           baseVolumeRef.current = 0;
@@ -677,7 +693,7 @@ export const ProChartKit = ({
           scheduleChartUpdate(newCandle, true);
           currentIntervalStartRef.current = currentIntervalStart;
           setStreamingVolume(accumulatedVolumeRef.current);
-          console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString(), isLargeGap ? '(gap detected)' : '');
+          console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
         } else {
           // Same interval - update smoothly with streaming data
           accumulatedVolumeRef.current += volumeDelta;
@@ -1373,8 +1389,7 @@ export const ProChartKit = ({
           
           // Set the current interval start based on the last candle
           if (latestTimestamp) {
-            const intervalMs = getIntervalMs(interval);
-            currentIntervalStartRef.current = Math.floor(latestTimestamp / intervalMs) * intervalMs;
+            currentIntervalStartRef.current = getBucketStart(latestTimestamp, interval);
           }
           
           // Set base volume from the last candle for streaming accumulation
@@ -1419,6 +1434,10 @@ export const ProChartKit = ({
           
           // Apply saved annotations
           applyAnnotationsToChart(chartRef.current, symbol);
+
+          // Redraw the user's saved indicators. The chart instance is rebuilt on
+          // symbol/theme changes and on page load, which drops them otherwise.
+          applyIndicatorsToChart(chartRef.current, selectedIndicatorsRef.current, indicatorSettingsRef.current);
         }
 
         // Fetch Koinonia signals if enabled
@@ -1836,269 +1855,15 @@ export const ProChartKit = ({
     return map[interval] || interval;
   };
 
-  // Get indicator configuration - comprehensive mapping for klinecharts built-in indicators
-  // Built-in indicators in klinecharts: MA, EMA, SMA, BOLL, SAR, BBI, DMA, MACD, KDJ, RSI, 
-  // WR, MTM, DMI, OBV, CR, PSY, BRAR, CCI, ROC, ATR, VR, BIAS, AO, AVP, VOL, EMV, TRIX
-  const getIndicatorConfig = (indicator: string): { name: string; params?: any; paneId?: string } | null => {
-    // Parse indicator string for period values
-    const periodMatch = indicator.match(/\((\d+)\)/);
-    const period = periodMatch ? parseInt(periodMatch[1]) : 14;
-    
-    // Moving Averages - klinecharts uses 'MA' with calcParams for period
-    if (indicator.startsWith("SMA")) {
-      return { name: "SMA", params: { calcParams: [period] } };
-    }
-    if (indicator.startsWith("EMA")) {
-      return { name: "EMA", params: { calcParams: [period] } };
-    }
-    if (indicator.startsWith("WMA")) {
-      // WMA not built-in, use SMA as fallback
-      return { name: "SMA", params: { calcParams: [period] } };
-    }
-    if (indicator.startsWith("DEMA") || indicator.startsWith("TEMA")) {
-      // DEMA/TEMA not built-in, use EMA as fallback
-      return { name: "EMA", params: { calcParams: [period] } };
-    }
-    if (indicator.startsWith("VWMA")) {
-      // VWMA not built-in, use SMA as fallback
-      return { name: "SMA", params: { calcParams: [period] } };
-    }
-    
-    // Bollinger Bands
-    if (indicator.startsWith("BB") && !indicator.startsWith("BBW") && !indicator.startsWith("BB%")) {
-      const bbMatch = indicator.match(/BB\((\d+),(\d+\.?\d*)\)/);
-      const bbPeriod = bbMatch ? parseInt(bbMatch[1]) : 20;
-      const bbMultiplier = bbMatch ? parseFloat(bbMatch[2]) : 2;
-      return { name: "BOLL", params: { calcParams: [bbPeriod, bbMultiplier] } };
-    }
-    
-    // RSI
-    if (indicator.startsWith("RSI")) {
-      return { name: "RSI", params: { calcParams: [period] }, paneId: 'rsi_pane' };
-    }
-    
-    // ATR
-    if (indicator.startsWith("ATR") || indicator.startsWith("NATR")) {
-      return { name: "ATR", params: { calcParams: [period] }, paneId: 'atr_pane' };
-    }
-    
-    // CCI
-    if (indicator.startsWith("CCI")) {
-      return { name: "CCI", params: { calcParams: [period] }, paneId: 'cci_pane' };
-    }
-    
-    // ROC / Momentum
-    if (indicator.startsWith("ROC") || indicator.startsWith("Momentum")) {
-      return { name: "ROC", params: { calcParams: [period] }, paneId: 'roc_pane' };
-    }
-    
-    // CMF - use VR as closest alternative
-    if (indicator.startsWith("CMF")) {
-      return { name: "VR", params: { calcParams: [period] }, paneId: 'vr_pane' };
-    }
-    
-    // VROC - use VR
-    if (indicator.startsWith("VROC")) {
-      return { name: "VR", params: { calcParams: [period] }, paneId: 'vr_pane' };
-    }
-    
-    // ADX - use DMI which includes ADX
-    if (indicator.startsWith("ADX")) {
-      return { name: "DMI", params: { calcParams: [period] }, paneId: 'dmi_pane' };
-    }
-    
-    // MFI - not built-in, use RSI as alternative
-    if (indicator.startsWith("MFI")) {
-      return { name: "RSI", params: { calcParams: [period] }, paneId: 'mfi_pane' };
-    }
-    
-    // CMO - not built-in, use RSI as alternative
-    if (indicator.startsWith("CMO")) {
-      return { name: "RSI", params: { calcParams: [period] }, paneId: 'cmo_pane' };
-    }
-    
-    // Standard Deviation - not built-in
-    if (indicator.startsWith("StdDev")) {
-      return { name: "BOLL", params: { calcParams: [period, 2] } };
-    }
-    
-    // Linear Regression - not built-in, use SMA as fallback
-    if (indicator.startsWith("LinearReg")) {
-      return { name: "SMA", params: { calcParams: [period] } };
-    }
-    
-    // Donchian Channel - not built-in
-    if (indicator.startsWith("DC")) {
-      return { name: "BOLL", params: { calcParams: [period, 2] } };
-    }
-    
-    // Fixed-name indicators - using klinecharts built-in names
-    const staticConfigs: Record<string, { name: string; params?: any; paneId?: string }> = {
-      // MACD variants
-      "MACD": { name: "MACD", params: { calcParams: [12, 26, 9] }, paneId: 'macd_pane' },
-      "MACD(5,35,5)": { name: "MACD", params: { calcParams: [5, 35, 5] }, paneId: 'macd_pane' },
-      
-      // Stochastic - KDJ in klinecharts
-      "Stochastic": { name: "KDJ", params: { calcParams: [9, 3, 3] }, paneId: 'kdj_pane' },
-      "StochRSI": { name: "KDJ", params: { calcParams: [14, 3, 3] }, paneId: 'stochrsi_pane' },
-      
-      // Williams %R - WR in klinecharts
-      "Williams%R": { name: "WR", params: { calcParams: [14] }, paneId: 'wr_pane' },
-      
-      // SAR
-      "SAR": { name: "SAR", params: { calcParams: [0.02, 0.02, 0.2] } },
-      "PSAR": { name: "SAR", params: { calcParams: [0.02, 0.02, 0.2] } },
-      
-      // Supertrend - not built-in, use SAR as alternative
-      "Supertrend": { name: "SAR", params: { calcParams: [0.02, 0.02, 0.2] } },
-      
-      // Ichimoku - not built-in, use multiple SMAs
-      "Ichimoku": { name: "SMA", params: { calcParams: [26] } },
-      
-      // Volume
-      "Volume": { name: "VOL", paneId: 'vol_pane' },
-      "VWAP": { name: "VOL", paneId: 'vwap_pane' },
-      
-      // OBV
-      "OBV": { name: "OBV", paneId: 'obv_pane' },
-      
-      // AD - use OBV as alternative
-      "AD": { name: "OBV", paneId: 'ad_pane' },
-      
-      // PVT, VPT - use OBV
-      "PVT": { name: "OBV", paneId: 'pvt_pane' },
-      "VPT": { name: "OBV", paneId: 'vpt_pane' },
-      
-      // EOM - EMV in klinecharts
-      "EOM": { name: "EMV", paneId: 'emv_pane' },
-      
-      // NVI, PVI - not built-in, use VOL
-      "NVI": { name: "VOL", paneId: 'nvi_pane' },
-      "PVI": { name: "VOL", paneId: 'pvi_pane' },
-      
-      // Ultimate Oscillator - not built-in, use RSI
-      "UO": { name: "RSI", params: { calcParams: [14] }, paneId: 'uo_pane' },
-      
-      // Awesome Oscillator - AO in klinecharts
-      "AO": { name: "AO", paneId: 'ao_pane' },
-      
-      // TSI - not built-in, use MACD
-      "TSI": { name: "MACD", params: { calcParams: [25, 13, 13] }, paneId: 'tsi_pane' },
-      
-      // TRIX
-      "TRIX": { name: "TRIX", params: { calcParams: [12] }, paneId: 'trix_pane' },
-      
-      // Keltner Channel - use BOLL as alternative
-      "KC(20,1.5)": { name: "BOLL", params: { calcParams: [20, 1.5] } },
-      
-      // BBW, BB%B - use BOLL
-      "BBW": { name: "BOLL", params: { calcParams: [20, 2] } },
-      "BB%B": { name: "BOLL", params: { calcParams: [20, 2] } },
-      
-      // Chaikin Volatility - use ATR
-      "Chaikin": { name: "ATR", params: { calcParams: [10] }, paneId: 'chv_pane' },
-      
-      // DPO - not built-in, use ROC
-      "DPO": { name: "ROC", params: { calcParams: [20] }, paneId: 'dpo_pane' },
-      
-      // KST - not built-in, use MACD
-      "KST": { name: "MACD", params: { calcParams: [10, 15, 9] }, paneId: 'kst_pane' },
-      
-      // PPO - use MACD
-      "PPO": { name: "MACD", params: { calcParams: [12, 26, 9] }, paneId: 'ppo_pane' },
-      "PO": { name: "MACD", params: { calcParams: [12, 26, 9] }, paneId: 'po_pane' },
-      
-      // AROON - not built-in, use DMI
-      "AROON": { name: "DMI", params: { calcParams: [25] }, paneId: 'aroon_pane' },
-      "AroonOsc": { name: "DMI", params: { calcParams: [25] }, paneId: 'aroonosc_pane' },
-      
-      // DMI
-      "DMI": { name: "DMI", params: { calcParams: [14] }, paneId: 'dmi_pane' },
-      
-      // Pivot Points - not built-in, skip or show message
-      "Pivot": { name: "SMA", params: { calcParams: [1] } },
-      "FibRetrace": { name: "SMA", params: { calcParams: [1] } },
-      "PivotHiLo": { name: "SMA", params: { calcParams: [5] } },
-      "ZigZag": { name: "SMA", params: { calcParams: [5] } },
-      
-      // Statistical - not built-in
-      "LinearRegSlope": { name: "SMA", params: { calcParams: [14] } },
-      "Correlation": { name: "SMA", params: { calcParams: [20] } },
-      "Beta": { name: "SMA", params: { calcParams: [20] } },
-      "R2": { name: "SMA", params: { calcParams: [20] } },
-      
-      // CR, PSY, BRAR, MTM, BIAS, AVP, VR are built-in
-      "CR": { name: "CR", paneId: 'cr_pane' },
-      "PSY": { name: "PSY", params: { calcParams: [12] }, paneId: 'psy_pane' },
-      "BRAR": { name: "BRAR", paneId: 'brar_pane' },
-      "MTM": { name: "MTM", params: { calcParams: [6, 10] }, paneId: 'mtm_pane' },
-      "BIAS": { name: "BIAS", params: { calcParams: [6, 12, 24] }, paneId: 'bias_pane' },
-      "AVP": { name: "AVP" },
-      "VR": { name: "VR", params: { calcParams: [26] }, paneId: 'vr_pane' },
-    };
-    
-    return staticConfigs[indicator] || null;
-  };
-
-  // Handle indicator changes with proper pane management and custom styles
+  // Handle indicator changes from the panel
   const handleIndicatorChange = useCallback((indicators: string[], settings?: IndicatorSettingsMap) => {
     // Always update state/ref even if the chart is temporarily not ready
     selectedIndicatorsRef.current = indicators;
     setSelectedIndicators(indicators);
-
+    if (settings) indicatorSettingsRef.current = settings;
     if (!chartRef.current) return;
-
-    const chart = chartRef.current;
-    const currentSettings = settings || indicatorSettings;
-
-    // Remove all existing indicators
-    chart.removeIndicator();
-
-    // Add selected indicators with custom styles
-    indicators.forEach((indicator, index) => {
-      const indicatorConfig = getIndicatorConfig(indicator);
-      if (indicatorConfig) {
-        try {
-          const { name, params, paneId } = indicatorConfig;
-
-          // Get custom settings for this indicator
-          const customSettings = currentSettings[indicator] || getDefaultIndicatorSettings(indicator, index);
-
-          // Determine if this is an overlay indicator (on main chart) or separate pane
-          const isOverlay = !paneId || ['SMA', 'EMA', 'BOLL', 'SAR', 'AVP'].includes(name);
-
-          // Build styles based on custom settings
-          const customStyles = {
-            lines: [
-              { color: customSettings.color, size: customSettings.width },
-              { color: customSettings.color, size: customSettings.width },
-              { color: customSettings.color, size: customSettings.width },
-            ],
-          };
-
-          // IMPORTANT: Use IndicatorCreate (1st arg) so calcParams/styles apply and so duplicates (e.g. SMA(20) + SMA(50)) can coexist.
-          const indicatorInstanceId = `ind_${indicator.replace(/[^a-z0-9]+/gi, '_')}`;
-
-          const indicatorCreate = {
-            id: indicatorInstanceId,
-            name,
-            ...(params || {}),
-            styles: customStyles,
-          };
-
-          const paneOptions = isOverlay
-            ? { id: 'candle_pane' }
-            : paneId
-              ? { id: paneId }
-              : undefined;
-
-          chart.createIndicator(indicatorCreate as any, isOverlay, paneOptions);
-        } catch (error) {
-          console.warn(`Failed to create indicator ${indicator}:`, error);
-        }
-      }
-    });
-  }, [indicatorSettings]);
+    applyIndicatorsToChart(chartRef.current, indicators, settings || indicatorSettingsRef.current);
+  }, []);
 
   // Handle indicator settings changes
   const handleIndicatorSettingsChange = useCallback((newSettings: IndicatorSettingsMap) => {
