@@ -6,13 +6,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Schwab marks unavailable greeks with sentinel values such as -999.
+const finiteOrNull = (v: unknown, min = -1e6, max = 1e6) =>
+  typeof v === 'number' && Number.isFinite(v) && v > min && v < max ? v : null;
+
+/** Fields used by the chart's options levels (gamma exposure, expected move). */
+const extraFields = (contract: any) => ({
+  gamma: finiteOrNull(contract.gamma, -1, 10),
+  mark: finiteOrNull(contract.mark, -1, 1e6),
+  daysToExpiration: finiteOrNull(contract.daysToExpiration, -1, 5000),
+  occSymbol: typeof contract.symbol === 'string' ? contract.symbol : null,
+});
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { symbol } = await req.json();
+    const { symbol, fromDate, toDate, strikeCount } = await req.json();
 
     if (!symbol) {
       throw new Error('Symbol is required');
@@ -58,7 +70,14 @@ serve(async (req) => {
     // If we have an access token, call the real Schwab API
     if (accessToken) {
       try {
-        const schwabUrl = `https://api.schwabapi.com/marketdata/v1/chains?symbol=${symbol}`;
+        // Optional window (YYYY-MM-DD) and strikes around the money keep the
+        // response small for chart overlays; without them the full chain is returned.
+        const params = new URLSearchParams({ symbol: String(symbol).toUpperCase() });
+        const isDate = (d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+        if (isDate(fromDate)) params.set('fromDate', fromDate);
+        if (isDate(toDate)) params.set('toDate', toDate);
+        if (Number.isInteger(strikeCount) && strikeCount > 0 && strikeCount <= 200) params.set('strikeCount', String(strikeCount));
+        const schwabUrl = `https://api.schwabapi.com/marketdata/v1/chains?${params.toString()}`;
         
         console.log('Calling Schwab API for', symbol);
         const schwabResponse = await fetch(schwabUrl, {
@@ -97,6 +116,7 @@ serve(async (req) => {
                   openInterest: contract.openInterest || 0,
                   impliedVolatility: contract.volatility || 0,
                   delta: contract.delta || null,
+                  ...extraFields(contract),
                 });
               }
             }
@@ -111,14 +131,6 @@ serve(async (req) => {
                 const contractsArray = contracts as any[];
                 const strike = parseFloat(strikeKey);
                 
-                // Log 255 strike PUT for 10/10/2025 specifically
-                if (cleanExpDate === '2025-10-10' && Math.abs(strike - 255) < 0.01) {
-                  console.log('🎯 Found 255 PUT for 10/10/2025!');
-                  console.log('Strike key:', strikeKey);
-                  console.log('Number of contracts in array:', contractsArray.length);
-                  console.log('Full contracts array:', JSON.stringify(contractsArray, null, 2));
-                }
-                
                 const contract = contractsArray[0];
                 
                 options.push({
@@ -131,6 +143,7 @@ serve(async (req) => {
                   openInterest: contract.openInterest || 0,
                   impliedVolatility: contract.volatility || 0,
                   delta: contract.delta || null,
+                  ...extraFields(contract),
                 });
               }
             }
@@ -143,6 +156,8 @@ serve(async (req) => {
               options,
               source: 'schwab',
               underlyingPrice: schwabData.underlyingPrice || null,
+              isDelayed: schwabData.isDelayed ?? null,
+              asOf: Date.now(),
             }),
             { 
               status: 200, 
