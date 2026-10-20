@@ -202,6 +202,8 @@ export function identifySessionBoundaries(
 }
 
 // Apply session dividers to the chart
+export const SESSION_DIVIDER_GROUP = "session-dividers";
+
 export function applySessionDividers(
   chart: Chart | null,
   candles: { timestamp: number; open: number; high: number; low: number; close: number }[],
@@ -214,7 +216,10 @@ export function applySessionDividers(
   }
 ): void {
   if (!chart || candles.length === 0) return;
-  
+
+  // Replace, don't stack: earlier dividers are removed before drawing new ones.
+  chart.removeOverlay({ groupId: SESSION_DIVIDER_GROUP });
+
   const boundaries = identifySessionBoundaries(candles, interval);
   
   // Calculate price range for shading
@@ -234,6 +239,7 @@ export function applySessionDividers(
   if (options.showMarketOpen) {
     boundaries.marketOpenTimestamps.forEach((timestamp) => {
       chart.createOverlay({
+        groupId: SESSION_DIVIDER_GROUP,
         name: "verticalStraightLine",
         points: [{ timestamp }],
         styles: {
@@ -252,6 +258,7 @@ export function applySessionDividers(
   if (options.showMarketClose) {
     boundaries.marketCloseTimestamps.forEach((timestamp) => {
       chart.createOverlay({
+        groupId: SESSION_DIVIDER_GROUP,
         name: "verticalStraightLine",
         points: [{ timestamp }],
         styles: {
@@ -272,6 +279,7 @@ export function applySessionDividers(
     boundaries.premarketRanges.forEach((range) => {
       // Add a subtle line at the start of premarket
       chart.createOverlay({
+        groupId: SESSION_DIVIDER_GROUP,
         name: "verticalStraightLine",
         points: [{ timestamp: range.start }],
         styles: {
@@ -291,6 +299,7 @@ export function applySessionDividers(
     boundaries.afterHoursRanges.forEach((range) => {
       // Add a subtle line at the start of after-hours
       chart.createOverlay({
+        groupId: SESSION_DIVIDER_GROUP,
         name: "verticalStraightLine",
         points: [{ timestamp: range.start }],
         styles: {
@@ -306,11 +315,9 @@ export function applySessionDividers(
   }
 }
 
-// Clear session dividers (removes all vertical line overlays with session markers)
+// Remove all session dividers (other overlays are untouched).
 export function clearSessionDividers(chart: Chart | null): void {
-  // Note: This will be called before applying new dividers
-  // The actual removal happens in applySessionDividers by clearing all overlays first
-  // or by using overlay IDs if we track them
+  chart?.removeOverlay({ groupId: SESSION_DIVIDER_GROUP });
 }
 
 export type { SessionDividerOptions };

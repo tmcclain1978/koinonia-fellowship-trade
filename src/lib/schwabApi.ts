@@ -29,7 +29,16 @@ export interface SchwabQuote {
   description?: string;
   exchange?: string;
   isShortable?: boolean;
+  /** Set on fallback quotes; absent on real Schwab quotes. */
   source?: string;
+  /** True when lastPrice is the previous session's close, not a live price. */
+  isPreviousClose?: boolean;
+  /** Epoch ms the values were current as of, when the source reports it. */
+  asOf?: number;
+  /** Epoch ms of the last trade (streaming quotes). */
+  tradeTime?: number;
+  /** Size of the last trade (streaming quotes). */
+  lastSize?: number;
 }
 
 export interface LinkedAccount {

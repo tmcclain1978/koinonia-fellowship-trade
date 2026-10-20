@@ -1,19 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { schwabApi, SchwabQuote } from "@/lib/schwabApi";
+import { schwabFeed, type StreamingQuote, type FeedStatus, type AccountActivityItem } from "@/lib/marketData";
 
-export interface StreamingQuote extends SchwabQuote {
-  lastUpdated: Date;
-  previousPrice?: number;
-  priceDirection?: 'up' | 'down' | 'unchanged';
-}
+export type { StreamingQuote } from "@/lib/marketData";
 
-export interface AccountActivity {
-  accountNumber: string;
-  messageType: string;
-  messageData: any;
-  timestamp: Date;
-}
+export type AccountActivity = AccountActivityItem;
 
 // Price update callback for chart integration
 export interface SchwabPriceUpdate {
@@ -21,6 +11,7 @@ export interface SchwabPriceUpdate {
   price: number;
   high: number;
   low: number;
+  /** Cumulative volume for the day (not the size of one trade). */
   volume: number;
   bid: number;
   ask: number;
@@ -28,48 +19,51 @@ export interface SchwabPriceUpdate {
   changePercent: number;
   timestamp: Date;
   direction: 'up' | 'down' | 'unchanged';
+  /** Epoch ms of the last trade, when the stream provides it. */
+  tradeTime?: number;
+  /** False for fallback quotes (delayed or previous close). Charts ignore these. */
+  isLive: boolean;
 }
 
 interface UseSchwabStreamingOptions {
   symbols: string[];
-  refreshInterval?: number; // in milliseconds, default 5000ms (reduced from 1000 to prevent rate limiting)
+  /** Polling interval in ms when streaming is unavailable (shared poll uses the smallest requested). */
+  refreshInterval?: number;
   enabled?: boolean;
-  useWebSocket?: boolean; // Try WebSocket first, fallback to polling
+  /** Whether this component wants live streaming (false = polling only). */
+  useWebSocket?: boolean;
   subscribeToAccountActivity?: boolean;
-  onPriceUpdate?: (update: SchwabPriceUpdate) => void; // Real-time callback for chart updates
+  onPriceUpdate?: (update: SchwabPriceUpdate) => void;
 }
 
 type StreamingStatus = 'disconnected' | 'connecting' | 'connected' | 'authenticated' | 'error' | 'polling';
 
-// Global connection manager to prevent multiple hooks from spamming connections
-const connectionManager = {
-  activeHooks: 0,
-  lastAttemptTime: 0,
-  attemptCount: 0,
-  isPollingMode: false,
-  
-  canAttemptConnection(): boolean {
-    const now = Date.now();
-    // Rate limit: max 3 attempts per 60 seconds globally
-    if (now - this.lastAttemptTime < 20000) {
-      this.attemptCount++;
-      if (this.attemptCount > 3) {
-        this.isPollingMode = true;
-        return false;
-      }
-    } else if (now - this.lastAttemptTime > 60000) {
-      // Reset after 60 seconds of no attempts
-      this.attemptCount = 0;
-      this.isPollingMode = false;
-    }
-    this.lastAttemptTime = now;
-    return !this.isPollingMode;
-  }
-};
+const toStreamingStatus = (s: FeedStatus): StreamingStatus =>
+  s === 'streaming' ? 'authenticated' : s === 'idle' ? 'disconnected' : s;
 
+export const toPriceUpdate = (q: StreamingQuote): SchwabPriceUpdate => ({
+  symbol: q.symbol,
+  price: q.lastPrice,
+  high: q.highPrice ?? q.lastPrice,
+  low: q.lowPrice ?? q.lastPrice,
+  volume: q.volume ?? 0,
+  bid: q.bidPrice ?? q.lastPrice,
+  ask: q.askPrice ?? q.lastPrice,
+  change: q.netChange ?? 0,
+  changePercent: q.netPercentChange ?? 0,
+  timestamp: q.lastUpdated,
+  direction: q.priceDirection ?? 'unchanged',
+  tradeTime: q.tradeTime,
+  isLive: q.isLive,
+});
+
+/**
+ * Live quotes for a set of symbols. All components share one connection
+ * (see src/lib/marketData/schwabFeed.ts); this hook only subscribes to it.
+ */
 export const useSchwabStreaming = ({
   symbols,
-  refreshInterval = 15000, // Increased to 15s to reduce API calls significantly
+  refreshInterval = 15000,
   enabled = true,
   useWebSocket = true,
   subscribeToAccountActivity = false,
@@ -77,487 +71,85 @@ export const useSchwabStreaming = ({
 }: UseSchwabStreamingOptions) => {
   const [quotes, setQuotes] = useState<Map<string, StreamingQuote>>(new Map());
   const [accountActivity, setAccountActivity] = useState<AccountActivity[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const [status, setStatus] = useState<StreamingStatus>('disconnected');
-  const [error, setError] = useState<string | null>(null);
+  const [feedStatus, setFeedStatus] = useState<FeedStatus>(schwabFeed.getStatus());
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  
-  const previousQuotesRef = useRef<Map<string, number>>(new Map());
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const subscribedSymbolsRef = useRef<string[]>([]);
-  const isWebSocketActiveRef = useRef(false);
-  const isInitializedRef = useRef(false);
-  const symbolsKeyRef = useRef<string>('');
-  
-  // WebSocket connection rate limiting refs - must be with other refs for consistent hook ordering
-  const wsConnectionAttemptRef = useRef<number>(0);
-  const lastWsAttemptTimeRef = useRef<number>(0);
+  const [paused, setPaused] = useState(false);
 
-  // Refs for onPriceUpdate callback to avoid stale closures
   const onPriceUpdateRef = useRef(onPriceUpdate);
   onPriceUpdateRef.current = onPriceUpdate;
-  
-  // Memoized symbols key to prevent unnecessary re-renders
-  const symbolsKey = symbols.slice().sort().join(',');
 
-  // Process quote updates (shared between WS and polling)
-  const processQuotes = useCallback((fetchedQuotes: SchwabQuote[]) => {
-    const newQuotes = new Map<string, StreamingQuote>();
-    
-    fetchedQuotes.forEach((quote) => {
-      const previousPrice = previousQuotesRef.current.get(quote.symbol);
-      let priceDirection: 'up' | 'down' | 'unchanged' = 'unchanged';
-      
-      if (previousPrice !== undefined) {
-        if (quote.lastPrice > previousPrice) {
-          priceDirection = 'up';
-        } else if (quote.lastPrice < previousPrice) {
-          priceDirection = 'down';
-        }
-      }
+  const symbolsKey = symbols.map((s) => s.trim().toUpperCase()).filter(Boolean).sort().join(',');
+  const active = enabled && !paused && symbolsKey.length > 0;
 
-      const streamingQuote: StreamingQuote = {
-        ...quote,
-        lastUpdated: new Date(),
-        previousPrice,
-        priceDirection,
-      };
+  useEffect(() => schwabFeed.onStatus(setFeedStatus), []);
 
-      newQuotes.set(quote.symbol, streamingQuote);
-      previousQuotesRef.current.set(quote.symbol, quote.lastPrice);
+  useEffect(() => {
+    if (!active) return;
+    const list = symbolsKey.split(',');
 
-      // Trigger onPriceUpdate callback for chart integration
-      if (onPriceUpdateRef.current) {
-        onPriceUpdateRef.current({
-          symbol: quote.symbol,
-          price: quote.lastPrice,
-          high: quote.highPrice || quote.lastPrice,
-          low: quote.lowPrice || quote.lastPrice,
-          volume: quote.volume || 0,
-          bid: quote.bidPrice || quote.lastPrice,
-          ask: quote.askPrice || quote.lastPrice,
-          change: quote.netChange || 0,
-          changePercent: quote.netPercentChange || 0,
-          timestamp: new Date(),
-          direction: priceDirection,
-        });
-      }
+    // Seed with whatever the feed already has for these symbols.
+    const seeded = new Map<string, StreamingQuote>();
+    for (const s of list) {
+      const q = schwabFeed.getQuote(s);
+      if (q) seeded.set(s, q);
+    }
+    setQuotes(seeded);
+
+    // Batch React state updates (quotes can arrive many times per second);
+    // the chart callback still fires for every update.
+    const pending = new Map<string, StreamingQuote>();
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      flushTimer = null;
+      if (pending.size === 0) return;
+      const batch = new Map(pending);
+      pending.clear();
+      setQuotes((prev) => {
+        const next = new Map(prev);
+        batch.forEach((q, s) => next.set(s, q));
+        return next;
+      });
+      setLastUpdate(new Date());
+    };
+
+    const unsubscribe = schwabFeed.subscribe({
+      symbols: list,
+      pollMs: refreshInterval,
+      useWebSocket,
+      onQuote: (q) => {
+        onPriceUpdateRef.current?.(toPriceUpdate(q));
+        pending.set(q.symbol, q);
+        if (!flushTimer) flushTimer = setTimeout(flush, 100);
+      },
     });
 
-    setQuotes(newQuotes);
-    setLastUpdate(new Date());
-    setIsConnected(true);
-    setError(null);
-  }, []);
+    return () => {
+      unsubscribe();
+      if (flushTimer) clearTimeout(flushTimer);
+    };
+  }, [active, symbolsKey, refreshInterval, useWebSocket]);
 
-  // Polling fallback - with error suppression for rate limits
-  const fetchQuotes = useCallback(async () => {
-    if (!enabled || symbols.length === 0 || isWebSocketActiveRef.current) return;
+  useEffect(() => {
+    if (!subscribeToAccountActivity || !enabled) return;
+    return schwabFeed.onAccountActivity((items) =>
+      setAccountActivity((prev) => [...items, ...prev].slice(0, 100)),
+    );
+  }, [subscribeToAccountActivity, enabled]);
 
-    try {
-      const fetchedQuotes = await schwabApi.getQuotes(symbols);
-      if (fetchedQuotes.length > 0) {
-        processQuotes(fetchedQuotes);
-        setStatus('polling');
-        setError(null);
-      }
-    } catch (err: any) {
-      // Silently handle rate limit / network errors - don't spam console
-      if (!err.message?.includes('rate') && !err.message?.includes('429')) {
-        console.warn("Streaming error:", err.message);
-      }
-      // Don't disconnect on transient errors
-    }
-  }, [symbols, enabled, processQuotes]);
+  const getQuote = useCallback(
+    (symbol: string): StreamingQuote | undefined => quotes.get(symbol.toUpperCase()) ?? schwabFeed.getQuote(symbol),
+    [quotes],
+  );
 
-  // Handle WebSocket data messages
-  const handleDataMessage = useCallback((message: any) => {
-    if (message.service === 'QUOTE' || message.service === 'LEVELONE_EQUITIES') {
-      const content = message.content;
-      if (Array.isArray(content)) {
-        setQuotes(prev => {
-          const newQuotes = new Map(prev);
-          
-          for (const item of content) {
-            const symbol = item.key || item['0'];
-            if (!symbol) continue;
-
-            const lastPrice = item['1'] || item.lastPrice || prev.get(symbol)?.lastPrice || 0;
-            const highPrice = item['12'] || item.highPrice || lastPrice;
-            const lowPrice = item['13'] || item.lowPrice || lastPrice;
-            const volume = item['8'] || item.volume || 0;
-            const bidPrice = item['2'] || item.bidPrice || lastPrice;
-            const askPrice = item['3'] || item.askPrice || lastPrice;
-            const netChange = item['9'] || item.netChange || 0;
-            const netPercentChange = item['10'] || item.netPercentChange || 0;
-            
-            const previousPrice = previousQuotesRef.current.get(symbol);
-            
-            let priceDirection: 'up' | 'down' | 'unchanged' = 'unchanged';
-            if (previousPrice !== undefined) {
-              if (lastPrice > previousPrice) priceDirection = 'up';
-              else if (lastPrice < previousPrice) priceDirection = 'down';
-            }
-
-            newQuotes.set(symbol, {
-              symbol,
-              lastPrice,
-              highPrice,
-              lowPrice,
-              bidPrice,
-              askPrice,
-              bidSize: item['4'] || item.bidSize,
-              askSize: item['5'] || item.askSize,
-              volume,
-              netChange,
-              netPercentChange,
-              lastUpdated: new Date(),
-              previousPrice,
-              priceDirection,
-            });
-
-            previousQuotesRef.current.set(symbol, lastPrice);
-
-            // Trigger onPriceUpdate callback for chart integration (real-time WebSocket)
-            if (onPriceUpdateRef.current) {
-              onPriceUpdateRef.current({
-                symbol,
-                price: lastPrice,
-                high: highPrice,
-                low: lowPrice,
-                volume,
-                bid: bidPrice,
-                ask: askPrice,
-                change: netChange,
-                changePercent: netPercentChange,
-                timestamp: new Date(),
-                direction: priceDirection,
-              });
-            }
-          }
-          
-          return newQuotes;
-        });
-        setLastUpdate(new Date());
-      }
-    }
-
-    if (message.service === 'ACCT_ACTIVITY') {
-      const content = message.content;
-      if (Array.isArray(content)) {
-        setAccountActivity(prev => {
-          const newActivities = content.map(item => ({
-            accountNumber: item.key || item['0'],
-            messageType: item['1'] || 'UPDATE',
-            messageData: item['2'] || item,
-            timestamp: new Date(),
-          }));
-          return [...newActivities, ...prev].slice(0, 100);
-        });
-      }
-    }
-  }, []);
-
-  const startPolling = useCallback(() => {
-    if (intervalRef.current) return;
-    
-    fetchQuotes();
-    intervalRef.current = setInterval(fetchQuotes, refreshInterval);
-    setStatus('polling');
-  }, [fetchQuotes, refreshInterval]);
-
-  // WebSocket connection - with rate limiting to prevent spam
-  const connectWebSocket = useCallback(async (): Promise<boolean> => {
-    if (!enabled || !useWebSocket) return false;
-    
-    // Use global connection manager to prevent spam across multiple hook instances
-    if (!connectionManager.canAttemptConnection()) {
-      // Silent fallback - don't spam console
-      return false;
-    }
-    
-    // Also check local rate limiting
-    const now = Date.now();
-    const timeSinceLastAttempt = now - lastWsAttemptTimeRef.current;
-    
-    if (timeSinceLastAttempt < 15000) { // 15 seconds between local attempts
-      wsConnectionAttemptRef.current++;
-      if (wsConnectionAttemptRef.current > 2) {
-        return false;
-      }
-    } else if (timeSinceLastAttempt > 60000) {
-      wsConnectionAttemptRef.current = 0;
-    }
-    
-    lastWsAttemptTimeRef.current = now;
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        return false;
-      }
-
-      setStatus('connecting');
-      setError(null);
-
-      const projectId = 'cxsfpxsbejzpukrdrulu';
-      const wsUrl = `wss://${projectId}.supabase.co/functions/v1/schwab-streaming`;
-      
-      // Create WebSocket with auth token in subprotocol
-      const ws = new WebSocket(wsUrl, ['authorization', session.access_token]);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        // Only log on first successful connection
-        if (reconnectAttemptsRef.current === 0) {
-          console.log('[useSchwabStreaming] WebSocket connected');
-        }
-        setStatus('connected');
-        reconnectAttemptsRef.current = 0;
-        wsConnectionAttemptRef.current = 0; // Reset on successful connection
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-
-          if (message.type === 'connected') {
-            setStatus('authenticated');
-            isWebSocketActiveRef.current = true;
-            setIsConnected(true);
-            
-            // Stop polling if it was running
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-              intervalRef.current = null;
-            }
-            
-            // Subscribe to symbols
-            if (symbols.length > 0) {
-              ws.send(JSON.stringify({
-                action: 'subscribe',
-                service: 'QUOTE',
-                symbols: symbols,
-                fields: '0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15',
-              }));
-              subscribedSymbolsRef.current = symbols;
-            }
-            
-            // Subscribe to account activity if requested
-            if (subscribeToAccountActivity) {
-              ws.send(JSON.stringify({ action: 'subscribe_account' }));
-            }
-          }
-
-          if (message.type === 'data') {
-            handleDataMessage(message);
-          }
-
-          if (message.type === 'error') {
-            console.error('[useSchwabStreaming] Error:', message.message);
-            setError(message.message);
-          }
-
-          if (message.type === 'disconnected') {
-            setStatus('disconnected');
-            isWebSocketActiveRef.current = false;
-            scheduleReconnect();
-          }
-        } catch (err) {
-          console.error('[useSchwabStreaming] Parse error:', err);
-        }
-      };
-
-      ws.onerror = () => {
-        // Don't spam console - just silently fall back to polling
-        setStatus('polling');
-        isWebSocketActiveRef.current = false;
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-        isWebSocketActiveRef.current = false;
-        
-        // Start polling as fallback - silently
-        if (enabled && symbols.length > 0 && !intervalRef.current) {
-          setStatus('polling');
-          startPolling();
-        } else {
-          setStatus('disconnected');
-        }
-      };
-
-      return true;
-    } catch (err: any) {
-      console.error('[useSchwabStreaming] Connection error:', err);
-      setError(err.message || 'Failed to connect');
-      setStatus('error');
-      isWebSocketActiveRef.current = false;
-      return false;
-    }
-  }, [enabled, useWebSocket, symbols, subscribeToAccountActivity, handleDataMessage, startPolling]);
-
-  // Reconnection with rate limiting - max 5 attempts then stay on polling
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-
-    // Max 5 reconnect attempts, then stay on polling permanently (silently)
-    if (reconnectAttemptsRef.current >= 5) {
-      if (!intervalRef.current && enabled && symbols.length > 0) {
-        startPolling();
-      }
-      return;
-    }
-
-    // Exponential backoff: 5s, 10s, 20s, 40s, 60s
-    const delay = Math.min(5000 * Math.pow(2, reconnectAttemptsRef.current), 60000);
-    reconnectAttemptsRef.current++;
-
-    // Start polling immediately as fallback
-    if (!intervalRef.current && enabled && symbols.length > 0) {
-      startPolling();
-    }
-
-    reconnectTimeoutRef.current = setTimeout(() => {
-      connectWebSocket().then(connected => {
-        if (connected) {
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-        }
-      });
-    }, delay);
-  }, [connectWebSocket, startPolling, enabled, symbols]);
-
-  // Helper to get a single quote
-  const getQuote = useCallback((symbol: string): StreamingQuote | undefined => {
-    return quotes.get(symbol.toUpperCase());
-  }, [quotes]);
-
-  // Manual refresh
   const refresh = useCallback(() => {
-    fetchQuotes();
-  }, [fetchQuotes]);
+    void schwabFeed.pollNow(symbolsKey ? symbolsKey.split(',') : []);
+  }, [symbolsKey]);
 
-  // Pause streaming
-  const pause = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      // Unsubscribe but keep connection
-      if (subscribedSymbolsRef.current.length > 0) {
-        wsRef.current.send(JSON.stringify({
-          action: 'unsubscribe',
-          service: 'QUOTE',
-          symbols: subscribedSymbolsRef.current,
-        }));
-      }
-    }
-    setIsConnected(false);
-  }, []);
+  const pause = useCallback(() => setPaused(true), []);
+  const resume = useCallback(() => setPaused(false), []);
 
-  // Resume streaming
-  const resume = useCallback(() => {
-    if (isWebSocketActiveRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-      // Re-subscribe via WebSocket
-      if (symbols.length > 0) {
-        wsRef.current.send(JSON.stringify({
-          action: 'subscribe',
-          service: 'QUOTE',
-          symbols: symbols,
-          fields: '0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15',
-        }));
-        subscribedSymbolsRef.current = symbols;
-      }
-      setIsConnected(true);
-    } else if (!intervalRef.current && enabled && symbols.length > 0) {
-      fetchQuotes();
-      intervalRef.current = setInterval(fetchQuotes, refreshInterval);
-      setIsConnected(true);
-    }
-  }, [enabled, symbols, refreshInterval, fetchQuotes]);
-
-  // Connect/disconnect based on enabled state - debounced to prevent rapid re-connections
-  useEffect(() => {
-    // Skip if symbols haven't actually changed
-    if (symbolsKeyRef.current === symbolsKey && isInitializedRef.current) {
-      return;
-    }
-    symbolsKeyRef.current = symbolsKey;
-    isInitializedRef.current = true;
-    
-    if (enabled && symbols.length > 0) {
-      // Debounce connection attempts
-      const connectionTimeout = setTimeout(() => {
-        // Try WebSocket first, but only if global manager allows
-        if (useWebSocket && !connectionManager.isPollingMode) {
-          connectWebSocket().then(connected => {
-            if (!connected && !intervalRef.current) {
-              startPolling();
-            }
-          });
-        } else if (!intervalRef.current) {
-          startPolling();
-        }
-      }, 100); // Small debounce
-      
-      return () => {
-        clearTimeout(connectionTimeout);
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-        if (wsRef.current) {
-          wsRef.current.close();
-          wsRef.current = null;
-        }
-        isWebSocketActiveRef.current = false;
-      };
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      setIsConnected(false);
-    }
-  }, [enabled, symbolsKey, useWebSocket, connectWebSocket, startPolling]);
-
-  // Update subscriptions when symbols change (for WebSocket)
-  useEffect(() => {
-    if (isWebSocketActiveRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-      // Unsubscribe from old symbols
-      if (subscribedSymbolsRef.current.length > 0) {
-        wsRef.current.send(JSON.stringify({
-          action: 'unsubscribe',
-          service: 'QUOTE',
-          symbols: subscribedSymbolsRef.current,
-        }));
-      }
-      
-      // Subscribe to new symbols
-      if (symbols.length > 0) {
-        wsRef.current.send(JSON.stringify({
-          action: 'subscribe',
-          service: 'QUOTE',
-          symbols: symbols,
-          fields: '0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15',
-        }));
-        subscribedSymbolsRef.current = symbols;
-      }
-    }
-  }, [symbols.join(',')]);
+  const status: StreamingStatus = active ? toStreamingStatus(feedStatus) : 'disconnected';
+  const isConnected = active && (feedStatus === 'streaming' || (feedStatus === 'polling' && lastUpdate !== null));
 
   return {
     quotes,
@@ -565,7 +157,7 @@ export const useSchwabStreaming = ({
     accountActivity,
     status,
     isConnected,
-    error,
+    error: feedStatus === 'error' ? 'Streaming unavailable' : null,
     lastUpdate,
     refresh,
     pause,

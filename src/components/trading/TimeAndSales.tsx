@@ -65,6 +65,8 @@ export const TimeAndSales = ({
     refreshInterval: 1000,
     onPriceUpdate: useCallback((update) => {
       if (update.symbol !== symbol || isPaused) return;
+      // Delayed or previous-close fallback quotes are not trades.
+      if (!update.isLive) return;
 
       // Determine trade direction
       let direction: 'up' | 'down' | 'unchanged' = 'unchanged';

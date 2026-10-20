@@ -68,6 +68,39 @@ const getCacheExpiryMs = (interval: string): number => {
 };
 
 // Generate cache key
+const CACHE_KEY_PREFIX = 'candle_cache_';
+const MAX_CACHED_CANDLES = 1500;
+
+/** Save an entry; if storage is full, drop the oldest other candle caches and retry once. */
+function writeCacheEntry(key: string, entry: CacheEntry) {
+  const json = JSON.stringify(entry);
+  try {
+    localStorage.setItem(key, json);
+    return;
+  } catch {
+    /* probably quota: evict below */
+  }
+  try {
+    const others: Array<{ k: string; t: number }> = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(CACHE_KEY_PREFIX) || k === key) continue;
+      let t = 0;
+      try {
+        t = JSON.parse(localStorage.getItem(k) || '{}').lastFetch || 0;
+      } catch {
+        /* unreadable entry: evict first */
+      }
+      others.push({ k, t });
+    }
+    others.sort((a, b) => a.t - b.t);
+    others.slice(0, Math.max(1, Math.ceil(others.length / 2))).forEach(({ k }) => localStorage.removeItem(k));
+    localStorage.setItem(key, json);
+  } catch (error) {
+    console.warn('[CandleCache] Storage full; keeping candles in memory only', error);
+  }
+}
+
 const getCacheKey = (symbol: string, interval: string, includeExtendedHours: boolean): string => {
   const sessionKey = includeExtendedHours ? 'extended' : 'regular';
   return `candle_cache_${symbol.toUpperCase()}_${interval}_${sessionKey}`;
@@ -266,7 +299,11 @@ export const useCandleCache = ({
     if (!enabled || candles.length === 0) return;
     
     try {
-      const sanitizedCandles = sanitizeCandles(candles);
+      // Simulated data is never cached (it would later show up as "cached" real data).
+      if (source === 'mock') return;
+      // The cache only needs enough recent candles for an instant first paint;
+      // a year of minute bars would overflow browser storage (~5 MB).
+      const sanitizedCandles = sanitizeCandles(candles).slice(-MAX_CACHED_CANDLES);
       if (sanitizedCandles.length === 0) return;
 
       const entry: CacheEntry = {
@@ -274,9 +311,9 @@ export const useCandleCache = ({
         lastFetch: Date.now(),
         source,
       };
-      
-      localStorage.setItem(cacheKey, JSON.stringify(entry));
+
       setCachedData(sanitizedCandles);
+      writeCacheEntry(cacheKey, entry);
       setLastCacheUpdate(entry.lastFetch);
       setCacheSource(source);
       isCacheValidRef.current = true;

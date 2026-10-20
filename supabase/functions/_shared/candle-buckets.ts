@@ -93,6 +93,19 @@ export function parseEasternDateTime(s: string): number {
 }
 
 const SESSION_OPEN_MIN = 9 * 60 + 30;
+const SESSION_CLOSE_MIN = 16 * 60;
+
+/**
+ * True during the regular US equity session (9:30–16:00 ET, Monday–Friday).
+ * Market holidays are not checked; on a holiday no quotes arrive anyway.
+ */
+export function isRegularSessionTime(ts: number): boolean {
+  const et = toEt(ts);
+  const dow = new Date(Date.UTC(et.y, et.mo - 1, et.d)).getUTCDay();
+  if (dow === 0 || dow === 6) return false;
+  const minute = et.h * 60 + et.mi;
+  return minute >= SESSION_OPEN_MIN && minute < SESSION_CLOSE_MIN;
+}
 
 /** Start (epoch ms) of the candle that contains `ts` for this interval. */
 export function getBucketStart(ts: number, interval: string): number {
@@ -101,8 +114,11 @@ export function getBucketStart(ts: number, interval: string): number {
   if (kind === 'day') return etWallTimeToEpoch(et.y, et.mo, et.d);
   if (kind === 'month') return etWallTimeToEpoch(et.y, et.mo, 1);
   if (kind === 'week') {
-    const dow = (new Date(Date.UTC(et.y, et.mo - 1, et.d)).getUTCDay() + 6) % 7; // Monday = 0
-    const monday = new Date(Date.UTC(et.y, et.mo - 1, et.d - dow));
+    // Weeks run Monday–Friday. A Sunday belongs to the week that starts the next
+    // day (providers often stamp weekly bars on the Sunday the week begins).
+    const sun0 = new Date(Date.UTC(et.y, et.mo - 1, et.d)).getUTCDay(); // Sunday = 0
+    const daysSinceMonday = sun0 === 0 ? -1 : sun0 - 1;
+    const monday = new Date(Date.UTC(et.y, et.mo - 1, et.d - daysSinceMonday));
     return etWallTimeToEpoch(monday.getUTCFullYear(), monday.getUTCMonth() + 1, monday.getUTCDate());
   }
   const len = intervalMinutes(interval) ?? 5;

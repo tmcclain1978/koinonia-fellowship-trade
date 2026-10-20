@@ -34,7 +34,9 @@ describe("session-aware candle buckets", () => {
 
   it("weekly bars start Monday and monthly bars on the 1st (W/M used to roll every 5 minutes)", () => {
     expect(getBucketStart(et("2026-10-21T15:00:00-04:00"), "W")).toBe(et("2026-10-19T00:00:00-04:00"));
-    expect(getBucketStart(et("2026-10-25T15:00:00-04:00"), "W")).toBe(et("2026-10-19T00:00:00-04:00"));
+    expect(getBucketStart(et("2026-10-24T15:00:00-04:00"), "W")).toBe(et("2026-10-19T00:00:00-04:00")); // Saturday
+    // A weekly bar stamped on Sunday belongs to the week starting the next day.
+    expect(getBucketStart(et("2026-10-25T00:00:00-04:00"), "W")).toBe(et("2026-10-26T00:00:00-04:00"));
     expect(getBucketStart(et("2026-10-21T15:00:00-04:00"), "M")).toBe(et("2026-10-01T00:00:00-04:00"));
     expect(getIntervalMs("W")).toBe(7 * 86_400_000);
   });

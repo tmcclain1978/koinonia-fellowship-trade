@@ -23,9 +23,12 @@ import {
 } from "lucide-react";
 import type { Chart } from "klinecharts";
 import { Separator } from "@/components/ui/separator";
+import { startDrawing, clearDrawings } from "./state/chartDrawings";
 
 interface DrawingToolbarProps {
   chart: Chart | null;
+  /** Drawings are saved per symbol. */
+  symbol: string;
 }
 
 interface DrawingTool {
@@ -82,7 +85,7 @@ export const DRAWING_TOOLS: DrawingTool[] = [
 
 const CATEGORIES = ["Lines", "Trend", "Fibonacci", "Shapes", "Patterns", "Annotations", "Measurement"];
 
-export const DrawingToolbar = ({ chart }: DrawingToolbarProps) => {
+export const DrawingToolbar = ({ chart, symbol }: DrawingToolbarProps) => {
   const [open, setOpen] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState("Lines");
@@ -91,12 +94,13 @@ export const DrawingToolbar = ({ chart }: DrawingToolbarProps) => {
     if (!chart) return;
 
     setActiveTool(toolId);
-    chart.createOverlay(toolId);
+    startDrawing(chart, toolId, symbol);
   };
 
   const handleClearDrawings = () => {
     if (!chart) return;
-    chart.removeOverlay();
+    // Only the user's drawings: entry/stop lines, session dividers etc. stay.
+    clearDrawings(chart, symbol);
     setActiveTool(null);
   };
 
