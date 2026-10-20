@@ -41,7 +41,7 @@ import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indic
 import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
 import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS } from "./indicators/registry";
 import { useChartPrefs, setChartPrefs, setSignalPrefs, type SignalLineStyle as PrefsSignalLineStyle } from "./state/chartPrefs";
-import { restoreDrawings, fetchNewerCloudDrawings, retireChart } from "./state/chartDrawings";
+import { restoreDrawings, fetchNewerCloudDrawings, retireChart, snapshotDrawings } from "./state/chartDrawings";
 import { registerKoinoniaOverlays } from "./overlays/registry";
 import { getBucketStart, getIntervalMs as intervalToMs, intervalMinutes, aggregateCandles } from "./candleBuckets";
 import { applyLiveQuote, initialLiveCandleState, type LiveCandleState } from "./liveCandles";
@@ -51,6 +51,8 @@ import { useChartTrading } from "./trading/useChartTrading";
 import { TradeConfirmDialog } from "./trading/TradeConfirmDialog";
 import { useOptionsLevels } from "./options/useOptionsLevels";
 import { OptionsLevelsPopover } from "./options/OptionsLevelsPopover";
+import { useChartAlerts } from "./alerts/useChartAlerts";
+import { AlertsPopover } from "./alerts/AlertsPopover";
 import type { TradingMode } from "./trading/tradingActions";
 
 registerKoinoniaIndicators();
@@ -1640,6 +1642,14 @@ export const ProChartKit = ({
     visible: !replayMode,
   });
 
+  const chartAlerts = useChartAlerts({
+    chart: chartRef.current,
+    chartGen,
+    symbol,
+    visible: !replayMode,
+    lastPrice: currentPrice ?? chartRef.current?.getDataList().at(-1)?.close ?? null,
+  });
+
   return (
     <div className="space-y-4">
       {tradingMode && <TradeConfirmDialog {...trading.dialogProps} />}
@@ -1750,6 +1760,18 @@ export const ProChartKit = ({
             {prefs.tradeLines && trading.error && <AlertTriangle className="w-3 h-3 text-amber-400" />}
           </Button>
         )}
+        <AlertsPopover
+          symbol={symbol}
+          lastPrice={currentPrice ?? chartRef.current?.getDataList().at(-1)?.close ?? null}
+          alerts={chartAlerts.alerts}
+          error={chartAlerts.error}
+          getDrawings={() => (chartRef.current ? snapshotDrawings(chartRef.current) : [])}
+          extendedHours={showPremarket}
+          intraday={intervalMinutes(interval) !== null}
+          onAdd={chartAlerts.add}
+          onRemove={(id) => void chartAlerts.remove(id)}
+          onRearm={(id) => void chartAlerts.rearm(id)}
+        />
         <OptionsLevelsPopover
           prefs={prefs.options}
           summary={optionsLevels.summary}

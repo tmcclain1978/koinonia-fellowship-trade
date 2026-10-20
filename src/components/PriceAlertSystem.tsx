@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
+import type { Json } from "@/integrations/supabase/types";
+import { describeAlert, toChartAlert } from "@/components/charts/alerts/chartAlerts";
 
 interface PriceAlert {
   id: string;
@@ -39,7 +41,28 @@ interface PriceAlert {
   triggered_at: string | null;
   notes: string | null;
   created_at: string;
+  condition?: { timeframe?: "5" | "15" | "60" | "D"; direction?: "any" | "up" | "down" } | null;
+  frequency?: string;
+  cooldown_minutes?: number;
+  notify_email?: boolean;
+  trigger_message?: string | null;
+  trigger_count?: number;
 }
+
+const INDICATOR_TYPES = ["rsi_overbought", "rsi_oversold", "macd_cross", "sma_cross"];
+const DIRECTION_TYPES = ["macd_cross", "sma_cross"];
+
+const valueLabel = (type: string) =>
+  type === "percent_change" ? "Percentage (%)" :
+  type === "volume_spike" ? "Volume multiple (e.g. 2 for 2× normal)" :
+  type === "rsi_overbought" || type === "rsi_oversold" ? "RSI level" :
+  type === "sma_cross" ? "Moving average period (bars)" :
+  type === "macd_cross" ? "" : "Target price ($)";
+
+const defaultValue = (type: string) =>
+  type === "rsi_overbought" ? "70" : type === "rsi_oversold" ? "30" : type === "sma_cross" ? "50" : type === "macd_cross" ? "0" : "";
+
+const describe = (a: PriceAlert) => describeAlert(toChartAlert(a as unknown as Record<string, unknown>));
 
 const ALERT_TYPES = [
   { id: "price_above", label: "Price Above", icon: ArrowUpCircle, description: "Alert when price rises above target" },
@@ -49,8 +72,10 @@ const ALERT_TYPES = [
   { id: "rsi_overbought", label: "RSI Overbought", icon: TrendingUp, description: "RSI crosses above 70" },
   { id: "rsi_oversold", label: "RSI Oversold", icon: TrendingDown, description: "RSI drops below 30" },
   { id: "macd_cross", label: "MACD Cross", icon: Activity, description: "MACD line crosses signal" },
-  { id: "sma_cross", label: "SMA Cross", icon: TrendingUp, description: "Price crosses moving average" },
+  { id: "sma_cross", label: "SMA Cross", icon: TrendingUp, description: "Close crosses a moving average" },
 ];
+// Created from the chart (Alerts button); listed here, not offered in the form.
+const LIST_ONLY_TYPES = [{ id: "line_cross", label: "Line Cross", icon: Activity, description: "Price crosses a line drawn on the chart" }];
 
 export const PriceAlertSystem = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -61,7 +86,12 @@ export const PriceAlertSystem = () => {
     symbol: "",
     alert_type: "price_above",
     target_value: "",
-    notes: ""
+    notes: "",
+    timeframe: "15" as "5" | "15" | "60" | "D",
+    direction: "any" as "any" | "up" | "down",
+    repeat: false,
+    cooldown: "60",
+    email: true,
   });
   const [creating, setCreating] = useState(false);
 
@@ -83,14 +113,8 @@ export const PriceAlertSystem = () => {
             if (payload.eventType === 'INSERT') {
               setAlerts(prev => [payload.new as PriceAlert, ...prev]);
             } else if (payload.eventType === 'UPDATE') {
+              // The "alert triggered" toast comes from the notification center.
               setAlerts(prev => prev.map(a => a.id === payload.new.id ? payload.new as PriceAlert : a));
-              // Show notification for triggered alerts
-              const newAlert = payload.new as PriceAlert;
-              if (newAlert.is_triggered && !payload.old.is_triggered) {
-                toast.success(`🔔 Alert Triggered: ${newAlert.symbol}`, {
-                  description: `${getAlertTypeLabel(newAlert.alert_type)} at ${newAlert.target_value}`
-                });
-              }
             } else if (payload.eventType === 'DELETE') {
               setAlerts(prev => prev.filter(a => a.id !== payload.old.id));
             }
@@ -116,7 +140,7 @@ export const PriceAlertSystem = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setAlerts(data || []);
+      setAlerts((data || []) as unknown as PriceAlert[]);
     } catch (error) {
       console.error("Error fetching alerts:", error);
       toast.error("Failed to load alerts");
@@ -127,7 +151,7 @@ export const PriceAlertSystem = () => {
 
   const createAlert = async () => {
     if (!user) return;
-    if (!newAlert.symbol || !newAlert.target_value) {
+    if (!newAlert.symbol || (!newAlert.target_value && newAlert.alert_type !== "macd_cross")) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -138,14 +162,20 @@ export const PriceAlertSystem = () => {
         user_id: user.id,
         symbol: newAlert.symbol.toUpperCase(),
         alert_type: newAlert.alert_type,
-        target_value: parseFloat(newAlert.target_value),
-        notes: newAlert.notes || null
+        target_value: parseFloat(newAlert.target_value) || 0,
+        notes: newAlert.notes || null,
+        condition: (INDICATOR_TYPES.includes(newAlert.alert_type)
+          ? { timeframe: newAlert.timeframe, direction: DIRECTION_TYPES.includes(newAlert.alert_type) ? newAlert.direction : "any" }
+          : null) as Json,
+        frequency: newAlert.repeat ? "repeat" : "once",
+        cooldown_minutes: Math.min(10080, Math.max(1, parseInt(newAlert.cooldown) || 60)),
+        notify_email: newAlert.email,
       });
 
       if (error) throw error;
 
       toast.success("Alert created successfully");
-      setNewAlert({ symbol: "", alert_type: "price_above", target_value: "", notes: "" });
+      setNewAlert(prev => ({ ...prev, symbol: "", target_value: "", notes: "" }));
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Error creating alert:", error);
@@ -185,15 +215,25 @@ export const PriceAlertSystem = () => {
     }
   };
 
+  const rearmAlert = async (alertId: string) => {
+    const { error } = await supabase
+      .from("price_alerts")
+      .update({ is_triggered: false, triggered_at: null, trigger_message: null, last_checked_at: new Date().toISOString(), last_price: null })
+      .eq("id", alertId);
+    if (error) toast.error("Failed to re-arm alert");
+    else toast.success("Alert re-armed");
+  };
+
   const getAlertTypeLabel = (type: string) => {
-    return ALERT_TYPES.find(t => t.id === type)?.label || type;
+    return [...ALERT_TYPES, ...LIST_ONLY_TYPES].find(t => t.id === type)?.label || type;
   };
 
   const getAlertIcon = (type: string) => {
-    const alertType = ALERT_TYPES.find(t => t.id === type);
+    const alertType = [...ALERT_TYPES, ...LIST_ONLY_TYPES].find(t => t.id === type);
     return alertType?.icon || Activity;
   };
 
+  // Repeating alerts stay active after firing.
   const activeAlerts = alerts.filter(a => a.is_active && !a.is_triggered);
   const triggeredAlerts = alerts.filter(a => a.is_triggered);
   const pausedAlerts = alerts.filter(a => !a.is_active && !a.is_triggered);
@@ -240,7 +280,7 @@ export const PriceAlertSystem = () => {
                 <Label>Alert Type</Label>
                 <Select 
                   value={newAlert.alert_type}
-                  onValueChange={(value) => setNewAlert(prev => ({ ...prev, alert_type: value }))}
+                  onValueChange={(value) => setNewAlert(prev => ({ ...prev, alert_type: value, target_value: defaultValue(value) || prev.target_value }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -261,19 +301,66 @@ export const PriceAlertSystem = () => {
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label>
-                  {newAlert.alert_type === "percent_change" ? "Percentage (%)" : 
-                   newAlert.alert_type === "volume_spike" ? "Volume Multiplier (e.g., 2 for 2x)" :
-                   "Target Price ($)"}
-                </Label>
-                <Input
-                  type="number"
-                  placeholder={newAlert.alert_type === "percent_change" ? "5" : 
-                               newAlert.alert_type === "volume_spike" ? "2" : "150.00"}
-                  value={newAlert.target_value}
-                  onChange={(e) => setNewAlert(prev => ({ ...prev, target_value: e.target.value }))}
-                />
+              {valueLabel(newAlert.alert_type) && (
+                <div className="space-y-2">
+                  <Label>{valueLabel(newAlert.alert_type)}</Label>
+                  <Input
+                    type="number"
+                    placeholder={newAlert.alert_type === "percent_change" ? "5" :
+                                 newAlert.alert_type === "volume_spike" ? "2" : "150.00"}
+                    value={newAlert.target_value}
+                    onChange={(e) => setNewAlert(prev => ({ ...prev, target_value: e.target.value }))}
+                  />
+                </div>
+              )}
+
+              {INDICATOR_TYPES.includes(newAlert.alert_type) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Timeframe</Label>
+                    <Select value={newAlert.timeframe} onValueChange={(v) => setNewAlert(prev => ({ ...prev, timeframe: v as typeof prev.timeframe }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 min</SelectItem>
+                        <SelectItem value="15">15 min</SelectItem>
+                        <SelectItem value="60">1 hour</SelectItem>
+                        <SelectItem value="D">Daily</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {DIRECTION_TYPES.includes(newAlert.alert_type) && (
+                    <div className="space-y-2">
+                      <Label>Direction</Label>
+                      <Select value={newAlert.direction} onValueChange={(v) => setNewAlert(prev => ({ ...prev, direction: v as typeof prev.direction }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Either way</SelectItem>
+                          <SelectItem value="up">Crossing up</SelectItem>
+                          <SelectItem value="down">Crossing down</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <p className="col-span-2 text-xs text-muted-foreground">Checked on completed bars only.</p>
+                </div>
+              )}
+
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="pas-repeat">Repeat (re-arms after a pause)</Label>
+                  <Switch id="pas-repeat" checked={newAlert.repeat} onCheckedChange={(v) => setNewAlert(prev => ({ ...prev, repeat: v }))} />
+                </div>
+                {newAlert.repeat && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>Pause</span>
+                    <Input type="number" className="w-24 h-8" value={newAlert.cooldown} onChange={(e) => setNewAlert(prev => ({ ...prev, cooldown: e.target.value }))} />
+                    <span>minutes</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="pas-email">Email me too</Label>
+                  <Switch id="pas-email" checked={newAlert.email} onCheckedChange={(v) => setNewAlert(prev => ({ ...prev, email: v }))} />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -346,7 +433,8 @@ export const PriceAlertSystem = () => {
                                 </Badge>
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                Target: ${alert.target_value.toLocaleString()}
+                                {describe(alert)}
+                                {alert.frequency === "repeat" && <span className="ml-2">• repeats{alert.trigger_count ? `, fired ${alert.trigger_count}×` : ""}</span>}
                                 {alert.notes && <span className="ml-2">• {alert.notes}</span>}
                               </div>
                             </div>
@@ -396,17 +484,21 @@ export const PriceAlertSystem = () => {
                                 <Badge className="text-xs bg-green-500">Triggered</Badge>
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                Target: ${alert.target_value} • Triggered: {new Date(alert.triggered_at!).toLocaleString()}
+                                {describe(alert)} • Triggered: {alert.triggered_at ? new Date(alert.triggered_at).toLocaleString() : "—"}
                               </div>
+                              {alert.trigger_message && <div className="text-xs text-muted-foreground">{alert.trigger_message}</div>}
                             </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteAlert(alert.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => rearmAlert(alert.id)}>Re-arm</Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteAlert(alert.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -438,7 +530,7 @@ export const PriceAlertSystem = () => {
                                 <Badge variant="secondary" className="text-xs">Paused</Badge>
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                Target: ${alert.target_value}
+                                {describe(alert)}
                               </div>
                             </div>
                           </div>

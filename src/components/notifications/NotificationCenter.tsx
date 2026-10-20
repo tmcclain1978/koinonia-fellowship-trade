@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export interface AppNotification {
   id: string;
@@ -101,6 +102,29 @@ const useNotifications = () => {
       setLoaded(true);
     };
     load();
+  }, []);
+
+  // Live: notifications created on the server (e.g. a price alert firing).
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user || cancelled) return;
+      channel = supabase
+        .channel(`notifications-${user.id}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "user_notifications", filter: `user_id=eq.${user.id}` }, (payload) => {
+          const n = payload.new as { id: string; type: string; title: string; message: string; created_at: string; read: boolean };
+          if (memoryNotifs.some((m) => m.id === n.id)) return; // created in this tab
+          memoryNotifs = [{ id: n.id, type: n.type as AppNotification["type"], title: n.title, message: n.message, timestamp: new Date(n.created_at), read: n.read }, ...memoryNotifs].slice(0, 50);
+          listeners.forEach((l) => l());
+          if (n.type === "price_alert") toast(n.title, { description: n.message, duration: 15_000 });
+        })
+        .subscribe();
+    });
+    return () => {
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
