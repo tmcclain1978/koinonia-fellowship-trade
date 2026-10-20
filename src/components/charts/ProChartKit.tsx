@@ -40,6 +40,7 @@ import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairS
 import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS } from "./indicators/registry";
 import { registerKoinoniaOverlays } from "./overlays/registry";
 import { getBucketStart, getIntervalMs as intervalToMs, intervalMinutes, aggregateCandles } from "./candleBuckets";
+import { applyLiveQuote, initialLiveCandleState, type LiveCandleState } from "./liveCandles";
 
 registerKoinoniaIndicators();
 registerKoinoniaOverlays();
@@ -194,7 +195,6 @@ export const ProChartKit = ({
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
   const lastCandleTimestampRef = useRef<number | null>(null);
-  const currentIntervalStartRef = useRef<number | null>(null);
   
   // Interval switch guard to prevent race conditions
   const isSwitchingIntervalRef = useRef(false);
@@ -204,9 +204,6 @@ export const ProChartKit = ({
   const fetchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
   // Volume tracking for real-time accumulation
-  const baseVolumeRef = useRef<number>(0); // Volume from initial candle load
-  const accumulatedVolumeRef = useRef<number>(0); // Volume accumulated from streaming
-  const lastVolumeUpdateRef = useRef<number>(0); // Last volume value from stream to calculate delta
 
   // Replay state
   const [replayMode, setReplayMode] = useState(false);
@@ -657,85 +654,43 @@ export const ProChartKit = ({
     }
   }, []);
 
-  // Handle Schwab streaming price updates for chart
+  // Handle live quotes: build the forming candle (logic in ./liveCandles, unit-tested)
+  const liveStateRef = useRef<LiveCandleState>(initialLiveCandleState());
+  // Latest candle we computed. The chart throttles redraws, so its own last
+  // candle can lag behind; building on this keeps volume from being dropped.
+  const liveCandleRef = useRef<KLineData | null>(null);
+  const showPremarketRef = useRef(showPremarket);
+  showPremarketRef.current = showPremarket;
+
   const handleSchwabPriceUpdate = useCallback((price: SchwabPriceUpdate) => {
-    if (price.symbol !== symbol) return;
-    
-    // Skip if price hasn't changed (avoid redundant updates causing jumping)
-    if (lastProcessedPriceRef.current !== null && 
-        Math.abs(price.price - lastProcessedPriceRef.current) < 0.001) {
-      return;
+    if (price.symbol !== symbol || !price.isLive) return;
+
+    if (lastProcessedPriceRef.current !== price.price) {
+      lastProcessedPriceRef.current = price.price;
+      setCurrentPrice(price.price);
+      setPriceDirection(price.direction);
+      onPriceUpdate?.(price.price);
     }
-    lastProcessedPriceRef.current = price.price;
-    
-    setCurrentPrice(price.price);
-    setPriceDirection(price.direction);
-    onPriceUpdate?.(price.price);
-    
-    // Update the chart with real-time streaming data
-    if (chartRef.current && !replayMode) {
-      const dataList = chartRef.current.getDataList();
-      const lastCandle = dataList[dataList.length - 1];
-      
-      if (lastCandle) {
-        const now = Date.now();
-        // Session-aware bucket (9:30-anchored 1H/4H, New York day/week/month).
-        const currentIntervalStart = getBucketStart(now, interval);
 
-        // Calculate volume delta from streaming data
-        const streamVolume = price.volume || 0;
-        let volumeDelta = 0;
+    if (!chartRef.current || replayMode) return;
+    const dataList = chartRef.current.getDataList();
+    const chartLast = dataList[dataList.length - 1];
+    if (!chartLast) return;
+    const last = liveCandleRef.current && liveCandleRef.current.timestamp >= chartLast.timestamp ? liveCandleRef.current : chartLast;
 
-        if (lastVolumeUpdateRef.current > 0 && streamVolume > lastVolumeUpdateRef.current) {
-          volumeDelta = streamVolume - lastVolumeUpdateRef.current;
-        }
-        lastVolumeUpdateRef.current = streamVolume;
+    const { update, state } = applyLiveQuote(
+      last,
+      liveStateRef.current,
+      { price: price.price, cumulativeVolume: price.volume, tradeTime: price.tradeTime, isLive: price.isLive },
+      { interval, extendedHours: showPremarketRef.current, now: Date.now() },
+    );
+    liveStateRef.current = state;
+    if (!update) return;
 
-        // If currentIntervalStartRef isn't set yet, initialize from last candle
-        if (!currentIntervalStartRef.current) {
-          currentIntervalStartRef.current = getBucketStart(lastCandle.timestamp, interval);
-        }
-
-        // New candle only when the quote falls in a later bucket than the last candle.
-        const needsNewCandle = currentIntervalStart > currentIntervalStartRef.current;
-
-        if (needsNewCandle) {
-          // New interval started - reset volume tracking and create new candle
-          baseVolumeRef.current = 0;
-          accumulatedVolumeRef.current = volumeDelta;
-          lastVolumeUpdateRef.current = streamVolume;
-          
-          const newCandle: KLineData = {
-            timestamp: currentIntervalStart,
-            open: price.price,
-            high: price.price,
-            low: price.price,
-            close: price.price,
-            volume: accumulatedVolumeRef.current,
-          };
-          scheduleChartUpdate(newCandle, true);
-          currentIntervalStartRef.current = currentIntervalStart;
-          setStreamingVolume(accumulatedVolumeRef.current);
-          console.log('📊 New candle created at', new Date(currentIntervalStart).toLocaleTimeString());
-        } else {
-          // Same interval - update smoothly with streaming data
-          accumulatedVolumeRef.current += volumeDelta;
-          const totalVolume = baseVolumeRef.current + accumulatedVolumeRef.current;
-          
-          const updatedCandle: KLineData = {
-            ...lastCandle,
-            close: price.price,
-            high: Math.max(lastCandle.high, price.price),
-            low: Math.min(lastCandle.low, price.price),
-            volume: totalVolume,
-          };
-          // Use debounced update for smooth animation
-          scheduleChartUpdate(updatedCandle, false);
-          setStreamingVolume(totalVolume);
-        }
-      }
-    }
-  }, [symbol, interval, replayMode, getIntervalMs, onPriceUpdate, scheduleChartUpdate]);
+    liveCandleRef.current = update.candle;
+    scheduleChartUpdate(update.candle, update.isNew);
+    setStreamingVolume(update.candle.volume ?? 0);
+  }, [symbol, interval, replayMode, onPriceUpdate, scheduleChartUpdate]);
 
   // Use Schwab streaming for real-time chart updates
   const { isConnected, status: streamingStatus } = useSchwabStreaming({
@@ -748,15 +703,11 @@ export const ProChartKit = ({
 
   // Reset all tracking refs atomically when interval changes - prevents race conditions
   const resetAllTrackingRefs = useCallback(() => {
-    console.log("🔄 Resetting all tracking refs atomically");
-    currentIntervalStartRef.current = null;
     isInitialLoadRef.current = true;
     lastCandleTimestampRef.current = null;
-    // Reset volume tracking
-    baseVolumeRef.current = 0;
-    accumulatedVolumeRef.current = 0;
-    lastVolumeUpdateRef.current = 0;
     lastProcessedPriceRef.current = null;
+    liveCandleRef.current = null;
+    liveStateRef.current = initialLiveCandleState();
     setStreamingVolume(0);
   }, []);
 
@@ -1404,6 +1355,8 @@ export const ProChartKit = ({
               lastCandleTimestampRef.current = latestTimestamp;
               console.log("📈 New candle detected, applied data");
             }
+            // Server data is now the source of truth for the forming candle.
+            liveCandleRef.current = null;
           }
         } else {
           // Initial load - apply all data
@@ -1417,18 +1370,9 @@ export const ProChartKit = ({
           setChartDataSource(source);
           setLastDataUpdate(new Date());
           
-          // Set the current interval start based on the last candle
-          if (latestTimestamp) {
-            currentIntervalStartRef.current = getBucketStart(latestTimestamp, interval);
-          }
-          
-          // Set base volume from the last candle for streaming accumulation
-          const lastLoadedCandle = klineData[klineData.length - 1];
-          if (lastLoadedCandle) {
-            baseVolumeRef.current = lastLoadedCandle.volume || 0;
-            accumulatedVolumeRef.current = 0;
-            setStreamingVolume(baseVolumeRef.current);
-          }
+          // Fresh history replaces whatever the live feed was building.
+          liveCandleRef.current = null;
+          setStreamingVolume(klineData[klineData.length - 1]?.volume || 0);
           
           // Track last full sync time for smart sync
           lastFullSyncRef.current = Date.now();

@@ -265,82 +265,83 @@ async function returnMockQuotes(symbols: string | string[]) {
   const POLYGON_API_KEY = Deno.env.get('POLYGON_API_KEY');
   const FMP_API_KEY = Deno.env.get('FMP_API_KEY');
   
-  // Try to get real prices from Polygon first, then FMP as secondary fallback
-  const mockQuotes = await Promise.all(symbolList.map(async (symbol) => {
+  // Fallback quotes only report values a real source returned. Nothing is
+  // invented: fields we don't have are left out, and a symbol with no price
+  // from any source is omitted (it used to come back as a $100 placeholder
+  // with random volume/high/low/change, which flowed into charts and order
+  // tickets).
+  const fallbackQuotes = await Promise.all(symbolList.map(async (symbol) => {
     const sym = symbol.trim().toUpperCase();
-    let basePrice: number | null = null;
-    let source = 'mock';
-    
-    // Try Polygon first (preferred source)
-    if (POLYGON_API_KEY && basePrice === null) {
+
+    // Polygon (preferred): previous session's daily bar. This is NOT a live
+    // price, so it is flagged isPreviousClose and carries no intraday fields.
+    if (POLYGON_API_KEY) {
       try {
         const prevResponse = await fetch(
           `https://api.polygon.io/v2/aggs/ticker/${sym}/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`
         );
         const prevData = await prevResponse.json();
-        if (prevData.results?.[0]?.c) {
-          basePrice = prevData.results[0].c;
-          source = 'polygon-fallback';
-          console.log(`[schwab-quotes] Got ${sym} price from Polygon: $${basePrice}`);
+        const bar = prevData.results?.[0];
+        if (bar?.c) {
+          console.log(`[schwab-quotes] Using Polygon previous close for ${sym}: $${bar.c}`);
+          return {
+            symbol: sym,
+            lastPrice: bar.c,
+            closePrice: bar.c,
+            mark: bar.c,
+            isPreviousClose: true,
+            asOf: bar.t,
+            source: 'polygon-fallback',
+          };
         }
       } catch (e) {
         console.log(`[schwab-quotes] Could not fetch ${sym} from Polygon`);
       }
     }
-    
-    // Try FMP as secondary fallback
-    if (FMP_API_KEY && basePrice === null) {
+
+    // FMP: a current quote; pass through the fields it actually provides.
+    if (FMP_API_KEY) {
       try {
         const fmpResponse = await fetch(
           `https://financialmodelingprep.com/api/v3/quote/${sym}?apikey=${FMP_API_KEY}`
         );
         const fmpData = await fmpResponse.json();
-        if (Array.isArray(fmpData) && fmpData[0]?.price) {
-          basePrice = fmpData[0].price;
-          source = 'fmp-fallback';
-          console.log(`[schwab-quotes] Got ${sym} price from FMP: $${basePrice}`);
+        const q = Array.isArray(fmpData) ? fmpData[0] : null;
+        if (q?.price) {
+          console.log(`[schwab-quotes] Using FMP quote for ${sym}: $${q.price}`);
+          return {
+            symbol: sym,
+            lastPrice: q.price,
+            mark: q.price,
+            volume: q.volume ?? undefined,
+            openPrice: q.open ?? undefined,
+            highPrice: q.dayHigh ?? undefined,
+            lowPrice: q.dayLow ?? undefined,
+            closePrice: q.previousClose ?? undefined,
+            netChange: q.change ?? undefined,
+            netPercentChange: q.changesPercentage ?? undefined,
+            high52Week: q.yearHigh ?? undefined,
+            low52Week: q.yearLow ?? undefined,
+            description: q.name ?? undefined,
+            exchange: q.exchange ?? undefined,
+            asOf: typeof q.timestamp === 'number' ? q.timestamp * 1000 : undefined,
+            source: 'fmp-fallback',
+          };
         }
       } catch (e) {
         console.log(`[schwab-quotes] Could not fetch ${sym} from FMP`);
       }
     }
-    
-    // Last resort: use a reasonable placeholder (only if all APIs fail)
-    if (basePrice === null) {
-      basePrice = 100;
-      source = 'mock';
-      console.log(`[schwab-quotes] Using placeholder price for ${sym} - all APIs unavailable`);
-    }
-    
-    const change = (Math.random() - 0.5) * (basePrice * 0.02); // 2% max change
-    
-    return {
-      symbol: sym,
-      lastPrice: parseFloat(basePrice.toFixed(2)),
-      bidPrice: parseFloat((basePrice - 0.02).toFixed(2)),
-      askPrice: parseFloat((basePrice + 0.02).toFixed(2)),
-      bidSize: Math.floor(Math.random() * 100) + 1,
-      askSize: Math.floor(Math.random() * 100) + 1,
-      volume: Math.floor(Math.random() * 10000000) + 1000000,
-      openPrice: parseFloat((basePrice - change / 2).toFixed(2)),
-      highPrice: parseFloat((basePrice + Math.abs(change)).toFixed(2)),
-      lowPrice: parseFloat((basePrice - Math.abs(change)).toFixed(2)),
-      closePrice: parseFloat((basePrice - change).toFixed(2)),
-      netChange: parseFloat(change.toFixed(2)),
-      netPercentChange: parseFloat((change / basePrice * 100).toFixed(2)),
-      high52Week: parseFloat((basePrice * 1.3).toFixed(2)),
-      low52Week: parseFloat((basePrice * 0.7).toFixed(2)),
-      mark: parseFloat(basePrice.toFixed(2)),
-      description: `${sym} Inc.`,
-      exchange: 'NASDAQ',
-      source,
-    };
+
+    console.log(`[schwab-quotes] No price available for ${sym} from any source`);
+    return null;
   }));
+  const mockQuotes = fallbackQuotes.filter((q): q is NonNullable<typeof q> => q !== null);
 
   // Determine overall source for the response
   const sources = mockQuotes.map(q => q.source);
-  const primarySource = sources.includes('polygon-fallback') ? 'polygon-fallback' : 
-                        sources.includes('fmp-fallback') ? 'fmp-fallback' : 'mock';
+  const primarySource = sources.includes('polygon-fallback') ? 'polygon-fallback' :
+                        sources.includes('fmp-fallback') ? 'fmp-fallback' : 'unavailable';
 
   return new Response(
     JSON.stringify({ 
