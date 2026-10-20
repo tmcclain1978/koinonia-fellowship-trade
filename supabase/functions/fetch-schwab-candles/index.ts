@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { aggregateCandles, intervalMinutes } from "../_shared/candle-buckets.ts";
+import { aggregateCandles, intervalMinutes, parseEasternDateTime } from "../_shared/candle-buckets.ts";
 
 // Intervals no provider serves directly: fetch 30-minute bars and combine them
 // into session-anchored (9:30 ET) 1H / 4H bars.
@@ -380,9 +380,11 @@ async function fetchFromAlphaVantage(
     
     if (functionType === 'TIME_SERIES_INTRADAY') {
       const avIntervalMap: Record<string, string> = {
-        '1': '1min', '5': '5min', '15': '15min', '30': '30min', '60': '60min',
-        '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '60min',
-        'minute': '1min', '5minute': '5min', '15minute': '15min', '30minute': '30min', 'hour': '60min',
+        '1': '1min', '5': '5min', '15': '15min', '30': '30min',
+        '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min',
+        'minute': '1min', '5minute': '5min', '15minute': '15min', '30minute': '30min',
+        // Alpha Vantage's 60min bars start on the hour; fetch 30min and build 9:30-anchored 1H/4H bars.
+        '60': '30min', '1h': '30min', 'hour': '30min', '240': '30min', '4h': '30min',
       };
       avUrl += `&interval=${avIntervalMap[interval] || '5min'}`;
     }
@@ -404,7 +406,7 @@ async function fetchFromAlphaVantage(
         const timeSeries = avData[timeSeriesKey];
         const candles = Object.entries(timeSeries)
           .map(([datetime, values]: [string, any]) => ({
-            time: Math.floor(new Date(datetime).getTime() / 1000),
+            time: Math.floor(parseEasternDateTime(datetime) / 1000),
             open: parseFloat(values['1. open']),
             high: parseFloat(values['2. high']),
             low: parseFloat(values['3. low']),
@@ -641,6 +643,9 @@ serve(async (req) => {
     // Fallback to Alpha Vantage if parallel fetch failed
     if (alphaVantageKey) {
       const avResult = await fetchFromAlphaVantage(symbol, interval, alphaVantageKey, startDate, endDate);
+      if (avResult && avResult.data.length > 0 && NEEDS_AGGREGATION(interval)) {
+        avResult.data = aggregateCandles(avResult.data, interval);
+      }
       if (avResult && avResult.data.length > 0) {
         console.log(`📊 Alpha Vantage fallback complete in ${Date.now() - overallStart}ms`);
         return new Response(
@@ -698,7 +703,8 @@ serve(async (req) => {
       }
     }
     
-    const mockResult = generateMockData(symbol, interval, basePrice, premarket);
+    const mockResult = generateMockData(symbol, NEEDS_AGGREGATION(interval) ? '30' : interval, basePrice, premarket);
+    if (NEEDS_AGGREGATION(interval)) mockResult.data = aggregateCandles(mockResult.data, interval);
     
     console.log(`📊 Mock data generated in ${Date.now() - overallStart}ms`);
     return new Response(

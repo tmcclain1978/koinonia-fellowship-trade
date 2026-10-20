@@ -39,10 +39,33 @@ import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indic
 import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
 import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS } from "./indicators/registry";
 import { registerKoinoniaOverlays } from "./overlays/registry";
-import { getBucketStart, getIntervalMs as intervalToMs } from "./candleBuckets";
+import { getBucketStart, getIntervalMs as intervalToMs, intervalMinutes, aggregateCandles } from "./candleBuckets";
 
 registerKoinoniaIndicators();
 registerKoinoniaOverlays();
+
+/**
+ * Make sure 1H/4H data is on the 9:30 ET grid. If the server sent finer bars
+ * (e.g. an older candle function returning 30-minute bars), combine them.
+ * Returns null when the bars are on a different grid and can't be fixed here
+ * (e.g. hourly bars that start on the hour), so callers can avoid showing them.
+ */
+function alignToInterval(candles: KLineData[], interval: string): KLineData[] | null {
+  const len = intervalMinutes(interval);
+  if (!len || len < 60 || candles.length === 0) return candles;
+  const sample = candles.slice(-30);
+  const aligned = sample.every((c) => getBucketStart(c.timestamp, interval) === c.timestamp);
+  let minGap = Infinity;
+  for (let i = 1; i < sample.length; i++) minGap = Math.min(minGap, sample[i].timestamp - sample[i - 1].timestamp);
+  const finer = minGap < len * 60_000;
+  if (finer) {
+    return aggregateCandles(
+      candles.map((c) => ({ timestamp: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume ?? 0 })),
+      interval,
+    ) as KLineData[];
+  }
+  return aligned ? candles : null;
+}
 
 const EXTRA_LINE_COLORS = ["#FF9800", "#9C27B0", "#00BCD4", "#E91E63", "#8BC34A"];
 
@@ -1005,8 +1028,9 @@ export const ProChartKit = ({
     intervalRef.current = interval;
     if (isInitialLoadRef.current || !chartRef.current || replayMode) return;
     resetAllTrackingRefs();
-    if (cachedData && cachedData.length > 0) {
-      chartRef.current.applyNewData(cachedData);
+    const cachedAligned = cachedData && cachedData.length > 0 ? alignToInterval(cachedData, interval) : null;
+    if (cachedAligned && cachedAligned.length > 0) {
+      chartRef.current.applyNewData(cachedAligned);
     }
     fetchAndLoadData(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1347,10 +1371,16 @@ export const ProChartKit = ({
       }
 
       if (candles && Array.isArray(candles) && candles.length > 0) {
-        const klineData: KLineData[] = candles
+        const normalized: KLineData[] = candles
           .map(normalizeCandle)
           .filter((c): c is KLineData => Boolean(c))
           .sort((a, b) => a.timestamp - b.timestamp);
+        // 1H/4H: combine finer bars onto the 9:30 grid; warn if the source used a different grid.
+        const aligned = alignToInterval(normalized, interval);
+        if (!aligned) {
+          console.warn(`⚠️ ${interval} candles from ${data?.source} start on a different grid than 9:30 ET`);
+        }
+        const klineData: KLineData[] = aligned ?? normalized;
 
         if (klineData.length === 0) {
           console.error("❌ All returned candles were invalid after normalization");
@@ -1448,16 +1478,16 @@ export const ProChartKit = ({
         // No data for this interval: do NOT blank the chart. Keep what's shown;
         // if the chart is actually empty, fall back to cached candles.
         console.warn("⚠️ No candles returned for", symbol, interval, "- keeping existing chart data");
-        if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0) {
-          chartRef.current.applyNewData(cachedData);
+        if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0 && alignToInterval(cachedData, interval)) {
+          chartRef.current.applyNewData(alignToInterval(cachedData, interval)!);
           setChartDataSource('cache');
         }
       }
     } catch (error) {
       console.error("❌ Error fetching chart data:", error);
       // Never leave a blank chart on error: keep current data, else use cache.
-      if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0) {
-        chartRef.current.applyNewData(cachedData);
+      if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0 && alignToInterval(cachedData, interval)) {
+        chartRef.current.applyNewData(alignToInterval(cachedData, interval)!);
         setChartDataSource('cache');
       }
     } finally {

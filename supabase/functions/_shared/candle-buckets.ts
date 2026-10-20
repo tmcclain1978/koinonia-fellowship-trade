@@ -81,6 +81,17 @@ export function etWallTimeToEpoch(y: number, mo: number, d: number, h = 0, mi = 
   return result;
 }
 
+/**
+ * Parse a US/Eastern wall-clock string with no offset ("2026-10-19 10:30:00" or
+ * "2026-10-19"), as Alpha Vantage returns, into epoch ms. `new Date()` would
+ * treat it as UTC and shift bars by 4-5 hours.
+ */
+export function parseEasternDateTime(s: string): number {
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (!m) return new Date(s).getTime();
+  return etWallTimeToEpoch(+m[1], +m[2], +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
+}
+
 const SESSION_OPEN_MIN = 9 * 60 + 30;
 
 /** Start (epoch ms) of the candle that contains `ts` for this interval. */
