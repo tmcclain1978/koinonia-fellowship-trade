@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getBucketStart, aggregateCandles, getIntervalMs } from "../../supabase/functions/_shared/candle-buckets";
+import { getBucketStart, aggregateCandles, getIntervalMs, parseEasternDateTime } from "../../supabase/functions/_shared/candle-buckets";
 import { DRAWING_TOOLS } from "@/components/charts/DrawingToolbar";
 import { CUSTOM_OVERLAY_NAMES } from "@/components/charts/overlays/registry";
 
@@ -50,6 +50,19 @@ describe("session-aware candle buckets", () => {
     expect(hourly).toHaveLength(2);
     expect(hourly[0]).toMatchObject({ time: t("09:30"), open: 10, high: 12, low: 9, close: 11, volume: 300 });
     expect(hourly[1]).toMatchObject({ time: t("10:30"), open: 11, close: 11.2, volume: 50 });
+  });
+});
+
+describe("fallback data sources", () => {
+  it("reads Alpha Vantage times as New York time, not UTC", () => {
+    expect(parseEasternDateTime("2026-10-19 10:30:00")).toBe(et("2026-10-19T10:30:00-04:00"));
+    expect(parseEasternDateTime("2026-01-15 10:30:00")).toBe(et("2026-01-15T10:30:00-05:00"));
+    expect(parseEasternDateTime("2026-10-19")).toBe(et("2026-10-19T00:00:00-04:00"));
+  });
+
+  it("hourly bars that start on the hour are not on the 9:30 grid", () => {
+    const ten = et("2026-10-19T10:00:00-04:00");
+    expect(getBucketStart(ten, "60")).not.toBe(ten);
   });
 });
 
