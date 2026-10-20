@@ -55,14 +55,14 @@ interface OverlayVisibility {
 
 // Prefix for AI analysis overlays
 const AI_OVERLAY_PREFIX = 'ai_analysis_';
+export const AI_OVERLAY_GROUP = 'ai-analysis';
 let overlayCounter = 0;
 
 export function clearAIOverlays(chart: Chart | null) {
   if (!chart) return;
   
-  // Remove all overlays - the chart will handle cleanup
-  // We use a fresh start approach since klinecharts doesn't easily track overlay IDs
-  chart.removeOverlay();
+  // Only AI overlays: user drawings, signal lines and session dividers stay.
+  chart.removeOverlay({ groupId: AI_OVERLAY_GROUP });
 }
 
 export function applyAIOverlays(
@@ -84,6 +84,7 @@ export function applyAIOverlays(
       const opacity = level.strength === 'strong' ? 1 : level.strength === 'moderate' ? 0.8 : 0.6;
       
       chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
         name: "horizontalStraightLine",
         points: [{ value: level.price }],
         styles: {
@@ -105,6 +106,7 @@ export function applyAIOverlays(
       const opacity = level.strength === 'strong' ? 1 : level.strength === 'moderate' ? 0.8 : 0.6;
       
       chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
         name: "horizontalStraightLine",
         points: [{ value: level.price }],
         styles: {
@@ -124,6 +126,7 @@ export function applyAIOverlays(
     analysis.bounceZones.forEach((zone) => {
       // Upper bound of zone
       chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
         name: "horizontalStraightLine",
         points: [{ value: zone.high }],
         styles: {
@@ -138,6 +141,7 @@ export function applyAIOverlays(
       
       // Lower bound of zone
       chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
         name: "horizontalStraightLine",
         points: [{ value: zone.low }],
         styles: {
@@ -158,6 +162,7 @@ export function applyAIOverlays(
     
     // Predicted high line
     chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
       name: "horizontalStraightLine",
       points: [{ value: prediction.predictedHigh }],
       styles: {
@@ -172,6 +177,7 @@ export function applyAIOverlays(
     
     // Predicted low line
     chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
       name: "horizontalStraightLine",
       points: [{ value: prediction.predictedLow }],
       styles: {
@@ -186,6 +192,7 @@ export function applyAIOverlays(
     
     // Key level to watch - Prominent yellow/gold line
     chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
       name: "horizontalStraightLine",
       points: [{ value: prediction.keyLevelToWatch }],
       styles: {
@@ -205,6 +212,7 @@ export function applyAIOverlays(
     
     // Premarket High
     chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
       name: "horizontalStraightLine",
       points: [{ value: pm.premarketHigh }],
       styles: {
@@ -219,6 +227,7 @@ export function applyAIOverlays(
     
     // Premarket Low
     chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
       name: "horizontalStraightLine",
       points: [{ value: pm.premarketLow }],
       styles: {
@@ -233,6 +242,7 @@ export function applyAIOverlays(
     
     // Premarket VWAP
     chart.createOverlay({
+        groupId: AI_OVERLAY_GROUP,
       name: "horizontalStraightLine",
       points: [{ value: pm.premarketVWAP }],
       styles: {

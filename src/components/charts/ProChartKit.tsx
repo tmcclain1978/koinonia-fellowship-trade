@@ -31,16 +31,20 @@ import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreamin
 import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
 import { useChartTransition } from "@/hooks/useChartTransition";
 import { applyAIOverlays, clearAIOverlays, type ChartAnalysis, type OverlayVisibility } from "@/utils/chartAnalysisOverlays";
-import { applySessionDividers } from "@/utils/chartSessionDividers";
+import { applySessionDividers, clearSessionDividers } from "@/utils/chartSessionDividers";
 import { applyAnnotationsToChart } from "@/utils/chartAnnotations";
 import { applyVolumeProfileToChart, calculateVolumeProfile, clearVolumeProfileOverlays } from "@/utils/volumeProfile";
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
 import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS } from "./indicators/registry";
+import { useChartPrefs, setChartPrefs, setSignalPrefs, type SignalLineStyle as PrefsSignalLineStyle } from "./state/chartPrefs";
+import { restoreDrawings, fetchNewerCloudDrawings, retireChart } from "./state/chartDrawings";
 import { registerKoinoniaOverlays } from "./overlays/registry";
 import { getBucketStart, getIntervalMs as intervalToMs, intervalMinutes, aggregateCandles } from "./candleBuckets";
 import { applyLiveQuote, initialLiveCandleState, type LiveCandleState } from "./liveCandles";
+import { olderRange, olderCandlesOnly, pageSpanDays } from "./historyPaging";
+import { buildPriceTicks, type TickParams } from "./priceTicks";
 
 registerKoinoniaIndicators();
 registerKoinoniaOverlays();
@@ -75,7 +79,13 @@ const EXTRA_LINE_COLORS = ["#FF9800", "#9C27B0", "#00BCD4", "#E91E63", "#8BC34A"
  * from any closure (initial load, symbol change, settings change) without
  * picking up stale React state.
  */
+const appliedIndicators = new WeakMap<Chart, string>();
+
 function applyIndicatorsToChart(chart: Chart, indicators: string[], settings: IndicatorSettingsMap) {
+  // Skip if this chart already shows exactly this selection (indicators survive data reloads).
+  const key = JSON.stringify([indicators, indicators.map((id) => settings[id] ?? null)]);
+  if (appliedIndicators.get(chart) === key) return;
+  appliedIndicators.set(chart, key);
   chart.removeIndicator();
   indicators.forEach((indicator, index) => {
     const resolved = resolveIndicator(indicator);
@@ -146,51 +156,23 @@ export const ProChartKit = ({
   const effectiveChartId = chartId || `chart-${symbol}-${interval}-${Math.random().toString(36).substr(2, 9)}`;
   const chartIdRef = useRef(effectiveChartId);
   
-  // Load persisted settings from localStorage
-  const [selectedIndicators, setSelectedIndicators] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-indicators');
-      const parsed: string[] = saved ? JSON.parse(saved) : [];
-      return parsed.filter((id) => !RETIRED_INDICATOR_IDS.has(id));
-    } catch {
-      return [];
-    }
-  });
-
-  // IMPORTANT: keep an immediate ref to avoid race conditions (e.g. Clear All -> settings change re-applies old indicators)
+  // All chart preferences live in one shared store (./state/chartPrefs):
+  // saved locally right away and synced to the cloud when available.
+  const prefs = useChartPrefs();
+  const selectedIndicators = prefs.indicators.filter((id) => !RETIRED_INDICATOR_IDS.has(id));
+  const indicatorSettings = prefs.indicatorSettings;
+  // Immediate refs so callbacks never read a stale selection.
   const selectedIndicatorsRef = useRef<string[]>(selectedIndicators);
-  useEffect(() => {
-    selectedIndicatorsRef.current = selectedIndicators;
-  }, [selectedIndicators]);
-  
-  // Indicator settings (color, width, data source)
-  const [indicatorSettings, setIndicatorSettings] = useState<IndicatorSettingsMap>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-indicator-settings');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-  
+  selectedIndicatorsRef.current = selectedIndicators;
   const indicatorSettingsRef = useRef<IndicatorSettingsMap>(indicatorSettings);
-  useEffect(() => {
-    indicatorSettingsRef.current = indicatorSettings;
-  }, [indicatorSettings]);
+  indicatorSettingsRef.current = indicatorSettings;
 
   const [koinoniaSignal, setKoinoniaSignal] = useState<any>(null);
   const [showPremarket, setShowPremarket] = useState(() => isPremarket() || isAfterHours());
   const [candleType, setCandleType] = useState<CandleTypeOption>('candle_solid');
   
-  // Session dividers state - show market open/close vertical lines
-  const [showSessionDividers, setShowSessionDividers] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-session-dividers');
-      return saved ? JSON.parse(saved) : true;
-    } catch {
-      return true;
-    }
-  });
+  const showSessionDividers = prefs.sessionDividers;
+  const setShowSessionDividers = (v: boolean) => setChartPrefs({ sessionDividers: v });
   const unsubRef = useRef<(() => void) | null>(null);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
@@ -239,39 +221,19 @@ export const ProChartKit = ({
     premarket: true,
   });
   
-  // Y-axis scale control state (gap percentage - higher = more zoomed out, lower = more zoomed in)
-  // Load from localStorage with fallback to default
-  const [yAxisScale, setYAxisScale] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-yaxis-scale');
-      return saved ? parseFloat(saved) : 10;
-    } catch {
-      return 10;
-    }
-  });
+  // Price-axis padding in percent (higher = more zoomed out)
+  const yAxisScale = prefs.yAxisScale;
+  const setYAxisScale = (v: number) => setChartPrefs({ yAxisScale: v });
+  const priceScaleMode = prefs.priceScale;
   const [showScaleControls, setShowScaleControls] = useState<boolean>(false);
   
-  // Time format: 12-hour or 24-hour
-  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-time-format');
-      return (saved === '24h' ? '24h' : '12h') as '12h' | '24h';
-    } catch {
-      return '12h';
-    }
-  });
-  
-  // Price precision (decimal places) - 'auto' uses -1 as sentinel
-  const [pricePrecision, setPricePrecision] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-price-precision');
-      if (saved === 'auto') return -1; // -1 represents auto mode
-      return saved ? parseInt(saved, 10) : -1; // Default to auto
-    } catch {
-      return -1;
-    }
-  });
-  
+  const timeFormat = prefs.timeFormat;
+  const setTimeFormat = (v: '12h' | '24h') => setChartPrefs({ timeFormat: v });
+
+  // Price precision (decimal places); -1 = automatic
+  const pricePrecision = prefs.pricePrecision;
+  const setPricePrecision = (v: number) => setChartPrefs({ pricePrecision: v });
+
   // Helper to determine if auto precision is enabled
   const isAutoPrecision = pricePrecision === -1;
   
@@ -289,111 +251,32 @@ export const ProChartKit = ({
     return 1;                         // Very high-priced stocks
   }, [isAutoPrecision, pricePrecision]);
   
-  // Signal line colors - customizable
-  const [signalEntryColor, setSignalEntryColor] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-entry-color');
-      return saved || '#f97316'; // Default: orange
-    } catch {
-      return '#f97316';
-    }
-  });
-  
-  const [signalStopLossColor, setSignalStopLossColor] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-stoploss-color');
-      return saved || '#3b82f6'; // Default: blue
-    } catch {
-      return '#3b82f6';
-    }
-  });
-  
-  const [signalTarget1Color, setSignalTarget1Color] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-target1-color');
-      return saved || '#a855f7'; // Default: purple
-    } catch {
-      return '#a855f7';
-    }
-  });
-  
-  const [signalTarget2Color, setSignalTarget2Color] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-target2-color');
-      return saved || '#8b5cf6'; // Default: lighter purple
-    } catch {
-      return '#8b5cf6';
-    }
-  });
-  
-  // Signal line styles - solid, dashed, dotted
-  type SignalLineStyle = 'solid' | 'dashed' | 'dotted';
-  
-  const [signalEntryStyle, setSignalEntryStyle] = useState<SignalLineStyle>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-entry-style');
-      return (saved as SignalLineStyle) || 'solid';
-    } catch {
-      return 'solid';
-    }
-  });
-  
-  const [signalStopLossStyle, setSignalStopLossStyle] = useState<SignalLineStyle>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-stoploss-style');
-      return (saved as SignalLineStyle) || 'dashed';
-    } catch {
-      return 'dashed';
-    }
-  });
-  
-  const [signalTargetStyle, setSignalTargetStyle] = useState<SignalLineStyle>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-target-style');
-      return (saved as SignalLineStyle) || 'dashed';
-    } catch {
-      return 'dashed';
-    }
-  });
-  
-  // Signal line thickness
-  const [signalEntryThickness, setSignalEntryThickness] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-entry-thickness');
-      return saved ? parseInt(saved, 10) : 2;
-    } catch {
-      return 2;
-    }
-  });
-  
-  const [signalStopLossThickness, setSignalStopLossThickness] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-stoploss-thickness');
-      return saved ? parseInt(saved, 10) : 2;
-    } catch {
-      return 2;
-    }
-  });
-  
-  const [signalTargetThickness, setSignalTargetThickness] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-target-thickness');
-      return saved ? parseInt(saved, 10) : 1;
-    } catch {
-      return 1;
-    }
-  });
-  
-  // Show price labels on signal lines
-  const [showSignalPriceLabels, setShowSignalPriceLabels] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-signal-price-labels');
-      return saved ? JSON.parse(saved) : true;
-    } catch {
-      return true;
-    }
-  });
-  
+  // Signal line styling (entry / stop / targets)
+  type SignalLineStyle = PrefsSignalLineStyle;
+  const sig = prefs.signal;
+  const signalEntryColor = sig.entryColor;
+  const signalStopLossColor = sig.stopColor;
+  const signalTarget1Color = sig.target1Color;
+  const signalTarget2Color = sig.target2Color;
+  const signalEntryStyle = sig.entryStyle;
+  const signalStopLossStyle = sig.stopStyle;
+  const signalTargetStyle = sig.targetStyle;
+  const signalEntryThickness = sig.entryWidth;
+  const signalStopLossThickness = sig.stopWidth;
+  const signalTargetThickness = sig.targetWidth;
+  const showSignalPriceLabels = sig.priceLabels;
+  const setSignalEntryColor = (v: string) => setSignalPrefs({ entryColor: v });
+  const setSignalStopLossColor = (v: string) => setSignalPrefs({ stopColor: v });
+  const setSignalTarget1Color = (v: string) => setSignalPrefs({ target1Color: v });
+  const setSignalTarget2Color = (v: string) => setSignalPrefs({ target2Color: v });
+  const setSignalEntryStyle = (v: SignalLineStyle) => setSignalPrefs({ entryStyle: v });
+  const setSignalStopLossStyle = (v: SignalLineStyle) => setSignalPrefs({ stopStyle: v });
+  const setSignalTargetStyle = (v: SignalLineStyle) => setSignalPrefs({ targetStyle: v });
+  const setSignalEntryThickness = (v: number) => setSignalPrefs({ entryWidth: v });
+  const setSignalStopLossThickness = (v: number) => setSignalPrefs({ stopWidth: v });
+  const setSignalTargetThickness = (v: number) => setSignalPrefs({ targetWidth: v });
+  const setShowSignalPriceLabels = (v: boolean) => setSignalPrefs({ priceLabels: v });
+
   const [showSignalColorControls, setShowSignalColorControls] = useState(false);
   
   // Helper to convert style string to LineType
@@ -406,106 +289,9 @@ export const ProChartKit = ({
     }
   };
   
-  // Volume profile state
-  const [showVolumeProfile, setShowVolumeProfile] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('prochartkit-volume-profile');
-      return saved ? JSON.parse(saved) : false;
-    } catch {
-      return false;
-    }
-  });
+  const showVolumeProfile = prefs.volumeProfile;
+  const setShowVolumeProfile = (v: boolean) => setChartPrefs({ volumeProfile: v });
 
-  // Persist indicators to localStorage when they change
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-indicators', JSON.stringify(selectedIndicators));
-    } catch (e) {
-      console.warn('Failed to save indicators to localStorage:', e);
-    }
-  }, [selectedIndicators]);
-  
-  // Persist indicator settings to localStorage when they change
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-indicator-settings', JSON.stringify(indicatorSettings));
-    } catch (e) {
-      console.warn('Failed to save indicator settings to localStorage:', e);
-    }
-  }, [indicatorSettings]);
-  
-  // Persist Y-axis scale to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-yaxis-scale', String(yAxisScale));
-    } catch (e) {
-      console.warn('Failed to save Y-axis scale to localStorage:', e);
-    }
-  }, [yAxisScale]);
-  
-  // Persist session dividers toggle to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-session-dividers', JSON.stringify(showSessionDividers));
-    } catch (e) {
-      console.warn('Failed to save session dividers setting to localStorage:', e);
-    }
-  }, [showSessionDividers]);
-  
-  // Persist volume profile toggle to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-volume-profile', JSON.stringify(showVolumeProfile));
-    } catch (e) {
-      console.warn('Failed to save volume profile setting to localStorage:', e);
-    }
-  }, [showVolumeProfile]);
-  
-  // Persist time format to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-time-format', timeFormat);
-    } catch (e) {
-      console.warn('Failed to save time format to localStorage:', e);
-    }
-  }, [timeFormat]);
-  
-  // Persist price precision to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-price-precision', pricePrecision === -1 ? 'auto' : String(pricePrecision));
-    } catch (e) {
-      console.warn('Failed to save price precision to localStorage:', e);
-    }
-  }, [pricePrecision]);
-  
-  // Persist signal colors to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-signal-entry-color', signalEntryColor);
-      localStorage.setItem('prochartkit-signal-stoploss-color', signalStopLossColor);
-      localStorage.setItem('prochartkit-signal-target1-color', signalTarget1Color);
-      localStorage.setItem('prochartkit-signal-target2-color', signalTarget2Color);
-    } catch (e) {
-      console.warn('Failed to save signal colors to localStorage:', e);
-    }
-  }, [signalEntryColor, signalStopLossColor, signalTarget1Color, signalTarget2Color]);
-  
-  // Persist signal styles, thickness, and price labels to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('prochartkit-signal-entry-style', signalEntryStyle);
-      localStorage.setItem('prochartkit-signal-stoploss-style', signalStopLossStyle);
-      localStorage.setItem('prochartkit-signal-target-style', signalTargetStyle);
-      localStorage.setItem('prochartkit-signal-entry-thickness', String(signalEntryThickness));
-      localStorage.setItem('prochartkit-signal-stoploss-thickness', String(signalStopLossThickness));
-      localStorage.setItem('prochartkit-signal-target-thickness', String(signalTargetThickness));
-      localStorage.setItem('prochartkit-signal-price-labels', JSON.stringify(showSignalPriceLabels));
-    } catch (e) {
-      console.warn('Failed to save signal settings to localStorage:', e);
-    }
-  }, [signalEntryStyle, signalStopLossStyle, signalTargetStyle, signalEntryThickness, signalStopLossThickness, signalTargetThickness, showSignalPriceLabels]);
-  
   // Last data sync time for smart sync
   const lastFullSyncRef = useRef<number>(0);
   // Longer stale threshold when market is closed
@@ -661,6 +447,8 @@ export const ProChartKit = ({
   const liveCandleRef = useRef<KLineData | null>(null);
   const showPremarketRef = useRef(showPremarket);
   showPremarketRef.current = showPremarket;
+  const replayModeRef = useRef(replayMode);
+  replayModeRef.current = replayMode;
 
   const handleSchwabPriceUpdate = useCallback((price: SchwabPriceUpdate) => {
     if (price.symbol !== symbol || !price.isLive) return;
@@ -914,6 +702,13 @@ export const ProChartKit = ({
           }
         });
         
+        applyPriceAxisRef.current(chart);
+
+        // Load older candles when the user scrolls to the left edge.
+        chart.setLoadMoreDataCallback((params) => {
+          void loadOlderCandles(chart, params);
+        });
+
         // Clear any existing data before fetching new data (prevents stale data showing)
         chart.clearData();
         
@@ -965,6 +760,7 @@ export const ProChartKit = ({
         if (enableCrosshairSync) {
           chartRef.current.unsubscribeAction(ActionType.OnCrosshairChange);
         }
+        retireChart(chartRef.current);
         dispose(containerRef.current!);
         chartRef.current = null;
       }
@@ -1074,87 +870,31 @@ export const ProChartKit = ({
         showAfterHoursShading: showPremarket,
       });
     } else {
-      // Remove overlays when disabled - but this will remove all overlays
-      // So we need to be careful. For now, just don't apply new ones
-      // The next data load will not add them
+      clearSessionDividers(chartRef.current);
     }
   }, [showSessionDividers, showPremarket, interval, replayMode]);
 
-  // Update Y-axis scale when slider changes
-  // Update Y-axis scale when slider changes - includes custom tick generation
-  useEffect(() => {
-    if (!chartRef.current) return;
-    
-    // Calculate tick count based on scale - more ticks when zoomed in (lower scale value)
-    const getTickCount = (scale: number) => {
-      if (scale <= 5) return 15;      // Very zoomed in: many fine ticks
-      if (scale <= 10) return 12;     // Zoomed in: more ticks
-      if (scale <= 20) return 10;     // Normal: standard ticks
-      if (scale <= 35) return 8;      // Zoomed out: fewer ticks
-      return 6;                        // Very zoomed out: minimal ticks
-    };
-    
-    const tickCount = getTickCount(yAxisScale);
-    
-    chartRef.current.setPaneOptions({
+  // Price axis: padding, scale mode (normal / log / percent) and tick labels.
+  // Kept in a ref so chart (re)initialization applies the current settings too.
+  const applyPriceAxisRef = useRef<(chart: Chart) => void>(() => {});
+  applyPriceAxisRef.current = (chart: Chart) => {
+    const scale = yAxisScale;
+    chart.setPaneOptions({
       id: 'candle_pane',
       axis: {
-        gap: {
-          top: yAxisScale / 100,
-          bottom: yAxisScale / 100,
-        },
-        createTicks: (params) => {
-          const { range, defaultTicks } = params;
-          const priceRange = range.to - range.from;
-          
-          // If no range or very small, use defaults
-          if (!priceRange || priceRange < 0.01) {
-            return defaultTicks;
-          }
-          
-          // Calculate appropriate step size based on scale and price range
-          const baseStep = priceRange / tickCount;
-          
-          // Round to nice numbers based on the magnitude
-          const magnitude = Math.pow(10, Math.floor(Math.log10(baseStep)));
-          const normalized = baseStep / magnitude;
-          
-          let niceStep: number;
-          if (normalized <= 1) niceStep = magnitude;
-          else if (normalized <= 2) niceStep = 2 * magnitude;
-          else if (normalized <= 5) niceStep = 5 * magnitude;
-          else niceStep = 10 * magnitude;
-          
-          // For zoomed in views, allow smaller increments
-          if (yAxisScale <= 5 && niceStep > 0.01) {
-            niceStep = Math.max(0.01, niceStep / 2);
-          }
-          
-          // Generate ticks
-          const ticks: Array<{ coord: number; value: number | string; text: string }> = [];
-          const startValue = Math.ceil(range.from / niceStep) * niceStep;
-          
-          // Get effective precision - use auto calculation or manual setting
-          const midPrice = (range.from + range.to) / 2;
-          const effectivePrecision = getEffectivePrecision(midPrice);
-          
-          for (let value = startValue; value <= range.to; value += niceStep) {
-            // Ensure at least enough decimals for the step size
-            const minDecimalsForStep = niceStep < 0.001 ? 4 : niceStep < 0.01 ? 3 : niceStep < 0.1 ? 2 : niceStep < 1 ? 1 : 0;
-            const decimals = Math.max(effectivePrecision, minDecimalsForStep);
-            
-            ticks.push({
-              coord: 0, // klinecharts will calculate the coord
-              value: value,
-              text: value.toFixed(decimals)
-            });
-          }
-          
-          return ticks.length > 0 ? ticks : defaultTicks;
-        }
-      }
+        name: priceScaleMode,
+        gap: { top: scale / 100, bottom: scale / 100 },
+        // Our nice-step ticks are linear; log / percent use the library's ticks.
+        createTicks:
+          priceScaleMode === 'normal'
+            ? (params) => buildPriceTicks(params as unknown as TickParams, scale, getEffectivePrecision) as never
+            : ({ defaultTicks }) => defaultTicks,
+      },
     });
-  }, [yAxisScale, pricePrecision, getEffectivePrecision]);
+  };
+  useEffect(() => {
+    if (chartRef.current) applyPriceAxisRef.current(chartRef.current);
+  }, [yAxisScale, pricePrecision, priceScaleMode, getEffectivePrecision]);
 
   // Fit to data - automatically adjust scale to frame visible candles perfectly
   const fitToData = useCallback(() => {
@@ -1279,6 +1019,32 @@ export const ProChartKit = ({
     return { timestamp, open, high, low, close, volume };
   };
 
+  /** Fetch the page of candles before the oldest one shown (scroll-left paging). */
+  const loadOlderCandles = async (chart: Chart, params: { type: string; data: KLineData | null; callback: (data: KLineData[], more?: boolean) => void }) => {
+    // Every path must answer, or the chart stops asking for more.
+    const done = (list: KLineData[], more: boolean) => params.callback(list, more);
+    const iv = intervalRef.current;
+    const oldest = params.data;
+    const range = oldest && params.type === 'forward' ? olderRange(oldest.timestamp, iv) : null;
+    if (!range || replayModeRef.current) return done([], false);
+    const requestSymbol = symbol;
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-schwab-candles", {
+        body: { symbol: requestSymbol, interval: mapInterval(iv), startDate: range.startDate, endDate: range.endDate, premarket: showPremarketRef.current },
+      });
+      // Chart replaced (symbol / theme change) or interval switched while loading.
+      if (error || chartRef.current !== chart || intervalRef.current !== iv) return done([], false);
+      if (data?.source === 'mock') return done([], false); // never page in simulated history
+      const raw = (data?.data || data?.candles || []) as unknown[];
+      const normalized = raw.map(normalizeCandle).filter((c): c is KLineData => Boolean(c));
+      const older = olderCandlesOnly(alignToInterval(normalized, iv) ?? [], oldest!.timestamp);
+      done(older, older.length > 0);
+    } catch (err) {
+      console.warn("Loading older candles failed:", err);
+      done([], false);
+    }
+  };
+
   const fetchAndLoadData = async (isUpdate = false) => {
     if (!chartRef.current) {
       console.log("⚠️ Chart ref not ready");
@@ -1350,8 +1116,10 @@ export const ProChartKit = ({
               chartRef.current.updateData(lastCandle);
               console.log("🔄 Updated latest candle smoothly");
             } else {
-              // New candle appeared - apply new data
-              chartRef.current.applyNewData(klineData);
+              // New candle(s) appeared: append them. applyNewData would throw away
+              // any older history the user scrolled in.
+              const chartLastTs = chartRef.current.getDataList().at(-1)?.timestamp ?? -Infinity;
+              klineData.filter((c) => c.timestamp >= chartLastTs).forEach((c) => chartRef.current!.updateData(c));
               lastCandleTimestampRef.current = latestTimestamp;
               console.log("📈 New candle detected, applied data");
             }
@@ -1362,7 +1130,8 @@ export const ProChartKit = ({
           // Initial load - apply all data
           const source = data?.source || "unknown";
           console.log("✅ Initial load:", klineData.length, "candles, source:", source);
-          chartRef.current.applyNewData(klineData);
+          // forward = older history can be loaded by scrolling left (not in replay).
+          chartRef.current.applyNewData(klineData, { forward: !replayMode && pageSpanDays(interval) !== null });
           lastCandleTimestampRef.current = latestTimestamp;
           isInitialLoadRef.current = false;
           
@@ -1408,6 +1177,13 @@ export const ProChartKit = ({
           
           // Apply saved annotations
           applyAnnotationsToChart(chartRef.current, symbol);
+
+          // Saved drawings for this symbol (local now; a newer cloud copy replaces them).
+          restoreDrawings(chartRef.current, symbol);
+          const chartForDrawings = chartRef.current;
+          void fetchNewerCloudDrawings(symbol).then((newer) => {
+            if (newer && chartRef.current === chartForDrawings) restoreDrawings(chartForDrawings, symbol, newer);
+          });
 
           // Redraw the user's saved indicators. The chart instance is rebuilt on
           // symbol/theme changes and on page load, which drops them otherwise.
@@ -1829,24 +1605,32 @@ export const ProChartKit = ({
     return map[interval] || interval;
   };
 
+  // Keep every chart in step with the shared selection (e.g. multi-timeframe
+  // view: turning an indicator on in one chart shows it in all of them).
+  const indicatorsKey = JSON.stringify([selectedIndicators, indicatorSettings]);
+  useEffect(() => {
+    if (!chartRef.current || isInitialLoadRef.current) return;
+    applyIndicatorsToChart(chartRef.current, selectedIndicatorsRef.current, indicatorSettingsRef.current);
+  }, [indicatorsKey]);
+
   // Handle indicator changes from the panel
   const handleIndicatorChange = useCallback((indicators: string[], settings?: IndicatorSettingsMap) => {
     // Always update state/ref even if the chart is temporarily not ready
     selectedIndicatorsRef.current = indicators;
-    setSelectedIndicators(indicators);
     if (settings) indicatorSettingsRef.current = settings;
+    setChartPrefs(settings ? { indicators, indicatorSettings: settings } : { indicators });
     if (!chartRef.current) return;
     applyIndicatorsToChart(chartRef.current, indicators, settings || indicatorSettingsRef.current);
   }, []);
 
   // Handle indicator settings changes
   const handleIndicatorSettingsChange = useCallback((newSettings: IndicatorSettingsMap) => {
-    setIndicatorSettings(newSettings);
-
-    // Re-apply indicators with new settings using the latest selection (avoids "Clear All" race)
+    indicatorSettingsRef.current = newSettings;
+    setChartPrefs({ indicatorSettings: newSettings });
+    // Re-apply with the latest selection (refs avoid the "Clear All" race)
     const currentSelected = selectedIndicatorsRef.current;
     if (chartRef.current && currentSelected.length > 0) {
-      handleIndicatorChange(currentSelected, newSettings);
+      applyIndicatorsToChart(chartRef.current, currentSelected, newSettings);
     }
   }, [handleIndicatorChange]);
 
@@ -1934,6 +1718,29 @@ export const ProChartKit = ({
                 </Button>
               </div>
               
+              {/* Price scale mode */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Price Scale</span>
+                <div className="flex gap-1">
+                  {([
+                    ['normal', 'Normal', 'Equal price steps'],
+                    ['logarithm', 'Log', 'Equal percentage moves look the same size (good for long ranges)'],
+                    ['percentage', '%', 'Show the change from the first visible bar in percent'],
+                  ] as const).map(([mode, label, hint]) => (
+                    <Button
+                      key={mode}
+                      variant={priceScaleMode === mode ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 text-xs"
+                      title={hint}
+                      onClick={() => setChartPrefs({ priceScale: mode })}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
               {/* Separator */}
               <div className="border-t border-border my-2" />
               
@@ -2021,9 +1828,7 @@ export const ProChartKit = ({
                 size="sm" 
                 className="w-full"
                 onClick={() => {
-                  setYAxisScale(10);
-                  setPricePrecision(-1); // Auto mode as default
-                  setTimeFormat('12h');
+                  setChartPrefs({ yAxisScale: 10, pricePrecision: -1, timeFormat: '12h', priceScale: 'normal' });
                 }}
               >
                 Reset All to Default
@@ -2073,7 +1878,7 @@ export const ProChartKit = ({
           indicatorSettings={indicatorSettings}
           onSettingsChange={handleIndicatorSettingsChange}
         />
-        <DrawingToolbar chart={chartRef.current} />
+        <DrawingToolbar chart={chartRef.current} symbol={symbol} />
         <ChartAnnotationPanel 
           chart={chartRef.current} 
           symbol={symbol}
