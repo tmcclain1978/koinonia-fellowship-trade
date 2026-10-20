@@ -1,5 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logAudit } from "../_shared/audit.ts";
+
+// IDs go into the Schwab URL path; only allow the characters they actually use.
+const ORDER_ID_RE = /^[0-9]{1,20}$/;
+const ACCOUNT_HASH_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Order ID from a Location header like .../accounts/{hash}/orders/{orderId}. */
+const orderIdFromLocation = (location: string | null) => {
+  const id = (location || '').split('/').filter(Boolean).pop() || '';
+  return ORDER_ID_RE.test(id) ? id : undefined;
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,6 +36,18 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, accountHash, orderId, order, fromEnteredTime, toEnteredTime, maxResults, status } = body;
+
+    if (accountHash !== undefined && !ACCOUNT_HASH_RE.test(String(accountHash))) {
+      throw new Error('Invalid accountHash');
+    }
+    if (orderId !== undefined && !ORDER_ID_RE.test(String(orderId))) {
+      throw new Error('Invalid orderId');
+    }
+
+    // Who is acting (for the audit log of order changes).
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const { data: userData } = await supabase.auth.getUser(jwt);
+    const userId = userData?.user?.id;
 
     // Get Schwab access token
     const { data: tokenData, error: tokenError } = await supabase.functions.invoke(
@@ -154,31 +177,44 @@ serve(async (req) => {
 
     const response = await fetch(endpoint, fetchOptions);
 
-    // Handle different response types
-    if (action === 'place_order') {
-      if (response.status === 201) {
-        // Order created - get order ID from Location header
-        const location = response.headers.get('location') || '';
-        const newOrderId = location.split('/').pop();
-        result = { 
-          success: true, 
-          orderId: newOrderId,
-          message: 'Order placed successfully' 
-        };
-      } else if (!response.ok) {
+    // Handle different response types. Schwab answers place and replace with
+    // 201 Created, an EMPTY body and the new order's URL in the Location header
+    // (a replace cancels the old order and creates a new one with a new ID).
+    // Reading that empty body as JSON used to throw, so a successful replace
+    // was reported as a failure.
+    const mutating = action === 'place_order' || action === 'replace_order' || action === 'cancel_order';
+    if (mutating) {
+      if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[schwab-orders] Place order error ${response.status}:`, errorText);
-        throw new Error(`Failed to place order: ${errorText}`);
-      } else {
-        // Order might have been filled immediately
-        result = { success: true, message: 'Order executed' };
+        console.error(`[schwab-orders] ${action} error ${response.status}:`, errorText);
+        if (userId) {
+          await logAudit({
+            userId,
+            action: `schwab_${action}_failed`,
+            resourceType: 'schwab_order',
+            resourceId: orderId,
+            details: { accountHash, status: response.status, error: errorText.slice(0, 500), order },
+          });
+        }
+        if (response.status === 401) throw new Error('Access token expired. Please re-authenticate in Settings.');
+        const verb = action === 'place_order' ? 'place' : action === 'replace_order' ? 'replace' : 'cancel';
+        throw new Error(`Failed to ${verb} order: ${errorText}`);
       }
-    } else if (action === 'cancel_order') {
-      if (response.ok || response.status === 200) {
-        result = { success: true, message: 'Order cancelled successfully' };
-      } else {
-        const errorText = await response.text();
-        throw new Error(`Failed to cancel order: ${errorText}`);
+      const newOrderId = action === 'cancel_order' ? undefined : orderIdFromLocation(response.headers.get('location'));
+      result =
+        action === 'place_order'
+          ? { success: true, orderId: newOrderId, message: 'Order placed successfully' }
+          : action === 'replace_order'
+            ? { success: true, orderId: newOrderId, replacedOrderId: orderId, message: 'Order replaced successfully' }
+            : { success: true, message: 'Order cancelled successfully' };
+      if (userId) {
+        await logAudit({
+          userId,
+          action: `schwab_${action}`,
+          resourceType: 'schwab_order',
+          resourceId: newOrderId ?? orderId,
+          details: { accountHash, previousOrderId: action === 'replace_order' ? orderId : undefined, order },
+        });
       }
     } else {
       if (!response.ok) {
@@ -191,7 +227,8 @@ serve(async (req) => {
         
         throw new Error(`Schwab API error (${response.status}): ${errorText}`);
       }
-      result = await response.json();
+      const text = await response.text();
+      result = text ? JSON.parse(text) : null;
     }
 
     console.log(`[schwab-orders] Success for action: ${action}`);

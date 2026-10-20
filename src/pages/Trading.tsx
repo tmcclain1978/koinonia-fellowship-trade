@@ -488,6 +488,7 @@ const Trading = () => {
             <CardContent className="p-0">
               <ProChartKit 
                 symbol={symbol}
+                tradingMode="live"
                 height={typeof window !== 'undefined' && window.innerWidth < 640 ? 300 : 500}
                 interval={chartInterval}
                 theme="dark"

@@ -27,7 +27,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown, ChevronUp, Zap } from "lucide-react";
+import { ChevronDown, ChevronUp, Zap, ListOrdered, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useSchwabStreaming, SchwabPriceUpdate } from "@/hooks/useSchwabStreaming";
 import { useCandleCache, isMarketOpen, getMarketStatusMessage, getCurrentEasternTime, isPremarket, isAfterHours } from "@/hooks/useCandleCache";
@@ -47,6 +47,9 @@ import { getBucketStart, getIntervalMs as intervalToMs, intervalMinutes, aggrega
 import { applyLiveQuote, initialLiveCandleState, type LiveCandleState } from "./liveCandles";
 import { olderRange, olderCandlesOnly, pageSpanDays } from "./historyPaging";
 import { buildPriceTicks, effectivePrecision, type TickParams } from "./priceTicks";
+import { useChartTrading } from "./trading/useChartTrading";
+import { TradeConfirmDialog } from "./trading/TradeConfirmDialog";
+import type { TradingMode } from "./trading/tradingActions";
 
 registerKoinoniaIndicators();
 registerKoinoniaOverlays();
@@ -131,6 +134,8 @@ interface ProChartKitProps {
   // Crosshair sync props
   chartId?: string;
   enableCrosshairSync?: boolean;
+  /** Show and manage orders/positions on the chart: "live" (Schwab) or "paper". */
+  tradingMode?: TradingMode;
 }
 
 export const ProChartKit = ({
@@ -148,6 +153,7 @@ export const ProChartKit = ({
   onPriceUpdate,
   chartId,
   enableCrosshairSync = false,
+  tradingMode,
 }: ProChartKitProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -206,6 +212,8 @@ export const ProChartKit = ({
 
   // Real-time streaming price state
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  // Bumped after each full data load so order lines re-attach to the current chart.
+  const [chartGen, setChartGen] = useState(0);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'unchanged'>('unchanged');
   const [streamingVolume, setStreamingVolume] = useState<number>(0);
 
@@ -1154,6 +1162,9 @@ export const ProChartKit = ({
           // Apply saved annotations
           applyAnnotationsToChart(chartRef.current, symbol);
 
+          // Order/position lines re-sync against the (possibly new) chart instance.
+          setChartGen((g) => g + 1);
+
           // Saved drawings for this symbol (local now; a newer cloud copy replaces them).
           restoreDrawings(chartRef.current, symbol);
           const chartForDrawings = chartRef.current;
@@ -1610,8 +1621,18 @@ export const ProChartKit = ({
     }
   }, [handleIndicatorChange]);
 
+  const trading = useChartTrading({
+    chart: chartRef.current,
+    chartGen,
+    symbol,
+    mode: tradingMode ?? null,
+    visible: prefs.tradeLines && !replayMode,
+    lastPrice: currentPrice ?? chartRef.current?.getDataList().at(-1)?.close ?? null,
+  });
+
   return (
     <div className="space-y-4">
+      {tradingMode && <TradeConfirmDialog {...trading.dialogProps} />}
       <div className="flex flex-wrap gap-4 items-center">
         {/* Chart Data Source Indicator - Always visible */}
         <DataSourceBadge source={chartDataSource} lastUpdate={lastDataUpdate} />
@@ -1698,6 +1719,27 @@ export const ProChartKit = ({
           chart={chartRef.current}
           symbol={symbol}
         />
+        {tradingMode && (
+          <Button
+            variant={prefs.tradeLines ? "default" : "outline"}
+            size="sm"
+            className="gap-2"
+            onClick={() => setChartPrefs({ tradeLines: !prefs.tradeLines })}
+            title={
+              trading.error ??
+              (prefs.tradeLines
+                ? "Orders and positions are shown on the chart. Drag an order line to change its price, ✕ to cancel. Every change asks for confirmation."
+                : "Show orders and positions on the chart")
+            }
+          >
+            <ListOrdered className="w-4 h-4" />
+            <span className="text-xs">
+              {tradingMode === "live" ? "Orders" : "Paper orders"}
+              {prefs.tradeLines && !trading.error ? ` (${trading.orders.length})` : ""}
+            </span>
+            {prefs.tradeLines && trading.error && <AlertTriangle className="w-3 h-3 text-amber-400" />}
+          </Button>
+        )}
         <ChartSettings 
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}

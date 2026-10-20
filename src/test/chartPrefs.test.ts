@@ -40,6 +40,7 @@ describe("chart preferences", () => {
       priceScale: "normal",
       timeFormat: "24h",
       pricePrecision: 3,
+      tradeLines: true,
       signal: {
         entryColor: "#112233",
         stopColor: "#445566",
