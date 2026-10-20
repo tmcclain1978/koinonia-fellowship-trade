@@ -61,6 +61,14 @@ export interface QuoteSubscription {
   useWebSocket?: boolean;
 }
 
+/** Messages from the schwab-streaming edge function. */
+interface StreamMessage {
+  type?: "connected" | "data" | "disconnected" | "error" | string;
+  service?: string;
+  content?: Array<Record<string, unknown>>;
+  message?: string;
+}
+
 export interface AccountActivityItem {
   accountNumber: string;
   messageType: string;
@@ -417,7 +425,7 @@ export class SchwabFeed {
     this.socket = ws;
 
     ws.onmessage = (ev) => {
-      let msg: any;
+      let msg: StreamMessage;
       try {
         msg = JSON.parse(ev.data);
       } catch {
@@ -447,7 +455,7 @@ export class SchwabFeed {
     };
   }
 
-  private handleMessage(msg: any) {
+  private handleMessage(msg: StreamMessage) {
     switch (msg?.type) {
       case "connected": {
         this.authenticated = true;
@@ -474,9 +482,9 @@ export class SchwabFeed {
             this.emit(merged);
           }
         } else if (msg.service === "ACCT_ACTIVITY" && Array.isArray(msg.content)) {
-          const items: AccountActivityItem[] = msg.content.map((item: any) => ({
-            accountNumber: item.key || item["0"],
-            messageType: item["1"] || "UPDATE",
+          const items: AccountActivityItem[] = msg.content.map((item) => ({
+            accountNumber: String(item.key ?? item["0"] ?? ""),
+            messageType: String(item["1"] ?? "UPDATE"),
             messageData: item["2"] || item,
             timestamp: new Date(this.deps.now()),
           }));

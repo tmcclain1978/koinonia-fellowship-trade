@@ -40,3 +40,15 @@ export function buildPriceTicks(params: TickParams, scale: number, precisionFor:
   }
   return ticks.length > 1 ? ticks : defaultTicks;
 }
+
+/** Decimal places for prices: fixed, or automatic by price level when `setting` is -1. */
+export function effectivePrecision(setting: number, price: number | null | undefined): number {
+  if (setting !== -1) return setting;
+  if (!price) return 2;
+  if (price < 0.01) return 6; // micro-penny
+  if (price < 0.1) return 5;
+  if (price < 1) return 4; // under $1
+  if (price < 10) return 3;
+  if (price < 1000) return 2;
+  return 1; // very high-priced
+}
