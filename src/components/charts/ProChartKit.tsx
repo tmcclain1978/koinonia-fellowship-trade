@@ -49,6 +49,8 @@ import { olderRange, olderCandlesOnly, pageSpanDays } from "./historyPaging";
 import { buildPriceTicks, effectivePrecision, type TickParams } from "./priceTicks";
 import { useChartTrading } from "./trading/useChartTrading";
 import { TradeConfirmDialog } from "./trading/TradeConfirmDialog";
+import { useOptionsLevels } from "./options/useOptionsLevels";
+import { OptionsLevelsPopover } from "./options/OptionsLevelsPopover";
 import type { TradingMode } from "./trading/tradingActions";
 
 registerKoinoniaIndicators();
@@ -1630,6 +1632,14 @@ export const ProChartKit = ({
     lastPrice: currentPrice ?? chartRef.current?.getDataList().at(-1)?.close ?? null,
   });
 
+  const optionsLevels = useOptionsLevels({
+    chart: chartRef.current,
+    chartGen,
+    symbol,
+    prefs: prefs.options,
+    visible: !replayMode,
+  });
+
   return (
     <div className="space-y-4">
       {tradingMode && <TradeConfirmDialog {...trading.dialogProps} />}
@@ -1740,6 +1750,13 @@ export const ProChartKit = ({
             {prefs.tradeLines && trading.error && <AlertTriangle className="w-3 h-3 text-amber-400" />}
           </Button>
         )}
+        <OptionsLevelsPopover
+          prefs={prefs.options}
+          summary={optionsLevels.summary}
+          status={optionsLevels.status}
+          onRefresh={() => void optionsLevels.refresh()}
+          fmtMoney={optionsLevels.fmtMoney}
+        />
         <ChartSettings 
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}

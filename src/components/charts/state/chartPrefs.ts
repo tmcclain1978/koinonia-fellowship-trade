@@ -25,6 +25,17 @@ export interface SignalStylePrefs {
   priceLabels: boolean;
 }
 
+export interface OptionsLevelPrefs {
+  enabled: boolean;
+  expectedMove: boolean;
+  gamma: boolean;
+  profile: boolean;
+  maxPain: boolean;
+  unusual: boolean;
+  /** Expiration for expected move / max pain ("" = nearest). */
+  expiration: string;
+}
+
 export interface ChartPrefs {
   indicators: string[];
   indicatorSettings: IndicatorSettingsMap;
@@ -38,6 +49,8 @@ export interface ChartPrefs {
   pricePrecision: number;
   /** Show orders and positions on the chart (Trading / Paper Trading pages). */
   tradeLines: boolean;
+  /** Levels from the option chain (expected move, gamma, max pain…). */
+  options: OptionsLevelPrefs;
   signal: SignalStylePrefs;
 }
 
@@ -51,6 +64,7 @@ export const DEFAULT_PREFS: ChartPrefs = {
   timeFormat: "12h",
   pricePrecision: -1,
   tradeLines: true,
+  options: { enabled: false, expectedMove: true, gamma: true, profile: true, maxPain: true, unusual: true, expiration: "" },
   signal: {
     entryColor: "#f97316",
     stopColor: "#3b82f6",
@@ -95,6 +109,14 @@ export function normalizePrefs(raw: unknown): ChartPrefs {
     timeFormat: r.timeFormat === "24h" ? "24h" : "12h",
     pricePrecision: r.pricePrecision === -1 ? -1 : clampNum(r.pricePrecision, 0, 8, d.pricePrecision),
     tradeLines: typeof r.tradeLines === "boolean" ? r.tradeLines : d.tradeLines,
+    options: (() => {
+      const o = (r.options ?? {}) as Partial<OptionsLevelPrefs>;
+      const b = (k: keyof Omit<OptionsLevelPrefs, "expiration">) => (typeof o[k] === "boolean" ? (o[k] as boolean) : d.options[k]);
+      return {
+        enabled: b("enabled"), expectedMove: b("expectedMove"), gamma: b("gamma"), profile: b("profile"), maxPain: b("maxPain"), unusual: b("unusual"),
+        expiration: typeof o.expiration === "string" && /^(\d{4}-\d{2}-\d{2})?$/.test(o.expiration) ? o.expiration : "",
+      };
+    })(),
     signal: {
       entryColor: isColor(s.entryColor) ? s.entryColor : d.signal.entryColor,
       stopColor: isColor(s.stopColor) ? s.stopColor : d.signal.stopColor,
@@ -206,6 +228,10 @@ export function getChartPrefs(): ChartPrefs {
 export function setChartPrefs(update: Partial<ChartPrefs> | ((prev: ChartPrefs) => ChartPrefs)): void {
   const next = typeof update === "function" ? update(state.prefs) : { ...state.prefs, ...update };
   commit({ prefs: normalizePrefs(next), updatedAt: Date.now() }, true);
+}
+
+export function setOptionsPrefs(update: Partial<OptionsLevelPrefs>): void {
+  setChartPrefs((p) => ({ ...p, options: { ...p.options, ...update } }));
 }
 
 export function setSignalPrefs(update: Partial<SignalStylePrefs>): void {

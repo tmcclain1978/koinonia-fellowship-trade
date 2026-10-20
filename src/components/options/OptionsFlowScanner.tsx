@@ -126,16 +126,22 @@ export function OptionsFlowScanner() {
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <Activity className="h-4 w-4 text-primary" />
             Options Flow Scanner
+            <Badge
+              variant="outline"
+              className="text-[10px] border-amber-500/50 text-amber-500"
+              title="Every trade in this panel is randomly generated for practice. It is not real market activity."
+            >
+              Simulated
+            </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
-            {live && (
-              <Badge className="bg-destructive/20 text-destructive text-[10px] animate-pulse">
-                ● LIVE
-              </Badge>
-            )}
-            <Switch checked={live} onCheckedChange={setLive} className="scale-75" />
+            <Switch checked={live} onCheckedChange={setLive} className="scale-75" aria-label="Run the simulation" />
           </div>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Practice data: these trades are randomly generated, not real flow. For real unusual activity from the
+          option chain, turn on <span className="font-medium">Options</span> in the chart toolbar.
+        </p>
 
         {/* Summary bar */}
         <div className="grid grid-cols-4 gap-2 mt-2">

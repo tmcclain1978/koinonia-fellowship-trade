@@ -41,6 +41,7 @@ describe("chart preferences", () => {
       timeFormat: "24h",
       pricePrecision: 3,
       tradeLines: true,
+      options: { enabled: false, expectedMove: true, gamma: true, profile: true, maxPain: true, unusual: true, expiration: "" },
       signal: {
         entryColor: "#112233",
         stopColor: "#445566",
