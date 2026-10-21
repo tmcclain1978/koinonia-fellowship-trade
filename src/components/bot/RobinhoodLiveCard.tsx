@@ -30,6 +30,17 @@ export function RobinhoodLiveCard({ settings, robinhood, onSave, onReload }: {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const live = settings.bot_mode === "live";
+  const [modeError, setModeError] = useState<string | null>(null);
+  // Switching modes goes through the server (bot-control), which re-checks everything.
+  const setMode = async (action: "go_live" | "go_paper") => {
+    setModeError(null);
+    const { data, error } = await supabase.functions.invoke("bot-control", { body: action === "go_live" ? { action, confirm: "GO LIVE" } : { action } });
+    const msg = error?.message ?? data?.error;
+    if (msg) { setModeError(msg); return false; }
+    await onSave({});
+    onReload();
+    return true;
+  };
   const checkFresh = !!robinhood.check?.ok && !!robinhood.check.checkedAt && Date.now() - Date.parse(robinhood.check.checkedAt) < 7 * 86_400_000;
 
   const runCheck = async () => {
@@ -76,11 +87,13 @@ export function RobinhoodLiveCard({ settings, robinhood, onSave, onReload }: {
             Run Robinhood check (places nothing)
           </Button>
           {live ? (
-            <Button variant="secondary" onClick={() => void onSave({ bot_mode: "paper", live_armed_at: null })} data-testid="rh-disarm">Switch back to paper</Button>
+            <Button variant="secondary" onClick={() => void setMode("go_paper")} data-testid="rh-disarm">Switch back to paper</Button>
           ) : (
             <Button variant="destructive" disabled={!checkFresh} onClick={() => setConfirmOpen(true)} data-testid="rh-arm">Go live…</Button>
           )}
         </div>
+
+        {modeError && <p className="text-xs text-red-500" data-testid="rh-mode-error">{modeError}</p>}
 
         {result && (
           <div className="space-y-2 rounded border p-3 text-xs">
@@ -125,8 +138,9 @@ export function RobinhoodLiveCard({ settings, robinhood, onSave, onReload }: {
               variant="destructive"
               disabled={confirmText !== "GO LIVE"}
               onClick={async () => {
-                await onSave({ bot_mode: "live", live_armed_at: new Date().toISOString() });
+                const ok = await setMode("go_live");
                 setConfirmOpen(false);
+                if (!ok) return;
                 setConfirmText("");
               }}
             >

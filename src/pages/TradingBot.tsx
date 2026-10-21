@@ -141,7 +141,7 @@ const TradingBot = () => {
 
         <BotSettingsForm settings={s} onSave={async (p) => { const ok = await bot.save(p); toast({ title: ok ? "Settings saved" : "Couldn't save settings", variant: ok ? undefined : "destructive" }); return ok; }} />
         <BotBacktest settings={s} />
-        <RobinhoodLiveCard settings={s} robinhood={bot.robinhood} onSave={async (p) => { const ok = await bot.save(p); if (ok) toast({ title: p.bot_mode === "live" ? "Live trading is on" : "Back to paper trading" }); return ok; }} onReload={() => void bot.reload()} />
+        <RobinhoodLiveCard settings={s} robinhood={bot.robinhood} onSave={bot.save} onReload={() => void bot.reload()} />
       </div>
 
       <Dialog open={closeOpen} onOpenChange={setCloseOpen}>

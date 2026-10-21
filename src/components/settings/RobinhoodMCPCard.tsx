@@ -110,15 +110,15 @@ export default function RobinhoodMCPCard() {
               className="w-full px-4 py-2 bg-input border border-border rounded-lg text-foreground"
               disabled={connecting}
             >
-              <option value="read_only">Read-only (quotes, positions, history — agent can analyze, not trade)</option>
-              <option value="trading">Full trading (agent may place/cancel orders subject to your automation consent)</option>
+              <option value="read_only">Read-only (quotes, positions, history)</option>
+              <option value="trading">Allow trading by the trading bot</option>
             </select>
             {scopeMode === "trading" && (
               <Alert variant="destructive">
                 <ShieldAlert className="h-4 w-4" />
                 <AlertDescription>
-                  Full trading lets the AI agent place real orders on your Robinhood account. Only use after you've
-                  enabled automation consent in Auto-Trading Settings.
+                  Lets the trading bot place real orders in your Robinhood Agentic account once you go live on the Trading Bot
+                  page (it runs a check first and needs you to type GO LIVE). The chat assistant stays read-only either way.
                 </AlertDescription>
               </Alert>
             )}

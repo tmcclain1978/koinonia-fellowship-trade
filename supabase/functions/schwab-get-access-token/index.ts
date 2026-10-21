@@ -173,6 +173,7 @@ serve(async (req) => {
     if (tokens.refresh_token && tokens.refresh_token !== refreshToken) {
       console.log('[schwab-get-access-token] New refresh token received, storing...');
       updateData.schwab_refresh_token = await encryptText(tokens.refresh_token);
+      updateData.schwab_refresh_issued_at = now.toISOString();
     }
     
     const { error: updateError } = await supabase

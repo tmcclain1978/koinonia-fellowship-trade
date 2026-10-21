@@ -117,7 +117,9 @@ const useNotifications = () => {
           if (memoryNotifs.some((m) => m.id === n.id)) return; // created in this tab
           memoryNotifs = [{ id: n.id, type: n.type as AppNotification["type"], title: n.title, message: n.message, timestamp: new Date(n.created_at), read: n.read }, ...memoryNotifs].slice(0, 50);
           listeners.forEach((l) => l());
-          if (n.type === "price_alert") toast(n.title, { description: n.message, duration: 15_000 });
+          // Alerts firing and the trading bot's buys, sells and warnings pop up right away.
+          if (n.type === "price_alert" || n.type === "order_fill") toast(n.title, { description: n.message, duration: 15_000 });
+          else if (n.type === "risk_warning") toast.warning(n.title, { description: n.message, duration: 30_000 });
         })
         .subscribe();
     });

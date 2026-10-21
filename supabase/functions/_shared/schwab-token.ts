@@ -35,7 +35,10 @@ export async function getSchwabAccessToken(admin: any, userId: string): Promise<
     schwab_token_expires_at: new Date(Date.now() + (Number(t.expires_in) || 1800) * 1000).toISOString(),
     updated_at: new Date().toISOString(),
   };
-  if (t.refresh_token && t.refresh_token !== refreshToken) patch.schwab_refresh_token = await encryptText(t.refresh_token);
+  if (t.refresh_token && t.refresh_token !== refreshToken) {
+    patch.schwab_refresh_token = await encryptText(t.refresh_token);
+    patch.schwab_refresh_issued_at = new Date().toISOString();
+  }
   await admin.from("user_api_credentials").update(patch).eq("user_id", userId);
   return t.access_token;
 }
