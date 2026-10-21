@@ -2549,7 +2549,6 @@ export type Database = {
       trading_journal: {
         Row: {
           ai_analysis: string | null
-          bot_trade_id: string | null
           ai_suggestions: string[] | null
           analyzed_at: string | null
           chart_analysis: string | null
@@ -2568,7 +2567,6 @@ export type Database = {
         }
         Insert: {
           ai_analysis?: string | null
-          bot_trade_id?: string | null
           ai_suggestions?: string[] | null
           analyzed_at?: string | null
           chart_analysis?: string | null
@@ -2587,7 +2585,6 @@ export type Database = {
         }
         Update: {
           ai_analysis?: string | null
-          bot_trade_id?: string | null
           ai_suggestions?: string[] | null
           analyzed_at?: string | null
           chart_analysis?: string | null
