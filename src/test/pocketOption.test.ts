@@ -143,4 +143,18 @@ describe("shared PocketOption connection", () => {
     expect(c.getSnapshot().state).toBe("disconnected");
     vi.useRealTimers();
   });
+
+  it("can't-reach errors are shown, not retried forever; Connect asks the bridge again", async () => {
+    const { c } = client();
+    await c.connect();
+    const ws = FakeWs.all[0];
+    ws.open();
+    ws.push({ type: "error", code: "NO_ENDPOINT", message: "Every server refused the app's server (HTTP 403 Forbidden)." });
+    expect(c.getSnapshot()).toMatchObject({ state: "error", errorCode: "NO_ENDPOINT" });
+    expect(c.getSnapshot().errorMessage).toContain("HTTP 403");
+    await c.connect();
+    expect(FakeWs.all).toHaveLength(1);
+    expect(ws.sent.filter((m) => m.type === "connect")).toHaveLength(2);
+    expect(c.getSnapshot().state).toBe("connecting");
+  });
 });

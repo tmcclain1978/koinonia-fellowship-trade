@@ -97,7 +97,14 @@ export class PoClient {
   async connect() {
     this.wanted = true;
     this.attempts = 0;
-    if (this.ws && this.ws.readyState <= 1) return;
+    if (this.ws && this.ws.readyState <= 1) {
+      // Already talking to the bridge (e.g. after "couldn't reach PocketOption"): ask it to try again.
+      if (this.s.state === "error" && this.ws.readyState === 1) {
+        this.set({ state: "connecting", errorMessage: undefined, errorCode: undefined });
+        this.sendJson({ type: "connect" });
+      }
+      return;
+    }
     await this.open();
   }
 
@@ -181,7 +188,8 @@ export class PoClient {
       if (this.ws !== ws) return;
       this.ws = null;
       if (this.keepAlive) this.deps.clearTimeout(this.keepAlive);
-      const stopped = this.s.errorCode === "AUTH_FAILED" || this.s.errorCode === "BAD_SSID";
+      // Problems a retry can't fix: show them and wait for the user.
+      const stopped = ["AUTH_FAILED", "BAD_SSID", "NO_SSID", "NOT_SIGNED_IN", "NO_ENDPOINT"].includes(this.s.errorCode ?? "");
       if (!stopped) this.set({ state: "disconnected" });
       if (!this.wanted || stopped) return;
       if (this.attempts >= BACKOFF.length) {
