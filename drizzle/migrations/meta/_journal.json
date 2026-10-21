@@ -43,6 +43,13 @@
       "when": 1792588512845,
       "tag": "0005_bot_safety",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792592112845,
+      "tag": "0006_equity_history",
+      "breakpoints": true
     }
   ]
 }
