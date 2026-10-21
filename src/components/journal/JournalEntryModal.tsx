@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { BotTradeBadge } from "./BotTradeBadge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ interface JournalEntry {
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
   chart_analysis: string | null;
+  bot_trade_id?: string | null;
 }
 
 interface JournalEntryModalProps {
@@ -256,6 +258,7 @@ const JournalEntryModal = ({
                         </span>
                       )
                     )}
+                    <BotTradeBadge entry={entry} />
                     {editingId === entry.id ? (
                       <Select 
                         value={editForm.entry_type} 

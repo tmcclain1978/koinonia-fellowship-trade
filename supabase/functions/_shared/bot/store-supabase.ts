@@ -2,6 +2,7 @@
  * BotStore backed by Supabase (service role), plus settings loading.
  */
 import type { BotSettings, BotStore, TradeRow } from "./engine.ts";
+import { syncBotJournal } from "./journal.ts";
 
 const ACTIVE = ["entering", "open", "exiting"];
 
@@ -23,6 +24,10 @@ export function supabaseStore(admin: any): BotStore {
     insertTrade: async (row) => (await must(admin.from("bot_trades").insert(row).select().single())) as TradeRow,
     updateTrade: async (id, patch) => {
       await must(admin.from("bot_trades").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id));
+      // Journal: written when the buy fills, updated on stop moves, exits and problems.
+      if (patch.status === "open" || patch.status === "exiting" || patch.status === "closed" || patch.status === "error" || patch.stop_price !== undefined) {
+        await syncBotJournal(admin, id);
+      }
     },
     updateSettings: async (userId, patch) => {
       await must(admin.from("auto_trading_settings").update(patch).eq("user_id", userId));
