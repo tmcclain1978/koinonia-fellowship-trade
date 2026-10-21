@@ -47,10 +47,12 @@ serve(async (req) => {
     const summary = { evaluated: 0, filled: 0, expired: 0, cancelled: 0, triggered: 0, rejected: 0 };
     const today = now().split('T')[0];
 
-    const getQuote = async (userId: string, symbol: string) => {
-      if (quoteCache.has(symbol)) return quoteCache.get(symbol);
-      const qt = await fetchQuote(supabase, userId, symbol);
-      quoteCache.set(symbol, qt);
+    // Options are priced by their own contract quote, never the stock's.
+    const getQuote = async (userId: string, symbol: string, contractKey: string | null) => {
+      const k = `${userId}|${symbol}|${contractKey ?? ''}`;
+      if (quoteCache.has(k)) return quoteCache.get(k);
+      const qt = await fetchQuote(supabase, userId, symbol, contractKey);
+      quoteCache.set(k, qt);
       return qt;
     };
     const getAccount = async (accountId: string) => {
@@ -70,7 +72,7 @@ serve(async (req) => {
         continue;
       }
 
-      const quote = await getQuote(o.user_id, o.symbol);
+      const quote = await getQuote(o.user_id, o.symbol, o.contract_key ?? null);
       if (!quote) continue; // no price -> leave working
 
       const wo: WorkingOrder = {

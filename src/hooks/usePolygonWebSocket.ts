@@ -158,7 +158,7 @@ export const usePolygonWebSocket = ({
         body: { action: 'get_websocket_url' },
       });
 
-      if (fetchError || data?.mock) {
+      if (fetchError || data?.mock || data?.polling || !data?.wsUrl) {
         console.log('📊 Falling back to polling mode');
         setConnectionType('polling');
         startPolling();

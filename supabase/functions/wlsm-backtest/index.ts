@@ -330,8 +330,9 @@ Deno.serve(async (req) => {
     });
   } catch (err: any) {
     console.error("WLSM backtest error:", err);
+    // 200 so the app can show the reason (non-2xx responses lose the message).
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -346,8 +347,8 @@ async function fetchCandles(
   apiKey: string | undefined
 ): Promise<DailyCandle[]> {
   if (!apiKey) {
-    // Fallback: generate simulated data
-    return generateSimulatedCandles(symbol, startDate, endDate);
+    // No made-up history: a backtest on generated prices is meaningless.
+    throw new Error("POLYGON_API_KEY is not configured, so real price history isn't available. The backtest was not run.");
   }
 
   try {
@@ -373,9 +374,11 @@ async function fetchCandles(
     console.error("Polygon fetch failed:", e);
   }
 
-  return generateSimulatedCandles(symbol, startDate, endDate);
+  throw new Error(`Couldn't load real daily prices for ${symbol}. The backtest was not run.`);
 }
 
+// Kept only for reference; no longer used (backtests run on real data only).
+// deno-lint-ignore no-unused-vars
 function generateSimulatedCandles(symbol: string, startDate: string, endDate: string): DailyCandle[] {
   const candles: DailyCandle[] = [];
   let price = symbol === "SPY" ? 450 : 150;

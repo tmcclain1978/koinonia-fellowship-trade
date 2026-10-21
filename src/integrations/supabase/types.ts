@@ -1683,6 +1683,9 @@ export type Database = {
       }
       phroureo_exit_strategies: {
         Row: {
+          contract_key: string | null
+          multiplier: number
+          paper_order_id: string | null
           allow_after_hours: boolean
           created_at: string
           current_stop_price: number | null
@@ -1721,6 +1724,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          contract_key?: string | null
+          multiplier?: number
+          paper_order_id?: string | null
           allow_after_hours?: boolean
           created_at?: string
           current_stop_price?: number | null
@@ -1759,6 +1765,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          contract_key?: string | null
+          multiplier?: number
+          paper_order_id?: string | null
           allow_after_hours?: boolean
           created_at?: string
           current_stop_price?: number | null
