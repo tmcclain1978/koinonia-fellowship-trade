@@ -103,7 +103,8 @@ describe("shared PocketOption connection", () => {
     await c.connect(); // second screen asks too: still one socket
     expect(FakeWs.all).toHaveLength(1);
     const ws = FakeWs.all[0];
-    expect(ws.protocols).toEqual(["authorization", "jwt"]);
+    expect(ws.protocols).toEqual([]);
+    expect(ws.url).toBe("wss://x/functions/v1/pocketoption-websocket?token=jwt");
     ws.open();
     expect(ws.sent[0]).toEqual({ type: "connect" });
     c.watch("EURUSD_otc", 60); // before login: remembered

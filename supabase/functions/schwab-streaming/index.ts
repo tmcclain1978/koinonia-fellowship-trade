@@ -75,7 +75,7 @@ export function readJwt(req: Request): { jwt: string | null; viaProtocol: boolea
   const protocols = (req.headers.get("sec-websocket-protocol") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const i = protocols.findIndex((p) => p.toLowerCase() === "authorization");
   if (i >= 0 && protocols[i + 1]) return { jwt: protocols[i + 1], viaProtocol: true };
-  return { jwt: null, viaProtocol: false };
+  return { jwt: new URL(req.url).searchParams.get("token"), viaProtocol: false };
 }
 
 const cleanSymbols = (v: unknown, max: number): string[] =>
@@ -265,7 +265,16 @@ serve(async (req) => {
     }
   };
 
-  client.onclose = shutdown;
+  // Keep this function running until the browser hangs up. Without this the
+  // runtime treats the request as finished once the upgrade returns and may
+  // shut the worker down, which drops the socket ("connection lost").
+  let done: () => void = () => {};
+  const finished = new Promise<void>((r) => (done = r));
+  (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil?.(finished);
+  client.onclose = () => {
+    shutdown();
+    done();
+  };
   client.onerror = () => {};
 
   return response;

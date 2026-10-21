@@ -159,7 +159,10 @@ export class PoClient {
     this.set({ state: "connecting", errorMessage: undefined, errorCode: undefined, attempt: undefined, totalAttempts: undefined });
     let ws: WsLike;
     try {
-      ws = this.deps.createSocket(this.deps.url, ["authorization", token]);
+      // Sign-in goes in the address, the way Supabase documents for browser
+      // WebSockets (a subprotocol can be dropped on the way).
+      const sep = this.deps.url.includes("?") ? "&" : "?";
+      ws = this.deps.createSocket(`${this.deps.url}${sep}token=${encodeURIComponent(token)}`, []);
     } catch (e) {
       this.set({ state: "error", errorMessage: (e as Error).message });
       return;

@@ -15,9 +15,52 @@ interface PocketOptionConnectionProps {
   isConnected: boolean;
 }
 
+interface PoCheckResult {
+  ok: boolean;
+  summary: string;
+  loggedIn?: boolean;
+  isDemo?: 0 | 1 | null;
+  balance?: number | null;
+  ticks?: number;
+  candles?: number;
+  steps: Array<Record<string, unknown>>;
+}
+
+/** One line per step of the test, in plain words. */
+function stepText(m: Record<string, unknown>): string {
+  switch (m.type) {
+    case "connection_attempt": return `Trying server ${m.attemptNumber} of ${m.totalEndpoints}: ${m.endpoint}`;
+    case "connection": return m.status === "connected" ? `Reached ${m.endpoint}, logging in…` : String(m.message ?? "Disconnected");
+    case "po_authenticated": return `Logged in (${m.isDemo ? "demo" : "REAL money"} account)`;
+    case "po_balance": return `Balance: $${Number(m.balance).toFixed(2)}`;
+    case "error": {
+      const f = Array.isArray(m.failures) ? (m.failures as Array<{ host: string; why: string }>).map((x) => `${x.host}: ${x.why}`) : [];
+      return `Stopped: ${m.message}${f.length > 3 ? ` All servers: ${f.join("; ")}` : ""}`;
+    }
+    default: return String(m.type);
+  }
+}
+
 const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptionConnectionProps) => {
   const [ssid, setSsid] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [check, setCheck] = useState<PoCheckResult | null>(null);
+
+  /** Ask the server to log in to PocketOption and report every step. */
+  const runCheck = async () => {
+    setChecking(true);
+    setCheck(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("pocketoption-websocket", { body: { asset: "EURUSD_otc" } });
+      if (error) throw error;
+      setCheck(data as PoCheckResult);
+    } catch (e) {
+      setCheck({ ok: false, summary: `The test couldn't run: ${(e as Error).message}`, steps: [] });
+    } finally {
+      setChecking(false);
+    }
+  };
   const { toast } = useToast();
   
   const { 
@@ -275,6 +318,32 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
               </Button>
             )}
           </div>
+        </div>
+
+        <div className="pt-4 border-t border-border space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">Test connection</h3>
+              <p className="text-xs text-muted-foreground">Logs in to PocketOption from the app's server and checks that prices and candles come in. Shows each step so you can see where it stops.</p>
+            </div>
+            <Button variant="outline" onClick={runCheck} disabled={checking}>
+              {checking && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {checking ? "Testing… (up to 1 min)" : "Run test"}
+            </Button>
+          </div>
+          {check && (
+            <Alert variant={check.ok ? "default" : "destructive"}>
+              {check.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+              <AlertDescription>
+                <p className="font-medium">{check.summary}</p>
+                {check.steps.length > 0 && (
+                  <ol className="mt-2 list-decimal list-inside space-y-1 text-xs">
+                    {check.steps.map((m, i) => <li key={i}>{stepText(m)}</li>)}
+                  </ol>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <div className="pt-4 border-t border-border">
