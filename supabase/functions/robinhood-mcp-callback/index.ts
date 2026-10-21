@@ -43,6 +43,8 @@ serve(async (req) => {
       pkce_verifier_enc: null,
       oauth_state: null,
       last_error: null,
+      // A new login may be a different account or scope: the bot's live check must be run again.
+      metadata: { ...((conn.metadata as Record<string, unknown>) ?? {}), bot: { ...((conn.metadata as any)?.bot ?? {}), ok: false, checkedAt: null, problems: ["Robinhood was reconnected; run the check again."] } },
     };
     if (tok.refresh_token) patch.refresh_token_enc = await encryptText(tok.refresh_token);
     if (tok.expires_in) patch.token_expires_at = new Date(Date.now() + tok.expires_in * 1000).toISOString();

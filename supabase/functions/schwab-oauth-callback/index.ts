@@ -214,6 +214,11 @@ serve(async (req) => {
       .from('user_api_credentials')
       .update({
         schwab_refresh_token: encryptedRefreshToken,
+        // Schwab refresh tokens last 7 days from here; the bot watchdog warns before then.
+        schwab_refresh_issued_at: new Date().toISOString(),
+        // Drop any cached access token from the previous login.
+        schwab_access_token: null,
+        schwab_token_expires_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId);

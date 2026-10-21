@@ -6,8 +6,11 @@
 // Behavior:
 //   - Loads the user's ready Robinhood MCP connection.
 //   - Lists MCP tools, exposes them to Lovable AI Gateway via AI SDK dynamicTool.
-//   - If scope_mode = 'read_only', filters out tools whose name looks mutating
-//     (place/cancel/buy/sell/submit/order/trade/transfer).
+//   - ALWAYS read-only: tools that could change the account (place/cancel/
+//     buy/sell/submit/order/trade/transfer/...) are never exposed, whatever
+//     the connection's scope. Trading goes through the bot (bot-engine), which
+//     has sizing, loss limits and a stop on every position; an open-ended
+//     chat agent with order tools had none of that.
 //   - Runs streamText loop up to stepCountIs(50). Returns text + tool actions.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -22,7 +25,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-const MUTATING = /place|cancel|buy|sell|submit|order|trade|transfer|withdraw|deposit|move|liquidate/i;
+// Anything that could change the account. "get_*" read tools like
+// get_equity_orders are still allowed.
+const MUTATING = /place|cancel|buy|sell|submit|transfer|withdraw|deposit|move|liquidate|exercise|approval|review|update|create|delete|modify|replace|add|remove|set|enable|disable/i;
+const isReadTool = (name: string) => /^(get|list|search|lookup|fetch|read)_/i.test(name) && !/place|cancel|submit|transfer|exercise/i.test(name);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -54,8 +60,8 @@ serve(async (req) => {
     const mcp = await McpHttpClient.fromConnection(conn as any, admin);
     await mcp.initialize();
     const allTools = await mcp.listTools();
-    const readOnly = conn.scope_mode !== "trading";
-    const exposed = allTools.filter((t) => !readOnly || !MUTATING.test(t.name));
+    const readOnly = true;
+    const exposed = allTools.filter((t) => isReadTool(t.name) || !MUTATING.test(t.name));
 
     const tools: Record<string, ReturnType<typeof dynamicTool>> = {};
     const actions: Array<{ tool: string; input: unknown; output: unknown; error?: string }> = [];

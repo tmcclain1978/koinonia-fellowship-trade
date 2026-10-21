@@ -77,6 +77,7 @@ export function useBot() {
 
   const save = useCallback(async (patch: Partial<BotSettingsRow>) => {
     if (!userId) return false;
+    if (Object.keys(patch).length === 0) { await load(); return true; } // just refresh
     const { data, error: e } = await supabase.from("auto_trading_settings").update(patch).eq("user_id", userId).select().single();
     if (e) { setError(e.message); return false; }
     setSettings(data);

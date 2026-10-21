@@ -27,6 +27,7 @@ export function BotSettingsForm({ settings, onSave }: { settings: BotSettingsRow
   const [ai, setAi] = useState(settings.ai_confirm !== false);
   const [be, setBe] = useState(settings.breakeven_at_1r !== false);
   const [pdt, setPdt] = useState(settings.pdt_guard !== false);
+  const [mail, setMail] = useState(settings.notify_email !== false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
@@ -36,6 +37,7 @@ export function BotSettingsForm({ settings, onSave }: { settings: BotSettingsRow
     setAi(settings.ai_confirm !== false);
     setBe(settings.breakeven_at_1r !== false);
     setPdt(settings.pdt_guard !== false);
+    setMail(settings.notify_email !== false);
     // Only when the row itself changes (e.g. after a save), not on every status refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.updated_at]);
@@ -55,7 +57,7 @@ export function BotSettingsForm({ settings, onSave }: { settings: BotSettingsRow
     setErrors(errs);
     if (errs.length) return;
     setSaving(true);
-    await onSave({ ...patch, allowed_symbols: list.length ? Array.from(new Set(list)) : null, ai_confirm: ai, breakeven_at_1r: be, pdt_guard: pdt });
+    await onSave({ ...patch, allowed_symbols: list.length ? Array.from(new Set(list)) : null, ai_confirm: ai, breakeven_at_1r: be, pdt_guard: pdt, notify_email: mail });
     setSaving(false);
   };
 
@@ -82,6 +84,7 @@ export function BotSettingsForm({ settings, onSave }: { settings: BotSettingsRow
         <div className="space-y-3 rounded border p-3">
           <Toggle id="bot-ai" label="AI double-check" hint="The AI looks at each setup and can say skip. It can never pick stocks, prices or share counts. If the AI is down, the trade is skipped." checked={ai} onChange={setAi} />
           <Toggle id="bot-be" label="Move stop to break-even at +1R" hint="Once a trade is up as much as it risked, the stop moves to the entry price." checked={be} onChange={setBe} />
+          <Toggle id="bot-mail" label="Email me" hint="Every buy and sell, and problems with live trading. You always get them in the bell too." checked={mail} onChange={setMail} />
           <Toggle id="bot-pdt" label="Pattern-day-trader guard" hint="Under $25,000, stop after 3 day trades in 5 days (the 4th would flag the account)." checked={pdt} onChange={setPdt} />
         </div>
         {errors.length > 0 && <ul className="text-xs text-red-500 list-disc pl-5">{errors.map((e) => <li key={e}>{e}</li>)}</ul>}

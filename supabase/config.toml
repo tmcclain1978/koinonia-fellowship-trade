@@ -36,17 +36,11 @@ verify_jwt = false
 [functions.track-usage]
 verify_jwt = false
 
-[functions.auto-trading-bot]
-verify_jwt = false
 
 [functions.generate-trade-suggestions]
 verify_jwt = false
 
-[functions.execute-trade]
-verify_jwt = false
 
-[functions.run-trading-bot]
-verify_jwt = false
 
 [functions.check-pdt-status]
 verify_jwt = false
@@ -127,8 +121,6 @@ verify_jwt = true
 [functions.enhanced-bot-analysis]
 verify_jwt = false
 
-[functions.bot-stock-screener]
-verify_jwt = false
 
 [functions.analyze-chart-image]
 verify_jwt = false
@@ -174,3 +166,9 @@ verify_jwt = false
 
 [functions.evaluate-alerts]
 verify_jwt = false
+
+[functions.bot-watchdog]
+verify_jwt = false
+
+[functions.bot-control]
+verify_jwt = true

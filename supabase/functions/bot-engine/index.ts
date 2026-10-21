@@ -17,6 +17,8 @@ import { robinhoodBroker } from "../_shared/bot/robinhood-broker.ts";
 import { polygonData, schwabData, type MarketData } from "../_shared/bot/market-data.ts";
 import { lovableReviewer } from "../_shared/bot/ai-review.ts";
 import { botPhase } from "../_shared/bot/session.ts";
+import { notifyUser } from "../_shared/notify.ts";
+import type { BotStore, EventKind } from "../_shared/bot/engine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,7 +67,7 @@ serve(async (req) => {
   if (cron && botPhase(now) === "closed") return json({ skipped: "market closed" });
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const store = supabaseStore(admin);
+  const baseStore = supabaseStore(admin);
 
   // Users with the bot on, a close-all pending, or open trades to look after.
   let q = admin.from("auto_trading_settings").select("*");
@@ -88,6 +90,16 @@ serve(async (req) => {
       continue;
     }
     let lastStatus = "";
+    // Every entry, exit, error and halt also goes to the bell (and email, if on).
+    const emailOn = row.notify_email !== false;
+    const store: BotStore = {
+      ...baseStore,
+      event: async (u, mode, kind, message, symbol, data) => {
+        await baseStore.event(u, mode, kind, message, symbol, data);
+        const n = noticeFor(kind, mode, message);
+        if (n) await notifyUser(admin, u, { ...n, email: emailOn && n.email });
+      },
+    };
     try {
       const { data: role } = await admin.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
       const base = toBotSettings(row);
@@ -116,11 +128,12 @@ serve(async (req) => {
             }
           } else broker = paperBroker(settings.slippageBps);
           if (settings.aiConfirm && !ai && settings.enabled) {
-            await store.event(userId, mode, "halt", "AI confirmation is on but the AI isn't configured (LOVABLE_API_KEY); no new trades.");
+            if (row.last_status !== "ai not configured") await store.event(userId, mode, "halt", "AI confirmation is on but the AI isn't configured (LOVABLE_API_KEY); no new trades.");
             settings.enabled = false;
+            lastStatus = "ai not configured";
           }
           const summary = await runBotForUser({ settings, store, broker, data, ai, now, force });
-          if (mode === base.mode && lastStatus !== "robinhood check needed") lastStatus = summary.status;
+          if (mode === base.mode && !lastStatus) lastStatus = summary.status;
           results.push({ userId, mode, summary });
         } catch (e) {
           const msg = (e as Error).message;
@@ -142,3 +155,15 @@ serve(async (req) => {
   }
   return json({ ran: results.length, results });
 });
+
+/** Which bot events become notifications. Scans, skips and vetoes stay in the log only. */
+function noticeFor(kind: EventKind, mode: string, message: string) {
+  const tag = mode === "live" ? "LIVE" : "Paper";
+  switch (kind) {
+    case "entry": return { type: "order_fill" as const, title: `Bot (${tag}): bought`, message, email: true };
+    case "exit": return { type: "order_fill" as const, title: `Bot (${tag}): sold`, message, email: true };
+    case "error": return { type: "risk_warning" as const, title: `Bot (${tag}) needs attention`, message, email: mode === "live", dedupeMinutes: 60 };
+    case "halt": return { type: "risk_warning" as const, title: `Bot (${tag}) stopped new trades`, message, email: false, dedupeMinutes: 240 };
+    default: return null;
+  }
+}
