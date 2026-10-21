@@ -163,22 +163,6 @@ export type Database = {
       }
       auto_trading_settings: {
         Row: {
-          ai_confirm: boolean
-          bot_mode: string
-          breakeven_at_1r: boolean
-          engine_lock_until: string | null
-          flatten_requested_at: string | null
-          last_run_at: string | null
-          last_scan_bar: string | null
-          last_status: string | null
-          live_armed_at: string | null
-          max_open_positions: number
-          paper_capital: number
-          paused: boolean
-          pdt_guard: boolean
-          reward_risk: number
-          risk_per_trade_pct: number
-          slippage_bps: number
           allowed_symbols: string[] | null
           created_at: string | null
           enabled: boolean | null
@@ -195,22 +179,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          ai_confirm?: boolean
-          bot_mode?: string
-          breakeven_at_1r?: boolean
-          engine_lock_until?: string | null
-          flatten_requested_at?: string | null
-          last_run_at?: string | null
-          last_scan_bar?: string | null
-          last_status?: string | null
-          live_armed_at?: string | null
-          max_open_positions?: number
-          paper_capital?: number
-          paused?: boolean
-          pdt_guard?: boolean
-          reward_risk?: number
-          risk_per_trade_pct?: number
-          slippage_bps?: number
           allowed_symbols?: string[] | null
           created_at?: string | null
           enabled?: boolean | null
@@ -227,22 +195,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          ai_confirm?: boolean
-          bot_mode?: string
-          breakeven_at_1r?: boolean
-          engine_lock_until?: string | null
-          flatten_requested_at?: string | null
-          last_run_at?: string | null
-          last_scan_bar?: string | null
-          last_status?: string | null
-          live_armed_at?: string | null
-          max_open_positions?: number
-          paper_capital?: number
-          paused?: boolean
-          pdt_guard?: boolean
-          reward_risk?: number
-          risk_per_trade_pct?: number
-          slippage_bps?: number
           allowed_symbols?: string[] | null
           created_at?: string | null
           enabled?: boolean | null
@@ -516,39 +468,6 @@ export type Database = {
         }
         Relationships: []
       }
-      bot_events: {
-        Row: {
-          created_at: string
-          data: Json | null
-          id: string
-          kind: string
-          message: string
-          mode: string
-          symbol: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          data?: Json | null
-          id?: string
-          kind: string
-          message: string
-          mode: string
-          symbol?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          data?: Json | null
-          id?: string
-          kind?: string
-          message?: string
-          mode?: string
-          symbol?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
       bot_performance_log: {
         Row: {
           actual_rr: number | null
@@ -714,96 +633,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      bot_trades: {
-        Row: {
-          ai_review: Json | null
-          broker: string
-          closed_at: string | null
-          entry_order_id: string | null
-          entry_price: number | null
-          exit_order_id: string | null
-          exit_price: number | null
-          exit_reason: string | null
-          id: string
-          initial_stop: number
-          last_checked_at: string | null
-          mode: string
-          note: string | null
-          opened_at: string
-          pnl: number | null
-          quantity: number
-          r_multiple: number | null
-          signal: Json | null
-          signal_price: number
-          status: string
-          stop_order_id: string | null
-          stop_price: number
-          symbol: string
-          target_price: number
-          trade_date: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          ai_review?: Json | null
-          broker: string
-          closed_at?: string | null
-          entry_order_id?: string | null
-          entry_price?: number | null
-          exit_order_id?: string | null
-          exit_price?: number | null
-          exit_reason?: string | null
-          id?: string
-          initial_stop: number
-          last_checked_at?: string | null
-          mode: string
-          note?: string | null
-          opened_at?: string
-          pnl?: number | null
-          quantity: number
-          r_multiple?: number | null
-          signal?: Json | null
-          signal_price: number
-          status: string
-          stop_order_id?: string | null
-          stop_price: number
-          symbol: string
-          target_price: number
-          trade_date: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          ai_review?: Json | null
-          broker?: string
-          closed_at?: string | null
-          entry_order_id?: string | null
-          entry_price?: number | null
-          exit_order_id?: string | null
-          exit_price?: number | null
-          exit_reason?: string | null
-          id?: string
-          initial_stop?: number
-          last_checked_at?: string | null
-          mode?: string
-          note?: string | null
-          opened_at?: string
-          pnl?: number | null
-          quantity?: number
-          r_multiple?: number | null
-          signal?: Json | null
-          signal_price?: number
-          status?: string
-          stop_order_id?: string | null
-          stop_price?: number
-          symbol?: string
-          target_price?: number
-          trade_date?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
       }
       bot_sessions: {
         Row: {
@@ -1683,9 +1512,6 @@ export type Database = {
       }
       phroureo_exit_strategies: {
         Row: {
-          contract_key: string | null
-          multiplier: number
-          paper_order_id: string | null
           allow_after_hours: boolean
           created_at: string
           current_stop_price: number | null
@@ -1724,9 +1550,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          contract_key?: string | null
-          multiplier?: number
-          paper_order_id?: string | null
           allow_after_hours?: boolean
           created_at?: string
           current_stop_price?: number | null
@@ -1765,9 +1588,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          contract_key?: string | null
-          multiplier?: number
-          paper_order_id?: string | null
           allow_after_hours?: boolean
           created_at?: string
           current_stop_price?: number | null
@@ -2137,14 +1957,6 @@ export type Database = {
       price_alerts: {
         Row: {
           alert_type: string
-          condition: Json | null
-          cooldown_minutes: number
-          frequency: string
-          last_checked_at: string | null
-          last_price: number | null
-          notify_email: boolean
-          trigger_count: number
-          trigger_message: string | null
           created_at: string
           current_value: number | null
           id: string
@@ -2160,14 +1972,6 @@ export type Database = {
         }
         Insert: {
           alert_type: string
-          condition?: Json | null
-          cooldown_minutes?: number
-          frequency?: string
-          last_checked_at?: string | null
-          last_price?: number | null
-          notify_email?: boolean
-          trigger_count?: number
-          trigger_message?: string | null
           created_at?: string
           current_value?: number | null
           id?: string
@@ -2183,14 +1987,6 @@ export type Database = {
         }
         Update: {
           alert_type?: string
-          condition?: Json | null
-          cooldown_minutes?: number
-          frequency?: string
-          last_checked_at?: string | null
-          last_price?: number | null
-          notify_email?: boolean
-          trigger_count?: number
-          trigger_message?: string | null
           created_at?: string
           current_value?: number | null
           id?: string
