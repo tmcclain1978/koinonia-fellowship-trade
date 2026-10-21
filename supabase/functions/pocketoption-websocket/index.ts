@@ -14,6 +14,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { safeDecrypt } from "../_shared/encryption.ts";
+import { RawWebSocket } from "../_shared/ws-client.ts";
 import {
   PO_HEADERS,
   PoSession,
@@ -48,6 +49,18 @@ function endpointList(isDemo: 0 | 1): string[] {
   return endpointsFor(isDemo).map(endpointUrl);
 }
 
+/** One readable sentence about why no PocketOption server worked. */
+export function summarizeFailures(failures: Array<{ host: string; why: string }>): string {
+  if (!failures.length) return "Couldn't reach PocketOption.";
+  const refused = failures.filter((f) => /HTTP 40[13]/.test(f.why)).length;
+  const head = `Couldn't connect to PocketOption (tried ${failures.length} servers).`;
+  if (refused === failures.length) {
+    return `${head} Every server refused the app's server (${failures[0].why}). PocketOption blocks some countries and data centers; the app's server may be in one of them.`;
+  }
+  const sample = failures.slice(0, 3).map((f) => `${f.host}: ${f.why}`).join("; ");
+  return `${head} ${sample}${failures.length > 3 ? "; …" : ""}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if ((req.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
@@ -55,16 +68,27 @@ Deno.serve(async (req) => {
   }
 
   const { token, viaProtocol } = readToken(req);
-  if (!token) return new Response("Auth token not provided", { status: 403, headers: corsHeaders });
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) return new Response("Invalid or expired token", { status: 403, headers: corsHeaders });
-
-  const { data: creds } = await supabase.from("user_api_credentials").select("pocketoption_ssid").eq("user_id", user.id).maybeSingle();
-  const ssidRaw = creds?.pocketoption_ssid ? ((await safeDecrypt(creds.pocketoption_ssid)) as string) : null;
-  if (!ssidRaw) return new Response("PocketOption credentials not found. Please save your SSID first.", { status: 400, headers: corsHeaders });
-  const auth = parseSsid(ssidRaw);
+  // Problems found before PocketOption is even contacted. A browser can't read
+  // an HTTP error on a WebSocket (it just sees "closed"), so we accept the
+  // socket and send the reason as a message instead.
+  let setupError: { code: string; message: string } | null = null;
+  let ssidRaw: string | null = null;
+  if (!token) setupError = { code: "NOT_SIGNED_IN", message: "You're not signed in. Sign in again and reconnect." };
+  else {
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) setupError = { code: "NOT_SIGNED_IN", message: "Your sign-in expired. Refresh the page and reconnect." };
+    else {
+      const { data: creds, error: credError } = await supabase.from("user_api_credentials").select("pocketoption_ssid").eq("user_id", user.id).maybeSingle();
+      if (credError) setupError = { code: "NO_SSID", message: `Couldn't read your saved SSID: ${credError.message}` };
+      else {
+        ssidRaw = creds?.pocketoption_ssid ? ((await safeDecrypt(creds.pocketoption_ssid)) as string) : null;
+        if (!ssidRaw) setupError = { code: "NO_SSID", message: "No PocketOption SSID is saved yet. Paste it in the Connection tab and press Save." };
+      }
+    }
+  }
+  const auth = ssidRaw ? parseSsid(ssidRaw) : null;
 
   const { socket, response } = Deno.upgradeWebSocket(req, viaProtocol ? { protocol: "authorization" } : {});
 
@@ -72,7 +96,7 @@ Deno.serve(async (req) => {
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
   };
 
-  let po: WebSocket | null = null;
+  let po: RawWebSocket | null = null;
   let session: PoSession | null = null;
   let closed = false;
   let attemptTimer: ReturnType<typeof setTimeout> | null = null;
@@ -85,45 +109,47 @@ Deno.serve(async (req) => {
   };
 
   const connect = () => {
+    if (setupError) {
+      toClient({ type: "error", ...setupError });
+      return;
+    }
     if (!auth) {
       toClient({ type: "error", code: "BAD_SSID", message: "Your saved SSID isn't the full auth message. In PocketOption, open DevTools > Network > WS, find the message that starts with 42[\"auth\", copy all of it and save it in Settings." });
       return;
     }
     const endpoints = endpointList(auth.isDemo);
+    /** Why each server failed, for a useful final message. */
+    const failures: Array<{ host: string; why: string }> = [];
 
     const tryEndpoint = (i: number) => {
       if (closed) return;
       if (i >= endpoints.length) {
-        toClient({ type: "error", code: "NO_ENDPOINT", message: `Couldn't reach PocketOption (tried ${endpoints.length} servers).` });
+        toClient({ type: "error", code: "NO_ENDPOINT", message: summarizeFailures(failures), failures });
         return;
       }
       const url = endpoints[i];
       const host = url.replace(/^wss?:\/\/([^/]+).*$/, "$1");
       toClient({ type: "connection_attempt", endpoint: host, attemptNumber: i + 1, totalEndpoints: endpoints.length });
 
-      let ws: WebSocket;
-      try {
-        // Deno accepts handshake headers here; PocketOption checks Origin.
-        ws = new WebSocket(url, { headers: PO_HEADERS } as unknown as string[]);
-      } catch (e) {
-        console.warn("[po] socket create failed", host, (e as Error).message);
-        tryEndpoint(i + 1);
-        return;
-      }
-      ws.binaryType = "arraybuffer";
+      // Our own WebSocket client: Supabase's runtime can't send the Origin
+      // header PocketOption requires with the built-in one.
+      const ws = new RawWebSocket(url, { headers: PO_HEADERS, timeoutMs: ENDPOINT_TIMEOUT_MS });
       po = ws;
       let gaveUp = false;
-      const next = () => {
+      let lastProblem = "";
+      const next = (why?: string) => {
         if (gaveUp || closed) return;
         gaveUp = true;
         stopTimers();
+        failures.push({ host, why: why || lastProblem || "no reply" });
+        console.warn("[po]", host, "failed:", why || lastProblem);
         try { ws.close(); } catch { /* ignore */ }
         tryEndpoint(i + 1);
       };
 
       const s = new PoSession(
         auth,
-        (frame) => { if (ws.readyState === WebSocket.OPEN) ws.send(frame); },
+        (frame) => { if (ws.readyState === RawWebSocket.OPEN) ws.send(frame); },
         (e: PoEvent) => {
           if (e.type === "po_connected") {
             toClient({ type: "connection", status: "connected", endpoint: host, message: "Connected to PocketOption, logging in…" });
@@ -148,16 +174,13 @@ Deno.serve(async (req) => {
 
       // No login within the time limit: try the next server.
       attemptTimer = setTimeout(() => {
-        if (!s.authenticated) {
-          console.warn("[po] no login from", host);
-          next();
-        }
-      }, ENDPOINT_TIMEOUT_MS);
+        if (!s.authenticated) next(s.connected ? "connected but no reply to the login" : "no reply in time");
+      }, ENDPOINT_TIMEOUT_MS + 2_000);
 
-      ws.onmessage = (ev) => s.handle(ev.data as string | ArrayBuffer);
-      ws.onerror = () => { if (!s.authenticated) next(); };
+      ws.onmessage = (ev) => s.handle(ev.data);
+      ws.onerror = (ev) => { lastProblem = ev.message; };
       ws.onclose = (ev) => {
-        if (!s.authenticated) { next(); return; }
+        if (!s.authenticated) { next(lastProblem || `closed (${ev.code}${ev.reason ? ` ${ev.reason}` : ""})`); return; }
         stopTimers();
         toClient({ type: "connection", status: "disconnected", message: "PocketOption closed the connection", closeCode: ev.code });
         // Let the browser reconnect (it backs off); this bridge is done.
