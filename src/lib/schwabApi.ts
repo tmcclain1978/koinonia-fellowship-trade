@@ -29,6 +29,24 @@ export interface SchwabQuote {
   description?: string;
   exchange?: string;
   isShortable?: boolean;
+  /** EQUITY, OPTION, FUTURE, INDEX… (Schwab quotes only). */
+  assetMainType?: string;
+  /** Options: per share; theta per day, vega per 1 vol point. -999 = not calculated. */
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  rho?: number;
+  /** Implied volatility, percent. */
+  volatility?: number;
+  underlyingPrice?: number;
+  openInterest?: number;
+  multiplier?: number;
+  /** Futures */
+  settlementPrice?: number;
+  /** Epoch ms */
+  futureExpirationDate?: number;
+  futureActiveSymbol?: string;
   /** Set on fallback quotes; absent on real Schwab quotes. */
   source?: string;
   /** True when lastPrice is the previous session's close, not a live price. */

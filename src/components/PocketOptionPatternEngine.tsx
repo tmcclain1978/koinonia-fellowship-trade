@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { addTick, type TickCandle } from "@/lib/marketData/tickCandles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,24 +82,27 @@ const PocketOptionPatternEngine = () => {
     }
   }, [isConnected, selectedPair, subscribeToCandles]);
 
-  // Handle incoming price data and convert to candles
+  // Build real 1-minute candles from price ticks. Each tick used to be saved
+  // as its own "candle" with open = high = low = close, so the history the
+  // AI prediction reads was flat lines. Now a candle is saved once its minute ends.
+  const tickCandleRef = useRef<TickCandle | null>(null);
+  useEffect(() => {
+    tickCandleRef.current = null; // new pair or reconnect: start a fresh minute
+  }, [selectedPair, isConnected]);
   useEffect(() => {
     const assetCode = selectedPair.replace('/', '');
     const price = prices[assetCode];
-    
-    if (price && isConnected) {
-      // In a real implementation, we'd receive full OHLC data
-      // For now, simulate candle creation from price ticks
-      const now = new Date();
-      const candleTime = new Date(Math.floor(now.getTime() / 60000) * 60000); // Round to minute
-      
+    if (!price || !isConnected) return;
+    const { candle, finished } = addTick(tickCandleRef.current, price, Date.now());
+    tickCandleRef.current = candle;
+    if (finished) {
       addCandle({
         pair: selectedPair,
-        timestamp: candleTime,
-        open: price,
-        high: price,
-        low: price,
-        close: price,
+        timestamp: new Date(finished.start),
+        open: finished.open,
+        high: finished.high,
+        low: finished.low,
+        close: finished.close,
         timeframe: '1m',
       });
     }
@@ -152,6 +156,10 @@ const PocketOptionPatternEngine = () => {
       });
 
       if (error) throw error;
+      if (data?.success === false) {
+        toast({ title: "No patterns", description: data.message || "Pattern detection isn't available." });
+        return;
+      }
 
       toast({
         title: "Analysis complete",

@@ -34,97 +34,35 @@ const popularSeries: FREDSeries[] = [
   { id: 'VIXCLS', name: 'VIX', description: 'CBOE Volatility Index', icon: AlertTriangle, unit: 'Index', frequency: 'Daily' },
 ];
 
-// Mock data generator for demo (replace with real FRED API call)
-const generateMockFREDData = (seriesId: string, points: number = 120) => {
-  const data = [];
-  const now = new Date();
-  
-  let baseValue = 0;
-  let volatility = 0;
-  
-  switch (seriesId) {
-    case 'GDP':
-      baseValue = 25000;
-      volatility = 200;
-      break;
-    case 'UNRATE':
-      baseValue = 4.0;
-      volatility = 0.3;
-      break;
-    case 'CPIAUCSL':
-      baseValue = 300;
-      volatility = 2;
-      break;
-    case 'FEDFUNDS':
-      baseValue = 5.25;
-      volatility = 0.1;
-      break;
-    case 'T10Y2Y':
-      baseValue = -0.5;
-      volatility = 0.2;
-      break;
-    case 'VIXCLS':
-      baseValue = 18;
-      volatility = 3;
-      break;
-    default:
-      baseValue = 100;
-      volatility = 5;
-  }
-  
-  for (let i = points; i >= 0; i--) {
-    const date = new Date(now);
-    date.setMonth(date.getMonth() - i);
-    
-    // Add some trend and randomness
-    const trend = seriesId === 'GDP' ? i * 30 : 0;
-    const random = (Math.random() - 0.5) * volatility * 2;
-    
-    data.push({
-      date: date.toISOString().slice(0, 7),
-      value: baseValue + trend + random,
-    });
-  }
-  
-  return data;
-};
-
 export function FREDDashboard() {
   const [selectedSeries, setSelectedSeries] = useState<string[]>(['GDP', 'UNRATE', 'FEDFUNDS', 'T10Y2Y']);
   const [timeRange, setTimeRange] = useState('5y');
   const [customSeriesId, setCustomSeriesId] = useState('');
 
   // Fetch FRED data
-  const { data: fredData, isLoading, refetch } = useQuery({
+  // Real FRED data only: on failure we say so instead of drawing invented numbers.
+  const { data: fredData, isLoading, refetch, error: fredError } = useQuery({
     queryKey: ['fred-data', selectedSeries, timeRange],
     queryFn: async () => {
-      // Try to fetch from edge function, fallback to mock data
-      try {
-        const { data, error } = await supabase.functions.invoke('fetch-fred-data', {
-          body: { seriesIds: selectedSeries, timeRange },
-        });
-        
-        if (error) throw error;
-        
-        // Check if data is empty or has empty arrays - fallback to mock
-        const hasData = data && Object.values(data).some((arr: any) => arr && arr.length > 0);
-        if (!hasData) {
-          throw new Error('No data returned from FRED API');
-        }
-        
-        return data;
-      } catch (e) {
-        // Return mock data for demo
-        console.log('Using mock FRED data:', e);
-        const mockData: Record<string, any[]> = {};
-        for (const id of selectedSeries) {
-          mockData[id] = generateMockFREDData(id);
-        }
-        return mockData;
+      const { data, error } = await supabase.functions.invoke('fetch-fred-data', {
+        body: { seriesIds: selectedSeries, timeRange },
+      });
+      if (error) {
+        // The function's own message (e.g. missing API key) is in the response body.
+        let msg = error.message;
+        try {
+          const body = await (error as { context?: Response }).context?.json();
+          if (body?.error) msg = body.error;
+        } catch { /* keep the generic message */ }
+        throw new Error(msg);
       }
+      if (data?.error) throw new Error(data.error);
+      return (data ?? {}) as Record<string, { date: string; value: number }[]>;
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 1,
   });
+  const emptySeries = fredData ? selectedSeries.filter((id) => !(fredData[id]?.length)) : [];
 
   const toggleSeries = (seriesId: string) => {
     if (selectedSeries.includes(seriesId)) {
@@ -167,10 +105,23 @@ export function FREDDashboard() {
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-start gap-3">
         <Badge className="bg-blue-500 text-white shrink-0">FRED API</Badge>
         <p className="text-sm text-muted-foreground">
-          Data is fetched from the Federal Reserve Economic Data (FRED) API. 
-          If the API is unavailable, demo data will be displayed.
+          Data is fetched from the Federal Reserve Economic Data (FRED) API.
+          If FRED can't be reached you'll see a message here; sample data is never shown.
         </p>
       </div>
+
+      {fredError && (
+        <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500" data-testid="fred-error">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>Couldn't load data from FRED: {(fredError as Error).message}</span>
+        </div>
+      )}
+      {!fredError && emptySeries.length > 0 && (
+        <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-500">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>FRED returned no data for: {emptySeries.join(", ")}. Check the series ID is correct.</span>
+        </div>
+      )}
 
       {/* Controls */}
       <Card>
@@ -363,37 +314,45 @@ export function FREDDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {(() => {
+              const spread = getCurrentValue('T10Y2Y');
+              if (spread === null || spread === undefined) {
+                return <p className="text-sm text-muted-foreground mb-4">No current 10Y-2Y data from FRED.</p>;
+              }
+              return (
             <div className="grid md:grid-cols-3 gap-4 mb-4">
               <div className="p-4 bg-card/50 rounded-lg border border-border text-center">
                 <div className="text-sm text-muted-foreground mb-1">Current Spread</div>
                 <div className={`text-3xl font-bold ${
-                  (getCurrentValue('T10Y2Y') ?? 0) < 0 ? 'text-red-400' : 'text-green-400'
+                  spread < 0 ? 'text-red-400' : 'text-green-400'
                 }`}>
-                  {getCurrentValue('T10Y2Y')?.toFixed(2) ?? '--'}%
+                  {spread.toFixed(2)}%
                 </div>
               </div>
               <div className="p-4 bg-card/50 rounded-lg border border-border text-center">
                 <div className="text-sm text-muted-foreground mb-1">Curve Status</div>
                 <Badge 
-                  variant={((getCurrentValue('T10Y2Y') ?? 0) < 0) ? "destructive" : "default"}
+                  variant={(spread < 0) ? "destructive" : "default"}
                   className="text-lg py-1 px-4"
                 >
-                  {(getCurrentValue('T10Y2Y') ?? 0) < 0 ? 'INVERTED' : 'NORMAL'}
+                  {spread < 0 ? 'INVERTED' : 'NORMAL'}
                 </Badge>
               </div>
               <div className="p-4 bg-card/50 rounded-lg border border-border text-center">
                 <div className="text-sm text-muted-foreground mb-1">Recession Signal</div>
                 <div className={`text-lg font-semibold ${
-                  (getCurrentValue('T10Y2Y') ?? 0) < -0.2 ? 'text-red-400' : 'text-yellow-400'
+                  spread < -0.2 ? 'text-red-400' : 'text-yellow-400'
                 }`}>
-                  {(getCurrentValue('T10Y2Y') ?? 0) < -0.5 
+                  {spread < -0.5 
                     ? 'High Risk' 
-                    : (getCurrentValue('T10Y2Y') ?? 0) < 0 
+                    : spread < 0 
                       ? 'Elevated' 
                       : 'Low'}
                 </div>
               </div>
             </div>
+              );
+            })()}
             <p className="text-sm text-muted-foreground">
               Historically, an inverted yield curve (negative 10Y-2Y spread) has preceded 
               recessions by 6-24 months with high accuracy. The current spread indicates 

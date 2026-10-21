@@ -33,9 +33,9 @@ serve(async (req) => {
       );
     }
 
-    if (!seriesIds || !Array.isArray(seriesIds) || seriesIds.length === 0) {
+    if (!seriesIds || !Array.isArray(seriesIds) || seriesIds.length === 0 || seriesIds.length > 20 || !seriesIds.every((id) => typeof id === 'string' && /^[A-Z0-9_]{1,30}$/.test(id))) {
       return new Response(
-        JSON.stringify({ error: 'seriesIds array is required' }),
+        JSON.stringify({ error: 'seriesIds must be 1-20 FRED series IDs (letters, numbers, _)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -74,7 +74,7 @@ serve(async (req) => {
     // Fetch data for each series in parallel
     const fetchPromises = seriesIds.map(async (seriesId: string) => {
       try {
-        const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${FRED_API_KEY}&file_type=json&observation_start=${observationStart}&observation_end=${observationEnd}`;
+        const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(seriesId)}&api_key=${FRED_API_KEY}&file_type=json&observation_start=${observationStart}&observation_end=${observationEnd}`;
         
         const response = await fetch(url);
         

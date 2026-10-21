@@ -434,102 +434,6 @@ async function fetchFromAlphaVantage(
   }
 }
 
-// Generate mock data as last resort
-function generateMockData(
-  symbol: string,
-  interval: string,
-  basePrice: number,
-  premarket: boolean
-): { data: any[]; source: string; note: string } {
-  const intervalMs: Record<string, number> = {
-    '1': 60 * 1000, '5': 5 * 60 * 1000, '15': 15 * 60 * 1000, '30': 30 * 60 * 1000,
-    '60': 60 * 60 * 1000, '1m': 60 * 1000, '5m': 5 * 60 * 1000, '15m': 15 * 60 * 1000,
-    '30m': 30 * 60 * 1000, '1h': 60 * 60 * 1000, 'minute': 60 * 1000, '5minute': 5 * 60 * 1000,
-    '15minute': 15 * 60 * 1000, '30minute': 30 * 60 * 1000, 'hour': 60 * 60 * 1000,
-    'D': 24 * 60 * 60 * 1000, '1D': 24 * 60 * 60 * 1000, 'daily': 24 * 60 * 60 * 1000,
-    'W': 7 * 24 * 60 * 60 * 1000, '1W': 7 * 24 * 60 * 60 * 1000, 'weekly': 7 * 24 * 60 * 60 * 1000,
-    'M': 30 * 24 * 60 * 60 * 1000, '1M': 30 * 24 * 60 * 60 * 1000, 'monthly': 30 * 24 * 60 * 60 * 1000,
-  };
-  
-  const candleInterval = intervalMs[interval] || 60 * 1000;
-  const isIntraday = candleInterval < 24 * 60 * 60 * 1000;
-  const isHourly = candleInterval === 60 * 60 * 1000;
-  
-  let numCandles: number;
-  if (isIntraday && !isHourly) {
-    const candlesPerTradingDay = premarket ? 
-      Math.floor(10 * 60 * 60 * 1000 / candleInterval) :
-      Math.floor(6.5 * 60 * 60 * 1000 / candleInterval);
-    numCandles = Math.min(candlesPerTradingDay * 10, 5000);
-  } else if (isHourly) {
-    numCandles = Math.min(24 * 30 * 6, 4320);
-  } else if (candleInterval === 24 * 60 * 60 * 1000) {
-    numCandles = 504;
-  } else if (candleInterval === 7 * 24 * 60 * 60 * 1000) {
-    numCandles = 260;
-  } else {
-    numCandles = 120;
-  }
-  
-  const now = Date.now();
-  const currentCandleStart = Math.floor(now / candleInterval) * candleInterval;
-  const mockCandles = [];
-  let currentPrice = basePrice;
-  
-  for (let i = numCandles; i >= 0; i--) {
-    const candleTime = currentCandleStart - (i * candleInterval);
-    const candleDate = new Date(candleTime);
-    
-    if (isIntraday) {
-      const day = candleDate.getDay();
-      if (day === 0 || day === 6) continue;
-      
-      const etTime = new Date(candleDate.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-      const hour = etTime.getHours();
-      const minute = etTime.getMinutes();
-      const timeInMinutes = hour * 60 + minute;
-      
-      const premarketStart = 4 * 60;
-      const marketOpen = 9 * 60 + 30;
-      const marketClose = 16 * 60;
-      const afterHoursEnd = 20 * 60;
-      
-      if (premarket) {
-        if (timeInMinutes < premarketStart || timeInMinutes >= afterHoursEnd) continue;
-      } else {
-        if (timeInMinutes < marketOpen || timeInMinutes >= marketClose) continue;
-      }
-    }
-    
-    const time = Math.floor(candleTime / 1000);
-    const volatility = basePrice * 0.003;
-    const variation = (Math.random() - 0.48) * volatility * 2;
-    
-    const open = currentPrice;
-    const close = currentPrice + variation;
-    const range = Math.abs(variation) + (Math.random() * volatility);
-    const high = Math.max(open, close) + Math.random() * range;
-    const low = Math.min(open, close) - Math.random() * range;
-    const volume = Math.floor(Math.random() * 500000) + 100000;
-    
-    mockCandles.push({
-      time,
-      open: parseFloat(open.toFixed(2)),
-      high: parseFloat(high.toFixed(2)),
-      low: parseFloat(low.toFixed(2)),
-      close: parseFloat(close.toFixed(2)),
-      volume,
-    });
-    
-    currentPrice = close;
-  }
-  
-  return {
-    data: mockCandles,
-    source: 'mock',
-    note: `Mock data based on current price $${basePrice.toFixed(2)}. Connect Schwab for live data.`,
-  };
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -661,60 +565,17 @@ serve(async (req) => {
       }
     }
 
-    // All real data sources failed, generate mock data
-    console.log('⚠️ All data sources failed, generating mock data...');
-    
-    let basePrice = 150;
-    
-    // Try to get accurate current price for mock data
-    if (polygonApiKey) {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const prevResponse = await fetch(
-          `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apiKey=${polygonApiKey}`
-        );
-        if (prevResponse.ok) {
-          const prevData = await prevResponse.json();
-          if (prevData.results?.[0]?.c) {
-            basePrice = prevData.results[0].c;
-            console.log(`Got base price from Polygon: $${basePrice}`);
-          }
-        }
-      } catch (e) {
-        console.log('Could not fetch current price from Polygon');
-      }
-    }
-    
-    const fmpKey = Deno.env.get('FMP_API_KEY');
-    if (fmpKey && basePrice === 150) {
-      try {
-        const fmpResponse = await fetch(
-          `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${fmpKey}`
-        );
-        if (fmpResponse.ok) {
-          const fmpData = await fmpResponse.json();
-          if (fmpData?.[0]?.price) {
-            basePrice = fmpData[0].price;
-            console.log(`Got base price from FMP: $${basePrice}`);
-          }
-        }
-      } catch (e) {
-        console.log('Could not fetch current price from FMP');
-      }
-    }
-    
-    const mockResult = generateMockData(symbol, NEEDS_AGGREGATION(interval) ? '30' : interval, basePrice, premarket);
-    if (NEEDS_AGGREGATION(interval)) mockResult.data = aggregateCandles(mockResult.data, interval);
-    
-    console.log(`📊 Mock data generated in ${Date.now() - overallStart}ms`);
+    // All real sources failed. Say so: never invent candles (charts, the bot
+    // and backtests would treat them as real prices).
+    console.log(`⚠️ No price history for ${symbol} from any source`);
     return new Response(
-      JSON.stringify({ 
-        data: mockResult.data,
-        source: mockResult.source,
+      JSON.stringify({
+        data: [],
+        source: 'none',
         symbol,
-        note: mockResult.note,
+        error: `No price history available for ${symbol} right now (Schwab, Polygon and Alpha Vantage all failed or returned nothing).`,
         latency: Date.now() - overallStart,
-        fetchMode: 'mock',
+        fetchMode: 'none',
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -1200,6 +1200,9 @@ export const ProChartKit = ({
         if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0 && cachedData && cachedData.length > 0 && alignToInterval(cachedData, interval)) {
           chartRef.current.applyNewData(alignToInterval(cachedData, interval)!);
           setChartDataSource('cache');
+        } else if (!isUpdate && chartRef.current && chartRef.current.getDataList().length === 0) {
+          // Nothing real to show: badge says NO DATA (the server no longer invents candles).
+          setChartDataSource('error');
         }
       }
     } catch (error) {
