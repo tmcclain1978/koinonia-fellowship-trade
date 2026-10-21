@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { alignReturns, dailyReturns, loadBars } from "@/lib/marketData/history";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,38 +23,40 @@ import {
   QuantMetrics 
 } from "@/lib/quantstats";
 
-// Generate mock historical returns for demo
-const generateMockReturns = (days: number = 504): { dates: Date[]; returns: number[] } => {
-  const dates: Date[] = [];
-  const returns: number[] = [];
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-  
-  for (let i = 0; i < days; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    if (date.getDay() !== 0 && date.getDay() !== 6) { // Skip weekends
-      dates.push(date);
-      // Simulate realistic daily returns
-      const trend = 0.0003; // Slight upward bias
-      const vol = 0.015; // Daily volatility
-      const u1 = Math.random();
-      const u2 = Math.random();
-      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-      returns.push(trend + vol * z);
-    }
-  }
-  
-  return { dates, returns };
-};
+const EMPTY = { dates: [] as Date[], returns: [] as number[], bench: [] as number[], symbol: "", benchmark: "" };
+
+/** Real daily returns for a symbol and a benchmark, on the dates both traded. */
+async function loadReturns(symbol: string, benchmark: string) {
+  const [a, b] = await Promise.all([loadBars(symbol, "daily", "2y"), symbol === benchmark ? null : loadBars(benchmark, "daily", "2y")]);
+  const ra = dailyReturns(a.bars);
+  const rb = b ? dailyReturns(b.bars) : ra;
+  const aligned = alignReturns(ra, rb);
+  if (aligned.dates.length < 30) throw new Error(`Not enough price history for ${symbol} (need at least 30 trading days).`);
+  return {
+    dates: aligned.dates.map((d) => new Date(`${d}T16:00:00`)),
+    returns: aligned.a,
+    bench: aligned.b,
+    symbol,
+    benchmark,
+  };
+}
 
 export function QuantStatsModule() {
   const [riskFreeRate, setRiskFreeRate] = useState(5.0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [data] = useState(() => generateMockReturns());
+  const [symbolInput, setSymbolInput] = useState("SPY");
+  const [symbol, setSymbol] = useState("SPY");
+  const [benchmark, setBenchmark] = useState("QQQ");
+  const query = useQuery({
+    queryKey: ["quantstats", symbol, benchmark],
+    queryFn: () => loadReturns(symbol, benchmark),
+    staleTime: 10 * 60_000,
+    retry: 1,
+  });
+  const data = query.data ?? EMPTY;
+  const ready = data.returns.length >= 30;
 
   const metrics = useMemo(() => {
-    return calculateAllMetrics(data.returns, data.dates, undefined, riskFreeRate / 100);
+    return calculateAllMetrics(data.returns, data.dates, data.bench.length === data.returns.length ? data.bench : undefined, riskFreeRate / 100);
   }, [data, riskFreeRate]);
 
   const monthlyReturns = useMemo(() => {
@@ -115,7 +119,7 @@ export function QuantStatsModule() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     return years.map(year => {
-      const yearData: any = { year };
+      const yearData: Record<string, number | null> = { year };
       months.forEach((month, idx) => {
         const found = monthlyReturns.find(m => m.year === year && m.month === idx);
         yearData[month] = found ? found.return * 100 : null;
@@ -124,9 +128,11 @@ export function QuantStatsModule() {
     });
   }, [monthlyReturns]);
 
+  const isRefreshing = query.isFetching;
   const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1000);
+    const next = symbolInput.trim().toUpperCase();
+    if (next && next !== symbol) setSymbol(next);
+    else void query.refetch();
   };
 
   const formatPercent = (value: number) => `${(value * 100).toFixed(2)}%`;
@@ -155,19 +161,29 @@ export function QuantStatsModule() {
 
   return (
     <div className="space-y-6">
-      {/* Demo Data Notice */}
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
-        <Badge className="bg-yellow-500 text-black shrink-0">DEMO DATA</Badge>
-        <p className="text-sm text-muted-foreground">
-          This module displays simulated portfolio data for demonstration purposes. 
-          Connect your brokerage account or import your trade history to analyze your actual performance.
-        </p>
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-sm text-muted-foreground">
+        Performance stats from real daily closing prices (last 2 years) for any stock or ETF, compared with a benchmark.
+        The app doesn't store your account's daily balance history yet, so this analyzes a symbol rather than your account.
       </div>
 
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <Label htmlFor="qs-symbol">Symbol</Label>
+              <Input
+                id="qs-symbol"
+                value={symbolInput}
+                onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && handleRefresh()}
+                className="w-28"
+              />
+            </div>
+            <div>
+              <Label htmlFor="qs-bench">Compare with</Label>
+              <Input id="qs-bench" value={benchmark} onChange={(e) => setBenchmark(e.target.value.toUpperCase())} className="w-24" />
+            </div>
             <div>
               <Label>Risk-Free Rate (%)</Label>
               <Input
@@ -180,11 +196,25 @@ export function QuantStatsModule() {
             </div>
             <Button onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-              Refresh Analysis
+              Analyze
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {query.isLoading && <p className="text-sm text-muted-foreground">Loading real price history for {symbol}…</p>}
+      {query.error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500" data-testid="quantstats-error">
+          Couldn't analyze {symbol}: {(query.error as Error).message}
+        </div>
+      )}
+
+      {ready && (<>
+      {data.bench.length === data.returns.length && metrics.beta !== undefined && (
+        <div className="text-sm text-muted-foreground" data-testid="quantstats-beta">
+          {data.symbol} vs {data.benchmark}: beta {metrics.beta.toFixed(2)} (moves about {metrics.beta.toFixed(2)}× as much), alpha {((metrics.alpha ?? 0) * 100).toFixed(2)}%/yr · {data.returns.length} trading days
+        </div>
+      )}
 
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -197,8 +227,8 @@ export function QuantStatsModule() {
         <MetricCard label="Volatility (Ann.)" value={metrics.annualizedVolatility} />
         <MetricCard label="VaR (95%)" value={-metrics.var95} />
         <MetricCard label="CVaR (95%)" value={-metrics.cvar95} />
-        <MetricCard label="Win Rate" value={metrics.winRate} />
-        <MetricCard label="Profit Factor" value={metrics.profitFactor} format="number" />
+        <MetricCard label="Up days" value={metrics.winRate} />
+        <MetricCard label="Up/down day ratio" value={metrics.profitFactor} format="number" />
         <MetricCard label="Skewness" value={metrics.skewness} format="number" positive={false} />
       </div>
 
@@ -227,7 +257,7 @@ export function QuantStatsModule() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5" />
-                Portfolio Equity Curve
+                {data.symbol} growth of $10,000
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -441,6 +471,7 @@ export function QuantStatsModule() {
           </div>
         </CardContent>
       </Card>
+      </>)}
     </div>
   );
 }

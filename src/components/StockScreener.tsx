@@ -35,7 +35,8 @@ import {
   Newspaper,
   Flame,
   Database,
-  Info
+  Info,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
@@ -216,15 +217,6 @@ const DEFAULT_PRESETS: Partial<ScreenerPreset>[] = [
   },
 ];
 
-// Fallback mock results for when API is unavailable
-const MOCK_RESULTS: ScreenerResult[] = [
-  { symbol: "NVDA", price: 875.32, change_percent: 5.2, volume: 45000000, match_score: 95, matched_conditions: ["Volume Spike", "% Change Above"] },
-  { symbol: "TSLA", price: 245.67, change_percent: 3.8, volume: 32000000, match_score: 88, matched_conditions: ["Volume Spike"] },
-  { symbol: "AMD", price: 178.45, change_percent: 4.1, volume: 28000000, match_score: 82, matched_conditions: ["% Change Above", "RSI Momentum"] },
-  { symbol: "META", price: 512.34, change_percent: 2.9, volume: 18000000, match_score: 75, matched_conditions: ["Near 52W High"] },
-  { symbol: "AMZN", price: 182.56, change_percent: 2.1, volume: 22000000, match_score: 70, matched_conditions: ["Volume Above Average"] },
-];
-
 // Popular stock universe for screening
 const STOCK_UNIVERSE = [
   "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
@@ -242,7 +234,7 @@ export const StockScreener = () => {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetDescription, setNewPresetDescription] = useState("");
-  const [useLiveData, setUseLiveData] = useState(true);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [lastScanTime, setLastScanTime] = useState<string | null>(null);
   const [stockUniverse, setStockUniverse] = useState<StockUniverse>("default");
   const [isBreakoutPreset, setIsBreakoutPreset] = useState(false);
@@ -392,6 +384,7 @@ export const StockScreener = () => {
     }
 
     setScanning(true);
+    setScanError(null);
     setResults([]);
     setScanProgress(0);
     
@@ -461,7 +454,7 @@ export const StockScreener = () => {
         return;
       }
       
-      if (useLiveData) {
+      {
         // Determine which symbol list to use
         let symbolsToScan = STOCK_UNIVERSE;
         
@@ -504,24 +497,13 @@ export const StockScreener = () => {
         }
         
         setScanProgress(100);
-      } else {
-        // Use mock data for demo/testing
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const filteredResults = MOCK_RESULTS.filter(() => Math.random() > 0.3);
-        setResults(filteredResults.length > 0 ? filteredResults : MOCK_RESULTS.slice(0, 3));
-        setLastScanTime(new Date().toISOString());
-        toast.success(`Found ${filteredResults.length || 3} matching stocks (demo mode)`);
       }
     } catch (error: any) {
       console.error("[StockScreener] Error running screener:", error);
+      // Never show sample stocks in place of a real scan.
+      setResults([]);
+      setScanError(error.message || "The scan failed");
       toast.error(error.message || "Screener failed - try again");
-      
-      // Fallback to mock data if live fails
-      if (useLiveData) {
-        toast.info("Falling back to demo data");
-        setResults(MOCK_RESULTS);
-        setLastScanTime(new Date().toISOString());
-      }
     } finally {
       setScanning(false);
     }
@@ -732,22 +714,9 @@ export const StockScreener = () => {
 
             {/* Data Source Toggle & Actions */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <Radio className={`w-4 h-4 ${useLiveData ? 'text-green-500' : 'text-muted-foreground'}`} />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {useLiveData ? 'Live Market Data' : 'Demo Mode'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {useLiveData ? 'Real-time quotes via Polygon.io' : 'Using sample data for testing'}
-                    </p>
-                  </div>
-                </div>
-                <Switch 
-                  checked={useLiveData}
-                  onCheckedChange={setUseLiveData}
-                />
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Radio className="w-3 h-3 text-green-500" />
+                Live market data. If a scan fails you'll see why; sample stocks are never shown.
               </div>
 
               {lastScanTime && (
@@ -875,7 +844,13 @@ export const StockScreener = () => {
 
           <TabsContent value="results" className="mt-4">
             <ScrollArea className="h-[400px]">
-              {results.length === 0 ? (
+              {scanError && results.length === 0 ? (
+                <div className="text-center py-8 text-red-500" data-testid="screener-error">
+                  <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-70" />
+                  <p>The scan didn't finish</p>
+                  <p className="text-xs">{scanError}</p>
+                </div>
+              ) : results.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p>No results yet</p>

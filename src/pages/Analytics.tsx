@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { loadBars, loadOptionChain } from "@/lib/marketData/history";
+import { TIMEFRAME_INTERVAL, optionsView, priceViews } from "@/lib/analytics/analyticsViews";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,51 +19,37 @@ const Analytics = () => {
   const [symbol, setSymbol] = useState("AAPL");
   const [timeframe, setTimeframe] = useState("1d");
 
-  // Mock data for advanced charts
-  const volumeData = [
-    { time: '9:30', volume: 1200, price: 175 },
-    { time: '10:00', volume: 1500, price: 176.5 },
-    { time: '10:30', volume: 1800, price: 174.2 },
-    { time: '11:00', volume: 2100, price: 177.8 },
-    { time: '11:30', volume: 1900, price: 179.3 },
-    { time: '12:00', volume: 1600, price: 178.5 },
-  ];
-
-  const heatmapData = [
-    { strike: 170, call: 12.5, put: 2.3, volume: 2500 },
-    { strike: 172.5, call: 10.8, put: 3.1, volume: 3200 },
-    { strike: 175, call: 9.2, put: 4.5, volume: 5100 },
-    { strike: 177.5, call: 7.5, put: 6.2, volume: 4800 },
-    { strike: 180, call: 5.8, put: 8.1, volume: 6200 },
-    { strike: 182.5, call: 4.2, put: 10.5, volume: 3900 },
-    { strike: 185, call: 2.8, put: 13.2, volume: 2100 },
-  ];
-
-  const ivOiData = [
-    { strike: 170, iv: 25.5, oi: 1200, type: 'call' },
-    { strike: 172.5, iv: 27.2, oi: 1800, type: 'call' },
-    { strike: 175, iv: 29.8, oi: 3200, type: 'call' },
-    { strike: 177.5, iv: 31.5, oi: 2800, type: 'call' },
-    { strike: 180, iv: 33.2, oi: 4100, type: 'call' },
-    { strike: 182.5, iv: 30.8, oi: 2200, type: 'call' },
-    { strike: 185, iv: 28.5, oi: 1500, type: 'call' },
-    { strike: 170, iv: 28.2, oi: 800, type: 'put' },
-    { strike: 172.5, iv: 30.5, oi: 1200, type: 'put' },
-    { strike: 175, iv: 32.8, oi: 2100, type: 'put' },
-    { strike: 177.5, iv: 35.2, oi: 2800, type: 'put' },
-    { strike: 180, iv: 37.5, oi: 3500, type: 'put' },
-    { strike: 182.5, iv: 34.8, oi: 2400, type: 'put' },
-    { strike: 185, iv: 32.1, oi: 1800, type: 'put' },
-  ];
-
-  const technicalIndicators = [
-    { time: '9:30', price: 175, rsi: 45, macd: 0.5 },
-    { time: '10:00', price: 176.5, rsi: 52, macd: 0.8 },
-    { time: '10:30', price: 174.2, rsi: 38, macd: -0.2 },
-    { time: '11:00', price: 177.8, rsi: 65, macd: 1.2 },
-    { time: '11:30', price: 179.3, rsi: 72, macd: 1.8 },
-    { time: '12:00', price: 178.5, rsi: 68, macd: 1.5 },
-  ];
+  // Real data only: candles for the volume/indicator charts, the Schwab option
+  // chain for the strike charts. Each card says when its data isn't available.
+  const [activeSymbol, setActiveSymbol] = useState("AAPL");
+  const daily = timeframe === "1d";
+  const barsQuery = useQuery({
+    queryKey: ["analytics-bars", activeSymbol, timeframe],
+    queryFn: () => loadBars(activeSymbol, TIMEFRAME_INTERVAL[timeframe] ?? "daily", daily ? "1y" : "10d"),
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const chainQuery = useQuery({
+    queryKey: ["analytics-chain", activeSymbol],
+    queryFn: () => loadOptionChain(activeSymbol, 45, 30),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const views = useMemo(() => (barsQuery.data ? priceViews(barsQuery.data.bars, daily) : null), [barsQuery.data, daily]);
+  const opt = useMemo(() => (chainQuery.data ? optionsView(chainQuery.data.contracts, chainQuery.data.spot) : null), [chainQuery.data]);
+  const volumeData = views?.volume ?? [];
+  const technicalIndicators = views?.technicals ?? [];
+  const heatmapData = opt?.heatmap ?? [];
+  const ivOiData = opt?.ivOi ?? [];
+  const maxStrikeVolume = Math.max(1, ...heatmapData.map((d) => d.volume));
+  const refresh = () => {
+    if (symbol && symbol !== activeSymbol) setActiveSymbol(symbol);
+    else {
+      void barsQuery.refetch();
+      void chainQuery.refetch();
+    }
+  };
+  const errText = (e: unknown) => (e as Error)?.message ?? "Unavailable";
 
   const getHeatmapColor = (value: number, max: number) => {
     const intensity = value / max;
@@ -81,13 +70,9 @@ const Analytics = () => {
             Deep market analysis with heat maps, IV/OI charts, technical indicators, news sentiment, and strategy backtesting
           </p>
 
-          {/* Demo Data Notice */}
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6 flex items-start gap-3">
-            <span className="bg-yellow-500 text-black text-xs font-semibold px-2 py-1 rounded shrink-0">DEMO DATA</span>
-            <p className="text-sm text-muted-foreground">
-              Charts on this page display sample data for demonstration purposes. 
-              Connect your brokerage account to view real market data and analytics.
-            </p>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6 text-sm text-muted-foreground" data-testid="analytics-status">
+            Real market data for {activeSymbol}: price bars from {barsQuery.data?.source === "schwab" ? "Schwab" : barsQuery.data?.source ?? "…"}
+            {opt ? `, options from Schwab (expiration ${opt.expiration})` : ""}. If something can't be loaded, that chart says so instead of showing samples.
           </div>
 
           {/* Controls */}
@@ -99,6 +84,7 @@ const Analytics = () => {
                   <Input
                     value={symbol}
                     onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === "Enter" && refresh()}
                     className="w-32"
                   />
                 </div>
@@ -117,9 +103,9 @@ const Analytics = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button>
+                <Button onClick={refresh} disabled={barsQuery.isFetching || chainQuery.isFetching}>
                   <Activity className="w-4 h-4 mr-2" />
-                  Refresh Data
+                  {symbol !== activeSymbol ? "Load" : "Refresh Data"}
                 </Button>
               </div>
             </CardContent>
@@ -132,10 +118,11 @@ const Analytics = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="w-5 h-5" />
-                  Volume Profile - {symbol}
+                  Volume by bar - {activeSymbol}
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {barsQuery.isLoading ? <p className="text-sm text-muted-foreground mb-2">Loading price bars…</p> : barsQuery.error ? <p className="text-sm text-red-500 mb-2" data-testid="bars-error">Couldn't load price bars: {errText(barsQuery.error)}</p> : null}
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={volumeData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -160,10 +147,11 @@ const Analytics = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5" />
-                  Technical Indicators
+                  Technical Indicators (RSI 14, MACD)
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {barsQuery.isLoading ? <p className="text-sm text-muted-foreground mb-2">Loading price bars…</p> : barsQuery.error ? <p className="text-sm text-red-500 mb-2" data-testid="bars-error">Couldn't load price bars: {errText(barsQuery.error)}</p> : null}
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={technicalIndicators}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -194,6 +182,7 @@ const Analytics = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {chainQuery.isLoading ? <p className="text-sm text-muted-foreground mb-2">Loading option chain…</p> : chainQuery.error ? <p className="text-sm text-amber-500 mb-2" data-testid="chain-error">No option data: {errText(chainQuery.error)}</p> : null}
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={heatmapData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -209,7 +198,7 @@ const Analytics = () => {
                   <Legend />
                   <Bar dataKey="volume" fill="hsl(var(--primary))">
                     {heatmapData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.volume, 6200)} />
+                      <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.volume, maxStrikeVolume)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -247,6 +236,7 @@ const Analytics = () => {
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="text-sm font-semibold mb-3 text-center">Call Options</h3>
+                  {chainQuery.isLoading ? <p className="text-sm text-muted-foreground mb-2">Loading option chain…</p> : chainQuery.error ? <p className="text-sm text-amber-500 mb-2" data-testid="chain-error">No option data: {errText(chainQuery.error)}</p> : null}
                   <ResponsiveContainer width="100%" height={300}>
                     <ScatterChart>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -314,6 +304,7 @@ const Analytics = () => {
 
               <div className="mt-6">
                 <h3 className="text-sm font-semibold mb-3">Open Interest by Strike</h3>
+                {chainQuery.isLoading ? <p className="text-sm text-muted-foreground mb-2">Loading option chain…</p> : chainQuery.error ? <p className="text-sm text-amber-500 mb-2" data-testid="chain-error">No option data: {errText(chainQuery.error)}</p> : null}
                 <ResponsiveContainer width="100%" height={250}>
                   <AreaChart data={ivOiData.filter(d => d.type === 'call')}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

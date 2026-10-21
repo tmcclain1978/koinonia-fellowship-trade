@@ -232,6 +232,21 @@ serve(async (req) => {
       description: data.reference?.description,
       exchange: data.reference?.exchangeName,
       isShortable: data.reference?.isShortable,
+      assetMainType: data.assetMainType,
+      // Options (Schwab sends -999 when a Greek isn't calculated; passed through as-is)
+      delta: data.quote?.delta,
+      gamma: data.quote?.gamma,
+      theta: data.quote?.theta,
+      vega: data.quote?.vega,
+      rho: data.quote?.rho,
+      volatility: data.quote?.volatility,
+      underlyingPrice: data.quote?.underlyingPrice,
+      openInterest: data.quote?.openInterest,
+      multiplier: data.reference?.multiplier ?? data.reference?.futureMultiplier,
+      // Futures
+      settlementPrice: data.quote?.settlePrice ?? data.quote?.settlementPrice,
+      futureExpirationDate: data.reference?.futureExpirationDate,
+      futureActiveSymbol: data.reference?.futureActiveSymbol,
       // NOTE: raw response omitted to keep payload small and prevent connection drops
     }));
 

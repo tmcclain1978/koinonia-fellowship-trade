@@ -1,421 +1,232 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, BarChart, Bar, ComposedChart 
-} from "recharts";
-import { 
-  TrendingUp, TrendingDown, Activity, Calendar, 
-  Fuel, CircleDollarSign, Gem, Building2, RefreshCw
-} from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Bar, ComposedChart, Line } from "recharts";
+import { TrendingUp, Activity, Calendar, Fuel, CircleDollarSign, Gem, Building2, RefreshCw, AlertTriangle } from "lucide-react";
+import { schwabApi } from "@/lib/schwabApi";
+import { FUTURES_ROOTS, buildCurve, curveShape, upcomingContracts, type CurvePoint } from "@/lib/futures/futuresCurve";
 
-interface FuturesContract {
-  symbol: string;
-  name: string;
-  icon: any;
-  category: string;
+const ICONS: Record<string, typeof Activity> = { ES: TrendingUp, NQ: Activity, YM: Building2, CL: Fuel, GC: Gem, ZB: CircleDollarSign };
+const CONTRACTS_PER_ROOT = 6;
+
+/** One Schwab quote request for every contract month of every market on the page. */
+async function loadCurves(): Promise<Record<string, CurvePoint[]>> {
+  const now = new Date();
+  const months = Object.fromEntries(FUTURES_ROOTS.map((r) => [r.root, upcomingContracts(r, now, CONTRACTS_PER_ROOT)]));
+  const symbols = Object.values(months).flat().map((c) => c.symbol);
+  const quotes = await schwabApi.getQuotes(symbols);
+  return Object.fromEntries(FUTURES_ROOTS.map((r) => [r.root, buildCurve(months[r.root], quotes)]));
 }
 
-const futuresContracts: FuturesContract[] = [
-  { symbol: 'ES', name: 'S&P 500 E-mini', icon: TrendingUp, category: 'Index' },
-  { symbol: 'NQ', name: 'Nasdaq 100', icon: Activity, category: 'Index' },
-  { symbol: 'YM', name: 'Dow E-mini', icon: Building2, category: 'Index' },
-  { symbol: 'CL', name: 'Crude Oil', icon: Fuel, category: 'Energy' },
-  { symbol: 'GC', name: 'Gold', icon: Gem, category: 'Metals' },
-  { symbol: 'ZB', name: '30Y Treasury', icon: CircleDollarSign, category: 'Bonds' },
-];
-
-// Generate mock term structure data
-const generateTermStructure = (symbol: string) => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-  let basePrice = 0;
-  let spread = 0;
-  
-  switch (symbol) {
-    case 'ES':
-      basePrice = 5200;
-      spread = 8;
-      break;
-    case 'NQ':
-      basePrice = 18500;
-      spread = 25;
-      break;
-    case 'CL':
-      basePrice = 75;
-      spread = -0.5; // Backwardation
-      break;
-    case 'GC':
-      basePrice = 2050;
-      spread = 5;
-      break;
-    default:
-      basePrice = 100;
-      spread = 0.5;
-  }
-  
-  return months.map((month, i) => ({
-    expiry: month,
-    price: basePrice + (spread * i) + (Math.random() - 0.5) * Math.abs(spread),
-    openInterest: Math.floor(50000 + Math.random() * 100000 - i * 5000),
-    volume: Math.floor(20000 + Math.random() * 50000 - i * 3000),
-  }));
-};
-
-// Generate mock open interest data
-const generateOpenInterestHistory = (days: number = 60) => {
-  const data = [];
-  const now = new Date();
-  
-  for (let i = days; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    
-    data.push({
-      date: date.toLocaleDateString(),
-      calls: Math.floor(200000 + Math.random() * 50000 + i * 500),
-      puts: Math.floor(180000 + Math.random() * 60000 + i * 400),
-    });
-  }
-  
-  return data;
-};
-
-// Generate key expiration dates
-const generateExpirationDates = () => {
-  const now = new Date();
-  const expirations = [];
-  
-  // Next 6 monthly expirations (3rd Friday of each month)
-  for (let m = 0; m < 6; m++) {
-    const date = new Date(now.getFullYear(), now.getMonth() + m, 1);
-    // Find third Friday
-    let firstFriday = 1;
-    while (new Date(date.getFullYear(), date.getMonth(), firstFriday).getDay() !== 5) {
-      firstFriday++;
-    }
-    const thirdFriday = firstFriday + 14;
-    
-    expirations.push({
-      date: new Date(date.getFullYear(), date.getMonth(), thirdFriday),
-      type: 'Monthly',
-      contracts: ['ES', 'NQ', 'GC', 'CL'],
-      daysUntil: Math.ceil((new Date(date.getFullYear(), date.getMonth(), thirdFriday).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
-    });
-  }
-  
-  // Quarterly expirations
-  const quarters = [2, 5, 8, 11]; // Mar, Jun, Sep, Dec
-  quarters.forEach(q => {
-    if (q >= now.getMonth()) {
-      const qDate = new Date(now.getFullYear(), q, 15);
-      expirations.push({
-        date: qDate,
-        type: 'Quarterly',
-        contracts: ['ES', 'NQ', 'ZB'],
-        daysUntil: Math.ceil((qDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
-      });
-    }
-  });
-  
-  return expirations.filter(e => e.daysUntil > 0).sort((a, b) => a.daysUntil - b.daysUntil).slice(0, 8);
-};
+const fmt = (v: number | undefined, digits = 2) => (v === undefined ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+const fmtInt = (v: number | undefined) => (v === undefined ? "—" : Math.round(v).toLocaleString());
+const day = (ms?: number) => (ms ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—");
 
 export function FuturesDashboard() {
-  const [selectedContract, setSelectedContract] = useState('ES');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selected, setSelected] = useState("ES");
+  const { data, isLoading, isFetching, error, refetch, dataUpdatedAt } = useQuery({
+    queryKey: ["futures-curves"],
+    queryFn: loadCurves,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
-  const termStructure = generateTermStructure(selectedContract);
-  const openInterestHistory = generateOpenInterestHistory();
-  const expirationDates = generateExpirationDates();
+  const root = FUTURES_ROOTS.find((r) => r.root === selected)!;
+  const curve = data?.[selected] ?? [];
+  const shape = curveShape(curve);
+  const front = curve[0];
+  const anyData = data && Object.values(data).some((c) => c.length > 0);
+  const Icon = ICONS[selected] ?? Activity;
 
-  // Determine if contango or backwardation
-  const firstPrice = termStructure[0]?.price || 0;
-  const lastPrice = termStructure[termStructure.length - 1]?.price || 0;
-  const isContango = lastPrice > firstPrice;
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1000);
-  };
-
-  const contract = futuresContracts.find(c => c.symbol === selectedContract)!;
+  const expirations = useMemo(() => {
+    if (!data) return [];
+    const now = Date.now();
+    return FUTURES_ROOTS.flatMap((r) => (data[r.root] ?? []).filter((p) => p.expiration && p.expiration > now).map((p) => ({ ...p, root: r })))
+      .sort((a, b) => a.expiration! - b.expiration!)
+      .slice(0, 10);
+  }, [data]);
 
   return (
-    <div className="space-y-6">
-      {/* Demo Data Notice */}
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
-        <Badge className="bg-yellow-500 text-black shrink-0">DEMO DATA</Badge>
-        <p className="text-sm text-muted-foreground">
-          This dashboard displays simulated futures data for demonstration. 
-          Real-time CME data integration requires a market data subscription.
-        </p>
-      </div>
-
-      {/* Contract Selector */}
+    <div className="space-y-6" data-testid="futures-dashboard">
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4 items-center justify-between">
             <div className="flex flex-wrap gap-2">
-              {futuresContracts.map((c) => (
-                <Button
-                  key={c.symbol}
-                  variant={selectedContract === c.symbol ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedContract(c.symbol)}
-                >
-                  <c.icon className="w-4 h-4 mr-1" />
-                  {c.symbol}
-                </Button>
-              ))}
+              {FUTURES_ROOTS.map((r) => {
+                const I = ICONS[r.root] ?? Activity;
+                return (
+                  <Button key={r.root} variant={selected === r.root ? "default" : "outline"} size="sm" onClick={() => setSelected(r.root)}>
+                    <I className="w-4 h-4 mr-1" />
+                    {r.root}
+                  </Button>
+                );
+              })}
             </div>
-            <Button onClick={handleRefresh} variant="outline" disabled={isRefreshing}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-3">
+              {dataUpdatedAt > 0 && <span className="text-xs text-muted-foreground">Schwab quotes · {new Date(dataUpdatedAt).toLocaleTimeString()}</span>}
+              <Button onClick={() => void refetch()} variant="outline" disabled={isFetching}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Current Contract Info */}
-      <div className="grid md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <contract.icon className="w-4 h-4" />
-              <span className="text-sm">{contract.name}</span>
-            </div>
-            <div className="text-3xl font-bold">
-              {firstPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <Badge variant="outline" className="mt-1">{contract.category}</Badge>
-          </CardContent>
-        </Card>
-        
-        <Card className={isContango ? "border-green-500/30" : "border-red-500/30"}>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground mb-1">Curve Structure</div>
-            <div className={`text-2xl font-bold ${isContango ? "text-green-400" : "text-red-400"}`}>
-              {isContango ? "Contango" : "Backwardation"}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Spread: {((lastPrice - firstPrice) / firstPrice * 100).toFixed(2)}%
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground mb-1">Total Open Interest</div>
-            <div className="text-2xl font-bold">
-              {termStructure.reduce((sum, t) => sum + t.openInterest, 0).toLocaleString()}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">Across all expirations</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground mb-1">Front Month Volume</div>
-            <div className="text-2xl font-bold">
-              {termStructure[0]?.volume.toLocaleString()}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">24h contracts</div>
-          </CardContent>
-        </Card>
-      </div>
+      {isLoading && <p className="text-sm text-muted-foreground">Loading futures prices from Schwab…</p>}
 
-      <Tabs defaultValue="term-structure" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="term-structure">Term Structure</TabsTrigger>
-          <TabsTrigger value="open-interest">Open Interest</TabsTrigger>
-          <TabsTrigger value="expirations">Key Dates</TabsTrigger>
-        </TabsList>
+      {!isLoading && (error || !anyData) && (
+        <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm" data-testid="futures-unavailable">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+          <div className="space-y-2">
+            <p>
+              Futures prices come straight from your Schwab account, and none came back
+              {error ? ` (${(error as Error).message})` : ""}. Make sure Schwab is connected and your account is approved for futures quotes.
+            </p>
+            <Button asChild size="sm" variant="outline"><Link to="/settings">Go to Settings</Link></Button>
+          </div>
+        </div>
+      )}
 
-        <TabsContent value="term-structure">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                {contract.name} Term Structure (Forward Curve)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <ComposedChart data={termStructure}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="expiry" stroke="hsl(var(--muted-foreground))" />
-                  <YAxis 
-                    yAxisId="left"
-                    stroke="hsl(var(--muted-foreground))"
-                    domain={['auto', 'auto']}
-                  />
-                  <YAxis 
-                    yAxisId="right"
-                    orientation="right"
-                    stroke="hsl(var(--muted-foreground))"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Bar 
-                    yAxisId="right"
-                    dataKey="openInterest" 
-                    fill="hsl(var(--muted))" 
-                    opacity={0.5}
-                    name="Open Interest"
-                  />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="price"
-                    stroke={isContango ? "hsl(var(--success))" : "hsl(var(--destructive))"}
-                    strokeWidth={3}
-                    dot={{ fill: isContango ? "hsl(var(--success))" : "hsl(var(--destructive))", strokeWidth: 2, r: 5 }}
-                    name="Price"
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-              
-              <div className="mt-4 p-4 bg-card/50 rounded-lg border border-border">
-                <h4 className="font-semibold mb-2">What This Means</h4>
-                <p className="text-sm text-muted-foreground">
-                  {isContango 
-                    ? "The market is in contango, meaning future prices are higher than spot. This typically indicates normal market conditions with storage costs and carrying charges priced in."
-                    : "The market is in backwardation, meaning spot prices are higher than futures. This often signals supply concerns or strong immediate demand."
-                  }
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {anyData && curve.length === 0 && (
+        <p className="text-sm text-muted-foreground">Schwab didn't return any {root.name} contracts right now.</p>
+      )}
 
-        <TabsContent value="open-interest">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5" />
-                Options Open Interest History
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <AreaChart data={openInterestHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="hsl(var(--muted-foreground))"
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(v, i) => i % 7 === 0 ? v : ''}
-                  />
-                  <YAxis 
-                    stroke="hsl(var(--muted-foreground))"
-                    tickFormatter={(v) => `${(v/1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                    formatter={(value: number) => [value.toLocaleString(), '']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="calls"
-                    stackId="1"
-                    stroke="hsl(var(--success))"
-                    fill="hsl(var(--success))"
-                    fillOpacity={0.3}
-                    name="Calls OI"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="puts"
-                    stackId="2"
-                    stroke="hsl(var(--destructive))"
-                    fill="hsl(var(--destructive))"
-                    fillOpacity={0.3}
-                    name="Puts OI"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-              
-              <div className="flex justify-center gap-6 mt-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-500" />
-                  <span className="text-sm">Calls Open Interest</span>
+      {anyData && front && (
+        <>
+          <div className="grid md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <Icon className="w-4 h-4" />
+                  <span className="text-sm">{root.name} · {front.label}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500" />
-                  <span className="text-sm">Puts Open Interest</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <div className="text-3xl font-bold" data-testid="front-price">{fmt(front.price, root.digits)}</div>
+                {front.netPercentChange !== undefined && (
+                  <span className={`text-sm ${front.netPercentChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+                    {front.netPercentChange >= 0 ? "+" : ""}{front.netPercentChange.toFixed(2)}% today
+                  </span>
+                )}
+                <Badge variant="outline" className="mt-1 ml-2">{root.category}</Badge>
+              </CardContent>
+            </Card>
 
-        <TabsContent value="expirations">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                Upcoming Expirations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {expirationDates.map((exp, i) => (
-                  <div 
-                    key={i}
-                    className={`flex items-center justify-between p-4 rounded-lg border ${
-                      exp.daysUntil <= 7 
-                        ? 'border-red-500/50 bg-red-500/5' 
-                        : exp.daysUntil <= 14 
-                          ? 'border-yellow-500/50 bg-yellow-500/5'
-                          : 'border-border bg-card/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`text-2xl font-bold ${
-                        exp.daysUntil <= 7 ? 'text-red-400' : 
-                        exp.daysUntil <= 14 ? 'text-yellow-400' : 'text-foreground'
-                      }`}>
-                        {exp.daysUntil}d
-                      </div>
-                      <div>
-                        <div className="font-semibold">
-                          {exp.date.toLocaleDateString('en-US', { 
-                            weekday: 'short', 
-                            month: 'short', 
-                            day: 'numeric' 
-                          })}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {exp.type} Expiration
-                        </div>
-                      </div>
+            <Card className={shape?.shape === "backwardation" ? "border-red-500/30" : "border-green-500/30"}>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground mb-1">Curve shape</div>
+                {shape ? (
+                  <>
+                    <div className={`text-2xl font-bold ${shape.shape === "backwardation" ? "text-red-400" : "text-green-400"}`} data-testid="curve-shape">
+                      {shape.shape === "contango" ? "Contango" : shape.shape === "backwardation" ? "Backwardation" : "Flat"}
                     </div>
-                    <div className="flex gap-2">
-                      {exp.contracts.map(c => (
-                        <Badge key={c} variant="outline">{c}</Badge>
-                      ))}
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {shape.shape === "contango" ? "Later months cost more than now." : shape.shape === "backwardation" ? "Later months cost less than now (often a tight supply sign)." : "Later months cost about the same."}{" "}
+                      Last vs. first: {shape.spreadPct >= 0 ? "+" : ""}{shape.spreadPct.toFixed(2)}%
+                      {shape.rollYieldPct !== null && <> · roll ≈ {shape.rollYieldPct >= 0 ? "+" : ""}{shape.rollYieldPct.toFixed(1)}%/yr</>}
                     </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Needs at least two contract months.</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground mb-1">Open interest (contracts shown)</div>
+                <div className="text-2xl font-bold">{curve.some((p) => p.openInterest !== undefined) ? fmtInt(curve.reduce((s, p) => s + (p.openInterest ?? 0), 0)) : "—"}</div>
+                <div className="text-xs text-muted-foreground mt-1">Contracts still open (not closed out)</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground mb-1">Front month volume</div>
+                <div className="text-2xl font-bold">{fmtInt(front.volume)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Contracts traded this session</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Tabs defaultValue="term-structure" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="term-structure">Term structure</TabsTrigger>
+              <TabsTrigger value="expirations">Expirations</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="term-structure">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    {root.name}: price by contract month
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={360}>
+                    <ComposedChart data={curve}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" />
+                      <YAxis yAxisId="price" stroke="hsl(var(--muted-foreground))" domain={["auto", "auto"]} tickFormatter={(v) => fmt(v, root.digits)} />
+                      <YAxis yAxisId="oi" orientation="right" stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => fmtInt(v)} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}
+                        formatter={(v: number, name: string) => [name === "price" ? fmt(v, root.digits) : fmtInt(v), name === "price" ? "Price" : "Open interest"]}
+                      />
+                      <Bar yAxisId="oi" dataKey="openInterest" fill="hsl(var(--primary) / 0.25)" />
+                      <Line yAxisId="price" type="monotone" dataKey="price" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 4 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 border rounded-md overflow-hidden text-sm" data-testid="curve-table">
+                    <div className="grid grid-cols-5 gap-2 px-3 py-1.5 bg-muted/50 text-xs font-medium text-muted-foreground">
+                      <span>Contract</span><span className="text-right">Price</span><span className="text-right">Open interest</span><span className="text-right">Volume</span><span className="text-right">Expires</span>
+                    </div>
+                    {curve.map((p) => (
+                      <div key={p.symbol} className="grid grid-cols-5 gap-2 px-3 py-1.5 font-mono text-xs border-t">
+                        <span>{p.symbol}</span>
+                        <span className="text-right">{fmt(p.price, root.digits)}</span>
+                        <span className="text-right">{fmtInt(p.openInterest)}</span>
+                        <span className="text-right">{fmtInt(p.volume)}</span>
+                        <span className="text-right">{day(p.expiration)}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="expirations">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5" />
+                    Next expirations (all markets)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {expirations.length === 0 && <p className="text-sm text-muted-foreground">Schwab didn't report expiration dates.</p>}
+                  {expirations.map((e) => {
+                    const days = Math.ceil((e.expiration! - Date.now()) / 86_400_000);
+                    return (
+                      <div key={e.symbol} className="flex items-center justify-between p-3 rounded-lg border">
+                        <div>
+                          <div className="font-medium">{e.root.name} · {e.label}</div>
+                          <div className="text-xs text-muted-foreground">{e.symbol} · {day(e.expiration)}</div>
+                        </div>
+                        <Badge variant={days <= 7 ? "destructive" : "outline"}>{days} day{days === 1 ? "" : "s"}</Badge>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
     </div>
   );
 }
