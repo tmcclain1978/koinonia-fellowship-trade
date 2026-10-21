@@ -37,6 +37,23 @@ export interface OptionsLevelPrefs {
   expiration: string;
 }
 
+export interface OrderFlowPrefs {
+  /** Resting Level 2 orders over time, behind the candles. */
+  heatmap: boolean;
+  /** Circles for large trades (green = bought, red = sold). */
+  bubbles: boolean;
+  /** Bought x sold at each price inside a bar (zoom in to see). */
+  footprint: boolean;
+  /** Pane: bought minus sold per bar. */
+  delta: boolean;
+  /** Pane: running total of delta. */
+  cvd: boolean;
+  /** Depth ladder beside the chart. */
+  dom: boolean;
+  /** Shares for a "big" trade bubble; 0 = automatic. */
+  bigPrint: number;
+}
+
 export interface ChartPrefs {
   indicators: string[];
   indicatorSettings: IndicatorSettingsMap;
@@ -55,6 +72,8 @@ export interface ChartPrefs {
   signal: SignalStylePrefs;
   /** Indicators the user wrote themselves (Indicators → Custom). */
   customIndicators: CustomIndicatorDef[];
+  /** Order flow from Schwab Level 2 (heatmap, footprint, delta, depth ladder). */
+  orderFlow: OrderFlowPrefs;
 }
 
 export const DEFAULT_PREFS: ChartPrefs = {
@@ -68,6 +87,7 @@ export const DEFAULT_PREFS: ChartPrefs = {
   pricePrecision: -1,
   tradeLines: true,
   options: { enabled: false, expectedMove: true, gamma: true, profile: true, maxPain: true, unusual: true, expiration: "" },
+  orderFlow: { heatmap: false, bubbles: false, footprint: false, delta: false, cvd: false, dom: false, bigPrint: 0 },
   signal: {
     entryColor: "#f97316",
     stopColor: "#3b82f6",
@@ -135,6 +155,14 @@ export function normalizePrefs(raw: unknown): ChartPrefs {
       priceLabels: typeof s.priceLabels === "boolean" ? s.priceLabels : d.signal.priceLabels,
     },
     customIndicators: normalizeCustom((r as { customIndicators?: unknown }).customIndicators),
+    orderFlow: (() => {
+      const o = (r.orderFlow ?? {}) as Partial<OrderFlowPrefs>;
+      const b = (k: keyof Omit<OrderFlowPrefs, "bigPrint">) => (typeof o[k] === "boolean" ? (o[k] as boolean) : d.orderFlow[k]);
+      return {
+        heatmap: b("heatmap"), bubbles: b("bubbles"), footprint: b("footprint"), delta: b("delta"), cvd: b("cvd"), dom: b("dom"),
+        bigPrint: Math.round(clampNum(o.bigPrint, 0, 10_000_000, d.orderFlow.bigPrint)),
+      };
+    })(),
   };
 }
 
@@ -237,6 +265,10 @@ export function setChartPrefs(update: Partial<ChartPrefs> | ((prev: ChartPrefs) 
 
 export function setOptionsPrefs(update: Partial<OptionsLevelPrefs>): void {
   setChartPrefs((p) => ({ ...p, options: { ...p.options, ...update } }));
+}
+
+export function setOrderFlowPrefs(update: Partial<OrderFlowPrefs>): void {
+  setChartPrefs((p) => ({ ...p, orderFlow: { ...p.orderFlow, ...update } }));
 }
 
 export function setSignalPrefs(update: Partial<SignalStylePrefs>): void {

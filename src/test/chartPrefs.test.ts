@@ -56,6 +56,7 @@ describe("chart preferences", () => {
         priceLabels: false,
       },
       customIndicators: [],
+      orderFlow: { heatmap: false, bubbles: false, footprint: false, delta: false, cvd: false, dom: false, bigPrint: 0 },
     });
   });
 

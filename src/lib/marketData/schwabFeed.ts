@@ -15,6 +15,7 @@
  * back to one shared REST poll when streaming isn't available.
  */
 import type { SchwabQuote } from "@/lib/schwabApi";
+import { mergeBooks, parseBookItem, SERVICE_VENUE, type BookSnapshot, type BookVenue, type VenueBook } from "./book";
 
 /* ----------------------------------------------------------------------------
  * Types
@@ -26,6 +27,8 @@ export interface StreamingQuote extends SchwabQuote {
   priceDirection?: "up" | "down" | "unchanged";
   /** True for real-time Schwab data (stream or REST), false for fallbacks. */
   isLive: boolean;
+  /** This update came from the live stream (not a REST refresh). */
+  viaStream?: boolean;
 }
 
 export type FeedStatus = "idle" | "connecting" | "streaming" | "polling" | "error";
@@ -67,7 +70,26 @@ interface StreamMessage {
   service?: string;
   content?: Array<Record<string, unknown>>;
   message?: string;
+  code?: number;
 }
+
+/**
+ * Level 2 availability for a subscriber:
+ *  - "waiting": asked for, no book yet (connecting, or a quiet symbol)
+ *  - "live": receiving books
+ *  - "needs-stream": the live stream isn't connected (Level 2 can't be polled)
+ *  - "unavailable": Schwab refused the book (e.g. account not entitled)
+ */
+export type BookStatus = "waiting" | "live" | "needs-stream" | "unavailable";
+
+export interface BookSubscription {
+  symbol: string;
+  onBook: (book: BookSnapshot) => void;
+  onStatus?: (status: BookStatus, message?: string) => void;
+}
+
+/** Level 2 is heavy; charts rarely need more than a few at once. */
+export const MAX_BOOK_SYMBOLS = 5;
 
 export interface AccountActivityItem {
   accountNumber: string;
@@ -171,6 +193,7 @@ export function mergeLevelOne(prev: StreamingQuote | undefined, item: Record<str
     source: undefined,
     isPreviousClose: false,
     isLive: true,
+    viaStream: true,
     previousPrice,
     priceDirection,
     lastUpdated: new Date(now),
@@ -186,6 +209,7 @@ export function fromRestQuote(prev: StreamingQuote | undefined, q: SchwabQuote, 
     ...q,
     symbol: q.symbol.toUpperCase(),
     isLive: isLiveSource(q),
+    viaStream: false,
     previousPrice,
     priceDirection,
     lastUpdated: new Date(now),
@@ -205,6 +229,10 @@ export class SchwabFeed {
   private quotes = new Map<string, StreamingQuote>();
   private statusListeners = new Set<(s: FeedStatus) => void>();
   private activityListeners = new Set<(a: AccountActivityItem[]) => void>();
+  private bookSubs = new Map<number, BookSubscription>();
+  private venueBooks = new Map<string, Map<BookVenue, VenueBook>>();
+  private bookStatus = new Map<string, { status: BookStatus; message?: string }>();
+  private bookKey = ""; // book symbols currently subscribed on the socket
 
   private status: FeedStatus = "idle";
   private socket: WebSocketLike | null = null;
@@ -241,6 +269,27 @@ export class SchwabFeed {
     return () => {
       if (this.subs.delete(id)) this.reconcile();
     };
+  }
+
+  /** Live Level 2 book for one symbol (streaming only). */
+  subscribeBook(sub: BookSubscription): () => void {
+    const id = this.nextId++;
+    const entry = { ...sub, symbol: sub.symbol.trim().toUpperCase() };
+    if (!entry.symbol) return () => {};
+    this.bookSubs.set(id, entry);
+    const known = this.bookStatus.get(entry.symbol);
+    entry.onStatus?.(known?.status ?? (this.authenticated ? "waiting" : "needs-stream"), known?.message);
+    const book = this.getBook(entry.symbol);
+    if (book) entry.onBook(book);
+    this.reconcile();
+    return () => {
+      if (this.bookSubs.delete(id)) this.reconcile();
+    };
+  }
+
+  getBook(symbol: string): BookSnapshot | null {
+    const venues = this.venueBooks.get(symbol.toUpperCase());
+    return venues ? mergeBooks(Array.from(venues.values())) : null;
   }
 
   onStatus(listener: (s: FeedStatus) => void): () => void {
@@ -289,6 +338,7 @@ export class SchwabFeed {
     this.subs.clear();
     this.statusListeners.clear();
     this.activityListeners.clear();
+    this.bookSubs.clear();
     this.stopPolling();
     this.closeSocket();
     for (const t of [this.reconnectTimer, this.idleTimer, this.watchdogTimer]) if (t) this.deps.clearTimeout(t);
@@ -302,9 +352,37 @@ export class SchwabFeed {
     return Array.from(set).sort();
   }
 
+  private bookSymbols(): string[] {
+    const set = new Set<string>();
+    this.bookSubs.forEach((s) => set.add(s.symbol));
+    return Array.from(set).sort().slice(0, MAX_BOOK_SYMBOLS);
+  }
+
   private wantsSocket(): boolean {
     for (const s of this.subs.values()) if (s.useWebSocket !== false && s.symbols.length) return true;
-    return this.activityListeners.size > 0;
+    return this.activityListeners.size > 0 || this.bookSubs.size > 0;
+  }
+
+  /** Nothing at all wants data (quotes, books or account activity). */
+  private nothingWanted(): boolean {
+    return this.unionSymbols().length === 0 && this.activityListeners.size === 0 && this.bookSubs.size === 0;
+  }
+
+  private setBookStatus(symbol: string, status: BookStatus, message?: string) {
+    const prev = this.bookStatus.get(symbol);
+    if (prev?.status === status && prev?.message === message) return;
+    this.bookStatus.set(symbol, { status, message });
+    this.bookSubs.forEach((s) => {
+      if (s.symbol === symbol) s.onStatus?.(status, message);
+    });
+  }
+
+  private setAllBookStatus(status: BookStatus, message?: string) {
+    for (const sym of new Set(Array.from(this.bookSubs.values()).map((s) => s.symbol))) {
+      // A refusal from Schwab sticks until the next successful login.
+      if (this.bookStatus.get(sym)?.status === "unavailable" && status !== "waiting") continue;
+      this.setBookStatus(sym, status, message);
+    }
   }
 
   private pollInterval(): number {
@@ -337,12 +415,14 @@ export class SchwabFeed {
   private reconcile() {
     const symbols = this.unionSymbols();
 
-    if (symbols.length === 0 && this.activityListeners.size === 0) {
+    if (this.nothingWanted()) {
       this.stopPolling();
+      // Stop the heavy Level 2 stream now; the socket itself closes after a short idle wait.
+      if (this.authenticated) this.sendBookSubscriptions();
       if (this.socket && !this.idleTimer) {
         this.idleTimer = this.deps.setTimeout(() => {
           this.idleTimer = null;
-          if (this.unionSymbols().length === 0 && this.activityListeners.size === 0) {
+          if (this.nothingWanted()) {
             this.closeSocket();
             this.setStatus("idle");
           }
@@ -358,9 +438,13 @@ export class SchwabFeed {
 
     if (this.authenticated) {
       this.sendSubscriptions();
+      this.sendBookSubscriptions();
     } else {
-      if (this.polling) this.scheduleSeed();
-      else this.startPolling();
+      if (symbols.length) {
+        if (this.polling) this.scheduleSeed();
+        else this.startPolling();
+      }
+      if (this.bookSubs.size && !this.socket) this.setAllBookStatus("needs-stream");
       if (this.wantsSocket() && !this.socket && !this.reconnectTimer && this.deps.now() >= this.coolOffUntil) {
         void this.connect();
       }
@@ -443,12 +527,15 @@ export class SchwabFeed {
       this.authenticated = false;
       this.streamedKey = "";
       this.accountSubscribed = false;
+      this.bookKey = "";
+      this.venueBooks.clear();
       this.stopWatchdog();
-      if (this.unionSymbols().length === 0 && this.activityListeners.size === 0) {
+      if (this.bookSubs.size) this.setAllBookStatus("needs-stream");
+      if (this.nothingWanted()) {
         this.setStatus("idle");
         return;
       }
-      this.startPolling();
+      if (this.unionSymbols().length) this.startPolling();
       this.setStatus("polling");
       if (!wasAuthenticated) this.onConnectFailure();
       else this.scheduleReconnect(BACKOFF_STEPS_MS[0]);
@@ -465,6 +552,8 @@ export class SchwabFeed {
         this.setStatus("streaming");
         this.lastStreamDataAt = this.deps.now();
         this.sendSubscriptions(true);
+        this.bookStatus.clear();
+        this.sendBookSubscriptions(true);
         if (this.activityListeners.size) this.subscribeAccount();
         this.startWatchdog();
         // One REST fetch so subscribers get full quotes right away; the stream then sends changes.
@@ -480,6 +569,27 @@ export class SchwabFeed {
             if (!merged) continue;
             this.quotes.set(merged.symbol, merged);
             this.emit(merged);
+          }
+        } else if (msg.service && SERVICE_VENUE[msg.service] && Array.isArray(msg.content)) {
+          const venue = SERVICE_VENUE[msg.service];
+          const now = this.deps.now();
+          for (const item of msg.content) {
+            const vb = parseBookItem(item, venue, now);
+            if (!vb) continue;
+            let venues = this.venueBooks.get(vb.symbol);
+            if (!venues) this.venueBooks.set(vb.symbol, (venues = new Map()));
+            venues.set(venue, vb);
+            const merged = mergeBooks(Array.from(venues.values()));
+            if (!merged) continue;
+            this.setBookStatus(vb.symbol, "live");
+            this.bookSubs.forEach((s) => {
+              if (s.symbol !== vb.symbol) return;
+              try {
+                s.onBook(merged);
+              } catch (err) {
+                this.deps.log("[SchwabFeed] book subscriber error:", err);
+              }
+            });
           }
         } else if (msg.service === "ACCT_ACTIVITY" && Array.isArray(msg.content)) {
           const items: AccountActivityItem[] = msg.content.map((item) => ({
@@ -498,6 +608,14 @@ export class SchwabFeed {
       }
       case "error": {
         this.deps.log("[SchwabFeed] stream error:", msg.message);
+        if (msg.service && SERVICE_VENUE[msg.service]) {
+          // One venue refusing is fine as long as the other sends books.
+          this.venueRefusals.add(msg.service);
+          if (this.venueRefusals.size >= Object.keys(SERVICE_VENUE).length) {
+            this.setAllBookStatus("unavailable", msg.message || "Schwab did not send Level 2 data for this account.");
+          }
+          return;
+        }
         if (!this.authenticated) this.closeSocket();
         return;
       }
@@ -524,6 +642,23 @@ export class SchwabFeed {
       if (added.length && !force) void this.pollNow(added);
     }
     this.streamedKey = key;
+  }
+
+  private venueRefusals = new Set<string>();
+
+  /** Subscribe the socket to the current book symbols (SUBS replaces the previous list). */
+  private sendBookSubscriptions(force = false) {
+    if (!this.socket || this.socket.readyState !== WS_OPEN || !this.authenticated) return;
+    const symbols = this.bookSymbols();
+    const key = symbols.join(",");
+    if (!force && key === this.bookKey) return;
+    if (force) this.venueRefusals.clear();
+    const before = this.bookKey ? this.bookKey.split(",") : [];
+    if (symbols.length) this.socket.send(JSON.stringify({ action: "subscribe_book", symbols }));
+    else if (before.length) this.socket.send(JSON.stringify({ action: "unsubscribe_book", symbols: before }));
+    for (const s of before) if (!symbols.includes(s)) this.venueBooks.delete(s);
+    for (const s of symbols) if (!this.bookStatus.has(s) || this.bookStatus.get(s)?.status === "needs-stream") this.setBookStatus(s, "waiting");
+    this.bookKey = key;
   }
 
   private subscribeAccount() {
@@ -579,6 +714,8 @@ export class SchwabFeed {
     this.authenticated = false;
     this.streamedKey = "";
     this.accountSubscribed = false;
+    this.bookKey = "";
+    this.venueBooks.clear();
     this.stopWatchdog();
     try {
       ws.close();
