@@ -8,6 +8,27 @@
       "when": 1792563220185,
       "tag": "0000_user_chart_state",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792563283819,
+      "tag": "0001_bot_engine_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792563288094,
+      "tag": "0002_price_alert_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792563291613,
+      "tag": "0003_phroureo_server_exits_schema",
+      "breakpoints": true
     }
   ]
 }
