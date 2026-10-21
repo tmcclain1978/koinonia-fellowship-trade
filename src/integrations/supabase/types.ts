@@ -2540,6 +2540,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_chart_state: {
+        Row: {
+          key: string
+          updated_at: string
+          user_id: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          user_id: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          user_id?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       user_course_progress: {
         Row: {
           completed: boolean | null
