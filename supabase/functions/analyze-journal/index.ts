@@ -131,7 +131,7 @@ Format as JSON: { "analysis": "string", "suggestions": ["string"] }
   } catch (error) {
     console.error('Error in analyze-journal:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as any).message }),
       { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

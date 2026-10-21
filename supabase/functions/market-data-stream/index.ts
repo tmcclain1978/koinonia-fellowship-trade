@@ -79,7 +79,7 @@ serve(async (req) => {
             return { symbol, error: 'No data available', source: 'polygon' };
           } catch (err) {
             console.error(`Error fetching ${symbol}:`, err);
-            return { symbol, error: err.message, source: 'polygon' };
+            return { symbol, error: (err as any).message, source: 'polygon' };
           }
         })
       );
@@ -99,7 +99,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('❌ Error in market-data-stream:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as any).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

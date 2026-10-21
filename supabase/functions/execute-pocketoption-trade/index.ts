@@ -97,7 +97,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        message: error.message || "Trade execution failed" 
+        message: (error as any).message || "Trade execution failed" 
       }),
       { 
         status: 400,

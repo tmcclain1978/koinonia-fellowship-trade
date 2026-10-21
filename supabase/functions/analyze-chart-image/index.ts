@@ -122,7 +122,7 @@ ${entryType ? `Entry type: ${entryType}` : ''}`;
   } catch (error) {
     console.error('Error in analyze-chart-image:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Failed to analyze chart' }),
+      JSON.stringify({ error: (error as any).message || 'Failed to analyze chart' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

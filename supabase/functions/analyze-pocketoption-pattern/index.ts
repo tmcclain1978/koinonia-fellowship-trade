@@ -47,7 +47,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        message: error.message || "Analysis failed" 
+        message: (error as any).message || "Analysis failed" 
       }),
       { 
         status: 400,

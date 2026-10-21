@@ -157,7 +157,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in check-pdt-status:', error);
     return new Response(
-      JSON.stringify({ error: error.message, canTrade: false }),
+      JSON.stringify({ error: (error as any).message, canTrade: false }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
