@@ -64,6 +64,13 @@
       "when": 1792595712845,
       "tag": "0008_bot_trade_journal",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792584609751,
+      "tag": "0009_bot_trade_journal",
+      "breakpoints": true
     }
   ]
 }
