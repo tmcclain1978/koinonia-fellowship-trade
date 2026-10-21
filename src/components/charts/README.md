@@ -200,3 +200,22 @@ The new chart system **maintains full compatibility** with the AI trading bot:
 - AdvancedChart (lightweight-charts) deprecated in favor of ProChartKit
 - All chart components are fully TypeScript typed
 - Responsive design works on all screen sizes
+
+## Order flow (Schwab Level 2)
+
+Toolbar → **Order flow**. Everything is built live in the browser from the
+shared Schwab stream (`src/lib/marketData`), recorded from the moment it is
+turned on (Schwab has no historical book or tick data):
+
+- **Liquidity heatmap**: Level 2 book (NASDAQ_BOOK + NYSE_BOOK, sizes added
+  per price) over time, one frame per second, drawn behind the candles.
+- **Big trades**: bubbles for the largest trade bundles (green bought at the
+  ask, red sold at the bid).
+- **Footprint**: sold × bought per price inside each bar (zoom in).
+- **Delta / Cumulative delta** panes.
+- **Depth ladder** beside the chart.
+
+Code: `orderflow/flow.ts` (classification and aggregation, unit-tested),
+`orderflow/recorder.ts` (one recorder per symbol), `orderflow/layers.ts`
+(chart drawing), `orderflow/useOrderFlow.ts`, `OrderFlowPopover.tsx`,
+`DomLadder.tsx`. The relay is `supabase/functions/schwab-streaming`.

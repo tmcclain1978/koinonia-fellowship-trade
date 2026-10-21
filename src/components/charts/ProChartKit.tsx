@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
 import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS, setCustomIndicators, customIndicatorsVersion } from "./indicators/registry";
-import { useChartPrefs, setChartPrefs, setSignalPrefs, type SignalLineStyle as PrefsSignalLineStyle } from "./state/chartPrefs";
+import { useChartPrefs, setChartPrefs, setSignalPrefs, setOrderFlowPrefs, type SignalLineStyle as PrefsSignalLineStyle } from "./state/chartPrefs";
 import { restoreDrawings, fetchNewerCloudDrawings, retireChart, snapshotDrawings } from "./state/chartDrawings";
 import { registerKoinoniaOverlays } from "./overlays/registry";
 import { getBucketStart, getIntervalMs as intervalToMs, intervalMinutes, aggregateCandles } from "./candleBuckets";
@@ -53,6 +53,10 @@ import { useOptionsLevels } from "./options/useOptionsLevels";
 import { OptionsLevelsPopover } from "./options/OptionsLevelsPopover";
 import { useChartAlerts } from "./alerts/useChartAlerts";
 import { AlertsPopover } from "./alerts/AlertsPopover";
+import { OrderFlowPopover } from "./orderflow/OrderFlowPopover";
+import { DomLadder } from "./orderflow/DomLadder";
+import { useOrderFlow } from "./orderflow/useOrderFlow";
+import { restoreOrderFlowLayers } from "./orderflow/layers";
 import type { TradingMode } from "./trading/tradingActions";
 
 registerKoinoniaIndicators();
@@ -120,6 +124,8 @@ function applyIndicatorsToChart(chart: Chart, indicators: string[], settings: In
       console.warn(`Failed to create indicator ${indicator}:`, error);
     }
   });
+  // removeIndicator() above also removed the order flow layers: put them back.
+  restoreOrderFlowLayers(chart);
 }
 
 interface ProChartKitProps {
@@ -1644,6 +1650,15 @@ export const ProChartKit = ({
     visible: !replayMode,
   });
 
+  const orderFlowRec = useOrderFlow({
+    chart: chartRef.current,
+    chartGen,
+    symbol,
+    prefs: prefs.orderFlow,
+    visible: !replayMode,
+    dark: theme === "dark",
+  });
+
   const chartAlerts = useChartAlerts({
     chart: chartRef.current,
     chartGen,
@@ -1781,6 +1796,7 @@ export const ProChartKit = ({
           onRefresh={() => void optionsLevels.refresh()}
           fmtMoney={optionsLevels.fmtMoney}
         />
+        <OrderFlowPopover prefs={prefs.orderFlow} rec={orderFlowRec} replay={replayMode} />
         <ChartSettings 
           chart={chartRef.current}
           onRefresh={fetchAndLoadData}
@@ -1962,17 +1978,24 @@ export const ProChartKit = ({
             />
           </div>
         )}
-        <div 
-          ref={containerRef}
-          className="chart-container"
-          style={{ 
-            width: "100%", 
-            height: `${height}px`,
-            transform: 'translateZ(0)',
-            willChange: 'transform',
-            backfaceVisibility: 'hidden'
-          }}
-        />
+        <div className="flex flex-col md:flex-row">
+          <div className="flex-1 min-w-0">
+            <div 
+              ref={containerRef}
+              className="chart-container"
+              style={{ 
+                width: "100%", 
+                height: `${height}px`,
+                transform: 'translateZ(0)',
+                willChange: 'transform',
+                backfaceVisibility: 'hidden'
+              }}
+            />
+          </div>
+          {prefs.orderFlow.dom && !replayMode && (
+            <DomLadder rec={orderFlowRec} height={height} onClose={() => setOrderFlowPrefs({ dom: false })} />
+          )}
+        </div>
 
         {/* Replay Mode Indicator */}
         {replayMode && (
