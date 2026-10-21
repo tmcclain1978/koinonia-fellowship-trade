@@ -64,12 +64,8 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
       wsConnect();
       return;
     }
-
-    toast({
-      title: "Save First",
-      description: "Please save your credentials before testing",
-      variant: "destructive",
-    });
+    // A new SSID was typed: save it first (saving connects automatically).
+    await saveCredentials();
   };
 
   const saveCredentials = async () => {
@@ -130,11 +126,12 @@ const PocketOptionConnection = ({ onConnectionChange, isConnected }: PocketOptio
 
         toast({
           title: "Credentials saved",
-          description: "Your PocketOption SSID has been saved securely",
+          description: "Your PocketOption SSID has been saved. Connecting…",
         });
 
-        // Test connection after saving
-        await testConnection();
+        // Saved: hide the value and connect with the saved SSID.
+        setSsid("••••••••••••");
+        wsConnect();
       } else {
         toast({
           title: "No changes",
