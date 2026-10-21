@@ -50,6 +50,13 @@
       "when": 1792592112845,
       "tag": "0006_equity_history",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792583772519,
+      "tag": "0007_equity_history",
+      "breakpoints": true
     }
   ]
 }

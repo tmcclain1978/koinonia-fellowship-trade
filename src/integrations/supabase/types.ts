@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_equity_snapshots: {
+        Row: {
+          account_kind: string
+          account_ref: string
+          as_of_date: string
+          cash: number | null
+          created_at: string
+          equity: number
+          id: string
+          net_flows: number
+          positions_value: number | null
+          series_key: string
+          unpriced_positions: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_kind: string
+          account_ref: string
+          as_of_date: string
+          cash?: number | null
+          created_at?: string
+          equity: number
+          id?: string
+          net_flows?: number
+          positions_value?: number | null
+          series_key?: string
+          unpriced_positions?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_kind?: string
+          account_ref?: string
+          as_of_date?: string
+          cash?: number | null
+          created_at?: string
+          equity?: number
+          id?: string
+          net_flows?: number
+          positions_value?: number | null
+          series_key?: string
+          unpriced_positions?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_prediction_logs: {
         Row: {
           actual_close: number | null
@@ -163,7 +211,6 @@ export type Database = {
       }
       auto_trading_settings: {
         Row: {
-          notify_email: boolean
           ai_confirm: boolean
           allowed_symbols: string[] | null
           bot_mode: string
@@ -184,6 +231,7 @@ export type Database = {
           max_session_trades: number | null
           max_weekly_loss: number | null
           min_confidence_threshold: number | null
+          notify_email: boolean
           paper_capital: number
           paused: boolean
           pdt_guard: boolean
@@ -196,7 +244,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          notify_email?: boolean
           ai_confirm?: boolean
           allowed_symbols?: string[] | null
           bot_mode?: string
@@ -217,6 +264,7 @@ export type Database = {
           max_session_trades?: number | null
           max_weekly_loss?: number | null
           min_confidence_threshold?: number | null
+          notify_email?: boolean
           paper_capital?: number
           paused?: boolean
           pdt_guard?: boolean
@@ -229,7 +277,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          notify_email?: boolean
           ai_confirm?: boolean
           allowed_symbols?: string[] | null
           bot_mode?: string
@@ -250,6 +297,7 @@ export type Database = {
           max_session_trades?: number | null
           max_weekly_loss?: number | null
           min_confidence_threshold?: number | null
+          notify_email?: boolean
           paper_capital?: number
           paused?: boolean
           pdt_guard?: boolean
@@ -1531,6 +1579,7 @@ export type Database = {
           created_at: string
           id: string
           realized_pnl: number
+          reset_count: number
           starting_balance: number
           updated_at: string
           user_id: string
@@ -1540,6 +1589,7 @@ export type Database = {
           created_at?: string
           id?: string
           realized_pnl?: number
+          reset_count?: number
           starting_balance?: number
           updated_at?: string
           user_id: string
@@ -1549,6 +1599,7 @@ export type Database = {
           created_at?: string
           id?: string
           realized_pnl?: number
+          reset_count?: number
           starting_balance?: number
           updated_at?: string
           user_id?: string
@@ -2667,7 +2718,6 @@ export type Database = {
       }
       user_api_credentials: {
         Row: {
-          schwab_refresh_issued_at: string | null
           account_type: string | null
           account_value: number | null
           alpaca_api_key: string | null
@@ -2687,6 +2737,7 @@ export type Database = {
           schwab_access_token: string | null
           schwab_client_id: string | null
           schwab_client_secret: string | null
+          schwab_refresh_issued_at: string | null
           schwab_refresh_token: string | null
           schwab_token_expires_at: string | null
           td_client_id: string | null
@@ -2697,7 +2748,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          schwab_refresh_issued_at?: string | null
           account_type?: string | null
           account_value?: number | null
           alpaca_api_key?: string | null
@@ -2717,6 +2767,7 @@ export type Database = {
           schwab_access_token?: string | null
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
+          schwab_refresh_issued_at?: string | null
           schwab_refresh_token?: string | null
           schwab_token_expires_at?: string | null
           td_client_id?: string | null
@@ -2727,7 +2778,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          schwab_refresh_issued_at?: string | null
           account_type?: string | null
           account_value?: number | null
           alpaca_api_key?: string | null
@@ -2747,6 +2797,7 @@ export type Database = {
           schwab_access_token?: string | null
           schwab_client_id?: string | null
           schwab_client_secret?: string | null
+          schwab_refresh_issued_at?: string | null
           schwab_refresh_token?: string | null
           schwab_token_expires_at?: string | null
           td_client_id?: string | null
