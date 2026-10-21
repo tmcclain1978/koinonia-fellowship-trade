@@ -357,7 +357,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        message: error.message || "Prediction failed",
+        message: (error as any).message || "Prediction failed",
       }),
       {
         status: 400,

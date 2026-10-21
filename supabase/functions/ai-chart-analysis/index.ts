@@ -283,8 +283,8 @@ serve(async (req) => {
     
     const currentPrice = candles[candles.length - 1]?.close || 0;
     const recentCandles = candles.slice(-20);
-    const avgVolume = candles.slice(-50).reduce((sum, c) => sum + c.volume, 0) / 50;
-    const recentVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
+    const avgVolume = candles.slice(-50).reduce((sum: number, c: any) => sum + c.volume, 0) / 50;
+    const recentVolume = recentCandles.reduce((sum: number, c: any) => sum + c.volume, 0) / recentCandles.length;
     const volumeStrength = recentVolume / avgVolume;
     
     // Prepare context for AI prediction
@@ -398,7 +398,7 @@ Provide: 1) Direction (bullish/bearish/neutral), 2) Confidence (0-100), 3) Predi
     
   } catch (error) {
     console.error('Error in ai-chart-analysis:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as any).message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

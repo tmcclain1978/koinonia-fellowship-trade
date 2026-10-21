@@ -110,7 +110,7 @@ serve(async (req) => {
         tokenData = result.data;
       }
     } catch (tokenError) {
-      console.log('[schwab-quotes] Token fetch failed:', tokenError.message);
+      console.log('[schwab-quotes] Token fetch failed:', (tokenError as any).message);
     }
 
     if (!tokenData?.access_token) {
@@ -267,7 +267,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('[schwab-quotes] Error:', error.message);
+    console.error('[schwab-quotes] Error:', (error as any).message);
     
     // Always return mock data on any error - never return 500
     console.log('[schwab-quotes] Returning mock data due to error');

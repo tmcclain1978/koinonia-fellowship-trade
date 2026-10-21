@@ -296,12 +296,12 @@ serve(async (req) => {
   <div class="container">
     <div class="error-icon">✗</div>
     <p>Connection failed</p>
-    <p class="error-msg">${error.message}</p>
+    <p class="error-msg">${(error as any).message}</p>
     <p style="font-size: 14px; opacity: 0.7; margin-top: 16px;">This window will close automatically...</p>
   </div>
   <script>
     if (window.opener) {
-      window.opener.postMessage({ type: 'schwab-oauth-error', message: '${error.message.replace(/'/g, "\\'")}' }, '*');
+      window.opener.postMessage({ type: 'schwab-oauth-error', message: '${(error as any).message.replace(/'/g, "\\'")}' }, '*');
     }
     setTimeout(() => window.close(), 3000);
   </script>

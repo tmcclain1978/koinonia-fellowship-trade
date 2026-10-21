@@ -179,7 +179,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Backtest error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as any).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -199,7 +199,7 @@ async function fetchRealMarketData(
       const data = await fetchFromPolygon(symbol, startDate, endDate, timeframe, polygonKey);
       if (data.length > 0) return data;
     } catch (e) {
-      console.log("Polygon fetch failed:", e.message);
+      console.log("Polygon fetch failed:", (e as any).message);
     }
   }
 
@@ -216,7 +216,7 @@ async function fetchRealMarketData(
         return t >= start && t <= end;
       });
     } catch (e) {
-      console.log("Alpha Vantage fetch failed:", e.message);
+      console.log("Alpha Vantage fetch failed:", (e as any).message);
     }
   }
 

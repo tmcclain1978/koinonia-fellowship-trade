@@ -207,7 +207,7 @@ serve(async (req) => {
     console.error('Error fetching market data:', error);
     return new Response(
       JSON.stringify({
-        error: error.message,
+        error: (error as any).message,
       }),
       {
         status: 500,

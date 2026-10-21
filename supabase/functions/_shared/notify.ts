@@ -3,7 +3,7 @@
  * toast if the app is open) and optionally an email through Resend.
  * The same title+message isn't repeated within `dedupeMinutes`.
  */
-import { Resend } from "npm:resend@2.0.0";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 export interface Notice {
   type: "order_fill" | "risk_warning" | "system" | "info" | "price_alert";
