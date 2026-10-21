@@ -19,6 +19,8 @@ import TagManager from "@/components/journal/TagManager";
 import JournalImageUpload from "@/components/journal/JournalImageUpload";
 import { format } from "date-fns";
 import { exportToCSV, exportToPDF } from "@/utils/journalExport";
+import { matchesSource, type SourceFilter } from "@/lib/journal/botEntries";
+import { BotTradeBadge } from "@/components/journal/BotTradeBadge";
 
 interface JournalEntry {
   id: string;
@@ -33,12 +35,16 @@ interface JournalEntry {
   ai_suggestions: string[] | null;
   analyzed_at: string | null;
   chart_analysis: string | null;
+  bot_trade_id?: string | null;
 }
 
 const TradingJournal = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  // All / my own entries / entries the trading bot wrote.
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const visibleEntries = entries.filter((e) => matchesSource(e, sourceFilter));
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState<string | null>(null);
   
@@ -415,8 +421,8 @@ const TradingJournal = () => {
     }
   };
 
-  const totalEntries = entries.length;
-  const entriesThisMonth = entries.filter(e => {
+  const totalEntries = visibleEntries.length;
+  const entriesThisMonth = visibleEntries.filter(e => {
     const entryDate = new Date(e.entry_date);
     const now = new Date();
     return entryDate.getMonth() === now.getMonth() && entryDate.getFullYear() === now.getFullYear();
@@ -520,6 +526,7 @@ const TradingJournal = () => {
                                 <Tag className="w-2 h-2 inline mr-0.5" />
                                 {entry.entry_type}
                               </span>
+                              <BotTradeBadge entry={entry} />
                               <span className="text-xs text-muted-foreground ml-auto">
                                 {format(new Date(entry.entry_date), 'MMM d, yyyy')}
                               </span>
@@ -571,8 +578,25 @@ const TradingJournal = () => {
             </div>
           </div>
 
+          {/* Show: all / mine / bot */}
+          <div className="flex items-center gap-2 mb-4" data-testid="journal-source-filter">
+            <span className="text-sm text-muted-foreground">Show:</span>
+            {([["all", "All entries"], ["mine", "My entries"], ["bot", "Bot trades"]] as const).map(([v, label]) => (
+              <Button
+                key={v}
+                size="sm"
+                variant={sourceFilter === v ? "default" : "outline"}
+                onClick={() => setSourceFilter(v)}
+                data-testid={`journal-show-${v}`}
+              >
+                {label}
+                {v === "bot" && <span className="ml-1 text-xs opacity-80">({entries.filter((e) => matchesSource(e, "bot")).length})</span>}
+              </Button>
+            ))}
+          </div>
+
           {/* Journal Summary */}
-          <JournalSummary entries={entries} />
+          <JournalSummary entries={visibleEntries} />
 
           {/* Stats Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -591,7 +615,7 @@ const TradingJournal = () => {
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-2xl font-bold text-warning">
-                  {entries.filter(e => e.entry_type === 'trade').length}
+                  {visibleEntries.filter(e => e.entry_type === 'trade').length}
                 </p>
                 <p className="text-sm text-muted-foreground">Trade Entries</p>
               </CardContent>
@@ -768,7 +792,7 @@ const TradingJournal = () => {
                 Click on any highlighted date to view your journal entries for that day.
               </p>
               <JournalCalendar 
-                entries={entries} 
+                entries={visibleEntries} 
                 onSelectDate={handleSelectDate}
               />
             </div>
