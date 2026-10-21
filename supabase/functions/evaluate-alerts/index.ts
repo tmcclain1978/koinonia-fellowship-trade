@@ -11,7 +11,7 @@
 //   - a signed-in user ("Check now"): only that user's alerts.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "npm:resend@2.0.0";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 import { isCronCall } from "../_shared/internal-auth.ts";
 import { evaluateAlert, needsTimeframeBars, timeframeMs, type AlertRow, type Bar, type AlertTimeframe } from "../_shared/alert-eval.ts";
 import { aggregateCandles, isRegularSessionTime, etWallTimeToEpoch } from "../_shared/candle-buckets.ts";
