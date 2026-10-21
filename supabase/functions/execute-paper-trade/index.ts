@@ -56,7 +56,7 @@ serve(async (req) => {
     }
 
     // REAL quote — the fill price comes from the market, not the client.
-    const quote = await fetchQuote(supabase, user.id, symbol);
+    const quote = await fetchQuote(supabase, user.id, symbol, contractKey);
     if (!quote) return reject(`Unable to get a live quote for ${symbol}. Order not filled.`);
     const fillPrice = resolveFillPrice(action, quote, Number(slippageBps) || 0);
     if (!fillPrice || fillPrice <= 0) return reject(`No tradable price available for ${symbol}.`);

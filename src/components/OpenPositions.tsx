@@ -81,7 +81,10 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
   const handleSavePhroureoStrategy = async (config: PhroureoStrategyInput) => {
     if (!phroureoPosition) return;
     
-    await createStrategy(config, undefined, 'paper');
+    // Tie the strategy to the exact contract, so the server prices the option itself.
+    const isOption = !!phroureoPosition.strike;
+    const contractKey = isOption ? `${phroureoPosition.side} ${phroureoPosition.strike} ${phroureoPosition.expiration ?? ''}`.trim() : null;
+    await createStrategy({ ...config, contract_key: contractKey, multiplier: isOption ? 100 : 1 }, undefined, 'paper');
     setPhroureoDialogOpen(false);
     setPhroureoPosition(null);
     refreshStrategies();
@@ -494,7 +497,7 @@ export const OpenPositions = ({ positions, onPositionClick, onPositionClosed, on
           {phroureoPosition && (
             <PhroureoStrategyBuilder
               symbol={phroureoPosition.symbol}
-              side={phroureoPosition.side === 'CALL' ? 'long' : 'short'}
+              side={phroureoPosition.quantity < 0 ? 'short' : 'long'}
               entryPrice={phroureoPosition.entryPrice}
               quantity={phroureoPosition.quantity}
               currentPrice={phroureoPosition.currentPrice}

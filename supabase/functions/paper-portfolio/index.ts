@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unrealizedPnl, marketValue, buyingPower, liveEquity, type Position } from "../_shared/paper-account.ts";
 import { fetchQuote } from "../_shared/quote.ts";
-import { fetchOptionChain, findContract, type OptionChain } from "../_shared/option-quote.ts";
+import { serverQuote, type ServerQuote } from "../_shared/server-market.ts";
+import { getSchwabAccessToken } from "../_shared/schwab-token.ts";
 import { bsGreeks, yearsToExpiry } from "../_shared/greeks.ts";
 
 const RISK_FREE = 0.04;
@@ -46,14 +47,7 @@ serve(async (req) => {
     const liveList: Array<{ qty: number; mark: number; mult: number }> = [];
     let unrealizedTotal = 0;
     const totals = { delta: 0, gamma: 0, theta: 0, vega: 0 };
-    const chainCache = new Map<string, OptionChain | null>();
-    const getChain = async (sym: string) => {
-      if (chainCache.has(sym)) return chainCache.get(sym)!;
-      const c = await fetchOptionChain(supabase, sym);
-      chainCache.set(sym, c);
-      return c;
-    };
-
+    const deps = { userId: user.id, getToken: () => getSchwabAccessToken(supabase, user.id), polygonKey: Deno.env.get('POLYGON_API_KEY') ?? null };
     for (const r of rows || []) {
       const pos: Position = { qty: Number(r.quantity), avgCost: Number(r.avg_cost), mult: Number(r.multiplier) };
       const isOption = !!r.contract_key;
@@ -63,14 +57,17 @@ serve(async (req) => {
       let greeks: { delta: number; gamma: number; theta: number; vega: number } | null = null;
 
       if (isOption) {
-        const chain = await getChain(r.symbol);
-        const c = chain ? findContract(chain, r.contract_key) : null;
+        const c: ServerQuote | null = await serverQuote(deps, r.symbol, r.contract_key);
         if (c && c.mark && c.mark > 0) { mark = c.mark; source = 'schwab-option'; }
         else source = 'cost (no option quote)';
+        const parts = String(r.contract_key).trim().split(/\s+/);
+        const type = parts[0]?.toUpperCase() === 'PUT' ? 'PUT' : 'CALL';
+        const strike = Number(parts[1]);
+        const expiration = parts[2] || null;
 
-        if (c && chain?.underlyingPrice && c.iv && c.expiration) {
-          const T = yearsToExpiry(c.expiration);
-          const g = bsGreeks(chain.underlyingPrice, c.strike, T, RISK_FREE, c.iv, c.type === 'PUT' ? 'put' : 'call');
+        if (c && c.underlyingPrice && c.iv && expiration && strike > 0) {
+          const T = yearsToExpiry(expiration);
+          const g = bsGreeks(c.underlyingPrice, strike, T, RISK_FREE, c.iv, type === 'PUT' ? 'put' : 'call');
           const scale = pos.qty * pos.mult; // dollar Greeks for the position
           greeks = { delta: g.delta * scale, gamma: g.gamma * scale, theta: g.theta * scale, vega: g.vega * scale };
         }

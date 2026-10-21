@@ -1,8 +1,14 @@
-// Server-side quote resolution for paper trading. Tries, in order:
-//   1. schwab-quotes   (real bid/ask, needs the user's Schwab connection)
-//   2. alpaca-quotes   (real bid/ask, needs Alpaca)
-//   3. fetch-market-data (Alpha Vantage GLOBAL_QUOTE — broker-FREE last price)
-// Returns a normalized quote or null. Never trusts a client-supplied price.
+// Server-side quote for paper trading and stop checks. Real prices only:
+// Schwab (the user's own connection) for stocks and option contracts, Polygon
+// as a stock fallback. Returns null when no real price is available; callers
+// must then refuse to fill rather than guess. Never trusts a client price.
+//
+// (The previous version asked the schwab-quotes function, which can't see a
+// server caller's Schwab login and returned a list the code read as a map, so
+// the Schwab step never worked; it also priced option orders with the STOCK
+// quote.)
+import { getSchwabAccessToken } from "./schwab-token.ts";
+import { serverQuote, type ServerQuote } from "./server-market.ts";
 
 export interface NormalizedQuote {
   bid: number | null;
@@ -12,37 +18,20 @@ export interface NormalizedQuote {
   source: string;
 }
 
+/**
+ * @param supabase a client that can read this user's credentials (service role, or the user's own client)
+ * @param contractKey "CALL 150 2026-11-20" for an option contract; omit for the stock
+ */
 export async function fetchQuote(
   supabase: any,
   userId: string,
   symbol: string,
+  contractKey?: string | null,
 ): Promise<NormalizedQuote | null> {
-  // 1. Schwab
-  try {
-    const { data } = await supabase.functions.invoke("schwab-quotes", { body: { symbols: [symbol], userId } });
-    const q = data?.quotes?.[symbol];
-    if (q && (q.bidPrice || q.askPrice || q.lastPrice || q.mark)) {
-      return { bid: q.bidPrice ?? null, ask: q.askPrice ?? null, last: q.lastPrice ?? null, mark: q.mark ?? null, source: "schwab" };
-    }
-  } catch (_) { /* try next */ }
-
-  // 2. Alpaca
-  try {
-    const { data } = await supabase.functions.invoke("alpaca-quotes", { body: { symbols: [symbol] } });
-    const lq = data?.quotes?.[0]?.latestQuote;
-    if (lq && (lq.ap || lq.bp)) {
-      return { bid: lq.bp ?? null, ask: lq.ap ?? null, last: (lq.ap && lq.bp) ? (lq.ap + lq.bp) / 2 : null, mark: null, source: "alpaca" };
-    }
-  } catch (_) { /* try next */ }
-
-  // 3. Alpha Vantage (broker-free, last price only)
-  try {
-    const { data } = await supabase.functions.invoke("fetch-market-data", { body: { symbol, dataType: "quote" } });
-    const close = data?.data?.[0]?.close;
-    if (close && close > 0) {
-      return { bid: null, ask: null, last: close, mark: null, source: "alphavantage" };
-    }
-  } catch (_) { /* none available */ }
-
-  return null;
+  const q: ServerQuote | null = await serverQuote(
+    { userId, getToken: () => getSchwabAccessToken(supabase, userId), polygonKey: Deno.env.get("POLYGON_API_KEY") ?? null },
+    symbol,
+    contractKey,
+  );
+  return q ? { bid: q.bid, ask: q.ask, last: q.last, mark: q.mark, source: q.source } : null;
 }

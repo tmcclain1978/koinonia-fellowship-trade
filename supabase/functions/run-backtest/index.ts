@@ -80,8 +80,12 @@ serve(async (req) => {
       historicalData = await fetchRealMarketData(params.symbol, params.startDate, params.endDate, params.timeframe);
       console.log(`Fetched ${historicalData.length} real data points for ${params.symbol}`);
     } catch (error) {
-      console.log(`Real data fetch failed, using simulated data: ${error.message}`);
-      historicalData = generateHistoricalData(params.symbol, params.startDate, params.endDate, params.timeframe);
+      // A backtest on made-up prices says nothing about the strategy; refuse instead.
+      console.log(`Real data fetch failed: ${(error as Error).message}`);
+      return new Response(
+        JSON.stringify({ success: false, error: `Couldn't load real price history for ${params.symbol} (${(error as Error).message}). The backtest was not run.` }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (historicalData.length < 50) {

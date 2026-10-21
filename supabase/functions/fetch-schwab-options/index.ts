@@ -64,7 +64,7 @@ serve(async (req) => {
         console.log('Successfully obtained Schwab access token');
       }
     } catch (error) {
-      console.log('Could not get Schwab access token, using mock data:', error);
+      console.log('Could not get Schwab access token:', error);
     }
 
     // If we have an access token, call the real Schwab API
@@ -168,86 +168,24 @@ serve(async (req) => {
           console.error('Schwab API returned non-OK status:', schwabResponse.status);
         }
       } catch (schwabError) {
-        console.error('Schwab API error, falling back to mock data:', schwabError);
+        console.error('Schwab API error:', schwabError);
       }
     } else {
-      console.log('No access token available, using mock data');
+      console.log('No access token available');
     }
 
-    // Fallback to mock data for paper trading
-    // Generate realistic Friday expirations (weekly options expire on Fridays)
-    const currentDate = new Date();
-    const mockExpirations: string[] = [];
-    
-    // Find the next 4 Fridays
-    for (let i = 0; i < 4; i++) {
-      const daysUntilFriday = (5 - currentDate.getDay() + 7) % 7 || 7;
-      const nextFriday = new Date(currentDate);
-      nextFriday.setDate(currentDate.getDate() + daysUntilFriday + (i * 7));
-      mockExpirations.push(nextFriday.toISOString().split('T')[0]);
-    }
-    
-    // Also add monthly expirations (3rd Friday of next 2 months)
-    for (let monthOffset = 1; monthOffset <= 2; monthOffset++) {
-      const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + monthOffset, 1);
-      // Find 3rd Friday
-      let fridayCount = 0;
-      for (let day = 1; day <= 31; day++) {
-        const checkDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day);
-        if (checkDate.getMonth() !== targetMonth.getMonth()) break;
-        if (checkDate.getDay() === 5) {
-          fridayCount++;
-          if (fridayCount === 3) {
-            const expStr = checkDate.toISOString().split('T')[0];
-            if (!mockExpirations.includes(expStr)) {
-              mockExpirations.push(expStr);
-            }
-            break;
-          }
-        }
-      }
-    }
-    
-    console.log('Generated mock expirations:', mockExpirations);
-
-    const mockStrikes = [150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200];
-    const mockOptions = [];
-
-    for (const expiration of mockExpirations) {
-      for (const strike of mockStrikes) {
-        mockOptions.push({
-          type: 'CALL',
-          strike,
-          expiration,
-          bid: (strike * 0.05).toFixed(2),
-          ask: (strike * 0.06).toFixed(2),
-          volume: Math.floor(Math.random() * 1000),
-          openInterest: Math.floor(Math.random() * 5000),
-          impliedVolatility: (Math.random() * 0.5 + 0.2).toFixed(4),
-        });
-        mockOptions.push({
-          type: 'PUT',
-          strike,
-          expiration,
-          bid: (strike * 0.04).toFixed(2),
-          ask: (strike * 0.05).toFixed(2),
-          volume: Math.floor(Math.random() * 1000),
-          openInterest: Math.floor(Math.random() * 5000),
-          impliedVolatility: (Math.random() * 0.5 + 0.2).toFixed(4),
-        });
-      }
-    }
-
+    // No made-up chains: say plainly that real data isn't available.
+    // (This used to return a generated chain with fixed strikes 150-200 and
+    // random volume/IV, which paper trades could fill against.)
     return new Response(
-      JSON.stringify({ 
-        options: mockOptions,
-        source: 'mock',
-        note: 'Using mock data - complete Schwab OAuth in Settings for live data'
+      JSON.stringify({
+        options: [],
+        source: 'unavailable',
+        error: accessToken
+          ? 'Schwab did not return an option chain right now. Try again shortly.'
+          : 'Option chains need a Schwab connection. Connect Schwab in Settings.',
       }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {

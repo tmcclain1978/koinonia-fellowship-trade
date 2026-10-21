@@ -110,6 +110,10 @@ export interface PhroureoStrategyInput {
   quantity: number;
   position_id?: string;
   position_type?: PositionType;
+  /** Option contract ("CALL 150 2026-11-20"); null for shares. Prices are then option premiums. */
+  contract_key?: string | null;
+  /** 100 for option contracts, 1 for shares. */
+  multiplier?: number;
   
   // Trigger Settings
   profit_trigger_type: ProfitTriggerType;

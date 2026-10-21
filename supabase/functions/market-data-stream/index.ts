@@ -28,18 +28,10 @@ serve(async (req) => {
     }
 
     if (action === 'get_websocket_url') {
-      // Return the WebSocket URL for direct client connection
-      // Note: In production, you'd want to proxy this through your backend
-      console.log('📡 Returning Polygon WebSocket configuration');
+      // Never hand the Polygon API key to the browser (this endpoint is public:
+      // anyone could read the key from it). Clients poll get_quotes instead.
       return new Response(
-        JSON.stringify({
-          wsUrl: `wss://socket.polygon.io/stocks`,
-          authMessage: { action: 'auth', params: POLYGON_API_KEY },
-          subscribeFormat: (symbols: string[]) => ({
-            action: 'subscribe',
-            params: symbols.map(s => `T.${s}`).join(',') // Trades
-          }),
-        }),
+        JSON.stringify({ polling: true, error: 'Direct websocket is disabled; use polling.' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

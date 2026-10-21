@@ -94,6 +94,8 @@ export function usePhroureoStrategy(options: UsePhroureoStrategyOptions = {}) {
         side: config.side,
         entry_price: config.entry_price,
         quantity: config.quantity,
+        contract_key: config.contract_key ?? null,
+        multiplier: config.multiplier ?? 1,
         state: 'ARMED' as const,
         enabled: true,
         profit_trigger_type: config.profit_trigger_type,

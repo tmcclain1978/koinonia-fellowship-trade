@@ -425,6 +425,7 @@ export function BacktestingModule() {
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       if (data?.result) {
         setSelectedResult(data.result);

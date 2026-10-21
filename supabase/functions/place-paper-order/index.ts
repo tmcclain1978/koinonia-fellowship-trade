@@ -92,7 +92,7 @@ serve(async (req) => {
 
     // ---- MARKET: fill now ----
     if (orderType === 'market') {
-      const quote = await fetchQuote(supabase, user.id, symbol);
+      const quote = await fetchQuote(supabase, user.id, symbol, contractKey);
       if (!quote) return reject(`Unable to get a live quote for ${symbol}. Order not filled.`);
       const fillPrice = resolveFillPrice(action, quote, 0);
       if (!fillPrice || fillPrice <= 0) return reject(`No tradable price for ${symbol}.`);
@@ -114,7 +114,7 @@ serve(async (req) => {
     let initStop: number | null = Number(stopPrice) || null;
 
     if (orderType === 'trailing_stop' || !refForBp) {
-      const quote = await fetchQuote(supabase, user.id, symbol);
+      const quote = await fetchQuote(supabase, user.id, symbol, contractKey);
       const rp = quote ? refPrice(quote) : null;
       if (rp) {
         if (!refForBp) refForBp = rp;

@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,67 +23,45 @@ interface EconomicEvent {
   impact?: 'bullish' | 'bearish' | 'neutral';
 }
 
-// Generate mock economic calendar data
-const generateMockEvents = (): EconomicEvent[] => {
-  const events: EconomicEvent[] = [];
-  const now = new Date();
-  
-  const eventTemplates = [
-    { country: 'US', event: 'Non-Farm Payrolls', importance: 'high' as const, prev: '216K', forecast: '180K' },
-    { country: 'US', event: 'CPI m/m', importance: 'high' as const, prev: '0.3%', forecast: '0.2%' },
-    { country: 'US', event: 'FOMC Rate Decision', importance: 'high' as const, prev: '5.50%', forecast: '5.50%' },
-    { country: 'US', event: 'GDP q/q', importance: 'high' as const, prev: '3.3%', forecast: '2.5%' },
-    { country: 'US', event: 'Retail Sales m/m', importance: 'medium' as const, prev: '0.6%', forecast: '0.4%' },
-    { country: 'US', event: 'Initial Jobless Claims', importance: 'medium' as const, prev: '187K', forecast: '195K' },
-    { country: 'US', event: 'ISM Manufacturing PMI', importance: 'medium' as const, prev: '49.1', forecast: '49.5' },
-    { country: 'US', event: 'Consumer Confidence', importance: 'medium' as const, prev: '114.8', forecast: '112.0' },
-    { country: 'EU', event: 'ECB Rate Decision', importance: 'high' as const, prev: '4.50%', forecast: '4.50%' },
-    { country: 'EU', event: 'CPI y/y', importance: 'high' as const, prev: '2.8%', forecast: '2.6%' },
-    { country: 'UK', event: 'BoE Rate Decision', importance: 'high' as const, prev: '5.25%', forecast: '5.25%' },
-    { country: 'JP', event: 'BoJ Rate Decision', importance: 'high' as const, prev: '-0.10%', forecast: '-0.10%' },
-    { country: 'CN', event: 'GDP y/y', importance: 'high' as const, prev: '5.2%', forecast: '4.8%' },
-    { country: 'US', event: 'Core PPI m/m', importance: 'low' as const, prev: '0.0%', forecast: '0.2%' },
-    { country: 'US', event: 'Empire State Manufacturing', importance: 'low' as const, prev: '-14.5', forecast: '-5.0' },
-  ];
-  
-  // Generate events for next 14 days
-  for (let day = 0; day < 14; day++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + day);
-    
-    // Skip weekends
-    if (date.getDay() === 0 || date.getDay() === 6) continue;
-    
-    // Add 1-3 events per day
-    const numEvents = Math.floor(Math.random() * 3) + 1;
-    for (let e = 0; e < numEvents; e++) {
-      const template = eventTemplates[Math.floor(Math.random() * eventTemplates.length)];
-      const hours = 8 + Math.floor(Math.random() * 8);
-      const minutes = Math.random() > 0.5 ? 30 : 0;
-      
-      events.push({
-        id: `${day}-${e}`,
-        date: new Date(date),
-        time: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ET`,
-        country: template.country,
-        countryCode: template.country,
-        event: template.event,
-        importance: template.importance,
-        previous: template.prev,
-        forecast: template.forecast,
-        actual: day < 0 ? template.forecast : undefined,
-        impact: day < 0 ? (Math.random() > 0.5 ? 'bullish' : 'bearish') : undefined,
-      });
+const etTime = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+
+/** Real events from the fetch-economic-calendar function (Financial Modeling Prep). */
+function useEconomicEvents() {
+  const [events, setEvents] = useState<EconomicEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error: e } = await supabase.functions.invoke('fetch-economic-calendar', { body: {} });
+    if (e || data?.error) {
+      setError(e?.message ?? data.error);
+      setEvents([]);
+    } else {
+      setError(null);
+      setEvents(((data?.events ?? []) as Array<{ id: string; at: string; country: string; event: string; importance: EconomicEvent['importance']; previous: string; forecast: string; actual?: string }>).map((x) => ({
+        id: x.id,
+        date: new Date(x.at),
+        time: `${etTime.format(new Date(x.at))} ET`,
+        country: x.country,
+        countryCode: x.country,
+        event: x.event,
+        importance: x.importance,
+        previous: x.previous || '—',
+        forecast: x.forecast || '—',
+        actual: x.actual,
+      })));
     }
-  }
-  
-  return events.sort((a, b) => a.date.getTime() - b.date.getTime());
-};
+    setLoading(false);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  return { events, loading, error, reload: load };
+}
 
 const countryFlags: Record<string, string> = {
   'US': '🇺🇸',
   'EU': '🇪🇺',
   'UK': '🇬🇧',
+  'GB': '🇬🇧',
   'JP': '🇯🇵',
   'CN': '🇨🇳',
   'CA': '🇨🇦',
@@ -95,7 +74,7 @@ export function EconomicCalendar() {
   const [countryFilter, setCountryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   
-  const events = useMemo(() => generateMockEvents(), []);
+  const { events, loading, error, reload } = useEconomicEvents();
   
   const filteredEvents = useMemo(() => {
     return events.filter(event => {
@@ -156,14 +135,17 @@ export function EconomicCalendar() {
 
   return (
     <div className="space-y-6">
-      {/* Demo Data Notice */}
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
-        <Badge className="bg-yellow-500 text-black shrink-0">DEMO DATA</Badge>
-        <p className="text-sm text-muted-foreground">
-          This calendar displays sample economic events for demonstration. 
-          Real-time economic calendar data will be integrated with a live data feed.
+      {/* Data status */}
+      {error ? (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start justify-between gap-3">
+          <p className="text-sm text-muted-foreground">Economic calendar unavailable: {error}</p>
+          <Button size="sm" variant="outline" onClick={() => void reload()}><RefreshCw className="w-3 h-3 mr-1" />Retry</Button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {loading ? 'Loading economic events…' : `${events.length} events from Financial Modeling Prep. Times in New York time.`}
         </p>
-      </div>
+      )}
 
       {/* Filters */}
       <Card>
