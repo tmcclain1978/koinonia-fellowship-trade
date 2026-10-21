@@ -5,10 +5,10 @@
 //   - the user is taken from the verified JWT, never from the body, so a user
 //     can only ever run their OWN bot
 //   - only top-tier (enterprise) or admin users are allowed
-//   - it then calls run-trading-bot with the internal secret and the user's id,
-//     so the heavy logic lives in one place
+//   - it then calls bot-engine with the internal secret and the user's id
+//     (force: scan the latest bar now), so the logic lives in one place
 //
-// The scheduled fleet run is handled separately by pg_cron -> run-trading-bot.
+// The scheduled run is pg_cron -> bot-engine every minute.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
@@ -49,9 +49,9 @@ serve(async (req) => {
 
     // Delegate to the fleet runner, scoped to just this user, authenticated
     // with the internal secret.
-    const { data, error } = await supabase.functions.invoke("run-trading-bot", {
+    const { data, error } = await supabase.functions.invoke("bot-engine", {
       headers: internalHeaders(),
-      body: { targetUserId: user.id },
+      body: { targetUserId: user.id, force: true },
     });
 
     if (error) {

@@ -1,860 +1,225 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Bot, Loader2, OctagonX, Play, ScrollText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import Navigation from "@/components/Navigation";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Play, Pause, TrendingUp, TrendingDown, Activity, ArrowLeft, Target, Brain, LineChart, Newspaper, CheckCircle, XCircle, FlaskConical, Zap, Lightbulb, Search } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
-import AutoTradingSettings from "@/components/AutoTradingSettings";
-import Navigation from "@/components/Navigation";
-import RealTimeAnalysisDashboard from "@/components/RealTimeAnalysisDashboard";
-import DataSourceAccuracyTracker from "@/components/DataSourceAccuracyTracker";
-import BotScannerStatus from "@/components/BotScannerStatus";
-import BotStrategySelector from "@/components/BotStrategySelector";
-import { useTradingStats } from "@/hooks/useTradingStats";
+import { useBot, type BotEvent, type BotTrade } from "@/components/bot/useBot";
+import { BotSettingsForm } from "@/components/bot/BotSettingsForm";
+import { BotBacktest, Stat } from "@/components/bot/BotBacktest";
+import { RobinhoodLiveCard } from "@/components/bot/RobinhoodLiveCard";
 
-interface Trade {
-  id: string;
-  symbol: string;
-  action: string;
-  quantity: number;
-  price: number;
-  reasoning: string;
-  executed_at: string;
-  status: string;
-}
-
-interface PerformanceLog {
-  id: string;
-  symbol: string;
-  strategy: string;
-  entry_price: number;
-  discipline_score: number | null;
-  koinonia_signal_used: boolean | null;
-  chart_analysis_used: boolean | null;
-  live_price_at_entry: number | null;
-  screener_match_score: number | null;
-  patterns_detected: string[] | null;
-  sentiment_at_entry: string | null;
-  confidence_breakdown: any | null;
-  analysis_sources: string[] | null;
-  trade_opened_at: string;
-}
-
-interface BotStats {
-  totalTrades: number;
-  successRate: number;
-  profitLoss: number;
-  todayTrades: number;
-  avgConfidence: number;
-  koinoniaUsageRate: number;
-  chartAnalysisUsageRate: number;
-}
+const money = (v: number) => `${v < 0 ? "-" : ""}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+const KIND_STYLE: Record<string, string> = {
+  entry: "text-green-500", exit: "text-blue-400", error: "text-red-500", halt: "text-amber-500", veto: "text-amber-500",
+  skip: "text-muted-foreground", scan: "text-muted-foreground", signal: "text-foreground", stop_moved: "text-blue-400", info: "text-muted-foreground",
+};
 
 const TradingBot = () => {
   const navigate = useNavigate();
-  const { subscription } = useSubscription();
   const { toast } = useToast();
-  const { stats: tradingStats, reload: reloadStats } = useTradingStats();
-  const [botEnabled, setBotEnabled] = useState(false);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [performanceLogs, setPerformanceLogs] = useState<PerformanceLog[]>([]);
-  const [tradingMode, setTradingMode] = useState<"paper" | "live">("paper");
-  const [showLiveConfirmDialog, setShowLiveConfirmDialog] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [lastRunResult, setLastRunResult] = useState<string | null>(null);
-  const [botRunning, setBotRunning] = useState(false);
+  const { subscription } = useSubscription();
+  const bot = useBot();
+  const [running, setRunning] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [showScans, setShowScans] = useState(false);
+  const s = bot.settings;
 
-  useEffect(() => {
-    checkAuth();
-    loadBotStatus();
-    loadTradingMode();
-    loadTrades();
-    loadPerformanceLogs();
-  }, []);
-
-  // Manual, per-user run. Scheduled execution now happens server-side via
-  // cron (every 15 min, market hours) for every enabled enterprise user, so
-  // the bot keeps running even when this page is closed. This button only
-  // triggers an immediate run of THIS user's bot via run-my-bot.
-  const handleRunNow = async () => {
-    setBotRunning(true);
-    try {
-      console.log("[TradingBot] Triggering my bot run...");
-      const { data, error } = await supabase.functions.invoke("run-my-bot");
-      if (error) {
-        console.error("[TradingBot] Run error:", error);
-        setLastRunResult(`Error: ${error.message}`);
-      } else {
-        const summary = data?.result?.summary;
-        setLastRunResult(
-          `Screened: ${summary?.totalBots || 0} bot(s) | Trades attempted: ${summary?.totalTradesAttempted || 0} | No opportunities: ${summary?.noOpportunities || 0}`
-        );
-        loadTrades();
-        reloadStats();
-      }
-    } catch (err: any) {
-      console.error("[TradingBot] Exception:", err);
-      setLastRunResult(`Exception: ${err.message}`);
-    } finally {
-      setBotRunning(false);
-    }
-  };
-
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      navigate("/auth");
-    }
-  };
-
-  const loadBotStatus = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data } = await supabase
-        .from("auto_trading_settings")
-        .select("enabled")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-
-      if (data) {
-        setBotEnabled(data.enabled);
-      }
-    } catch (error) {
-      console.error("Error loading bot status:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadTradingMode = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data } = await supabase
-        .from("user_api_credentials")
-        .select("trading_mode")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-
-      if (data?.trading_mode) {
-        setTradingMode(data.trading_mode as "paper" | "live");
-      }
-    } catch (error) {
-      console.error("Error loading trading mode:", error);
-    }
-  };
-
-  const handleTradingModeToggle = (checked: boolean) => {
-    if (checked) {
-      // Switching to live - show confirmation dialog
-      setShowLiveConfirmDialog(true);
-      setConfirmText("");
-    } else {
-      // Switching to paper - no confirmation needed
-      updateTradingMode("paper");
-    }
-  };
-
-  const confirmLiveTrading = async () => {
-    if (confirmText !== "CONFIRM") return;
-    
-    await updateTradingMode("live");
-    setShowLiveConfirmDialog(false);
-    setConfirmText("");
-  };
-
-  const updateTradingMode = async (mode: "paper" | "live") => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { error } = await supabase
-        .from("user_api_credentials")
-        .upsert({
-          user_id: session.user.id,
-          trading_mode: mode,
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (error) throw error;
-
-      setTradingMode(mode);
-      toast({
-        title: `Execution Mode: ${mode === "paper" ? "Simulated" : "Live"}`,
-        description: mode === "paper" 
-          ? "Strategy will run in simulation — no real orders transmitted" 
-          : "⚠️ You have authorized live order transmission to your broker based on your strategy",
-        variant: mode === "live" ? "destructive" : "default",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const loadTrades = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data } = await supabase
-        .from("auto_trades_log")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("executed_at", { ascending: false })
-        .limit(20);
-
-      if (data) {
-        setTrades(data);
-      }
-    } catch (error) {
-      console.error("Error loading trades:", error);
-    }
-  };
-
-  const loadPerformanceLogs = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data } = await supabase
-        .from("bot_performance_log")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("trade_opened_at", { ascending: false })
-        .limit(10);
-
-      if (data) {
-        setPerformanceLogs(data as PerformanceLog[]);
-      }
-    } catch (error) {
-      console.error("Error loading performance logs:", error);
-    }
-  };
-
-  // Stats are now loaded from useTradingStats hook
-
-  const toggleBot = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const newStatus = !botEnabled;
-      
-      const { error } = await supabase
-        .from("auto_trading_settings")
-        .upsert({
-          user_id: session.user.id,
-          enabled: newStatus,
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (error) throw error;
-
-      setBotEnabled(newStatus);
-      toast({
-        title: newStatus ? "Automation Started" : "Automation Stopped",
-        description: newStatus
-          ? "Your configured strategy is now active — all actions follow your defined parameters"
-          : "Strategy automation has been paused",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  if (subscription?.tier !== "enterprise") {
+  if (subscription && subscription.tier !== "enterprise") {
     return (
       <>
         <Navigation />
         <div className="min-h-screen bg-background pt-16 p-6">
-        <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-6">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="w-6 h-6" />
-              Strategy Automation Tool
-            </CardTitle>
-            <CardDescription>
-              Upgrade to Enterprise to access the automated strategy execution tool
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => navigate("/pricing")}>
-              Upgrade to Enterprise
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    </>
+          <Card className="max-w-xl">
+            <CardHeader><CardTitle className="flex items-center gap-2"><Bot className="w-6 h-6" /> Trading bot</CardTitle></CardHeader>
+            <CardContent>The trading bot is part of the Enterprise plan.</CardContent>
+          </Card>
+        </div>
+      </>
     );
   }
+  if (bot.loading || !s) {
+    return (<><Navigation /><div className="min-h-screen bg-background pt-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div></>);
+  }
+
+  const live = s.bot_mode === "live";
+  const equity = Number(s.paper_capital) + bot.stats.realizedAll;
+  const lastRun = s.last_run_at ? `${fmtTime(s.last_run_at)} ET` : "not yet";
+
+  const runNow = async () => {
+    setRunning(true);
+    const { data, error } = await supabase.functions.invoke("run-my-bot");
+    setRunning(false);
+    const r = data?.result?.results?.[0];
+    if (error || data?.error) toast({ title: "Run failed", description: error?.message ?? data?.error, variant: "destructive" });
+    else toast({ title: "Bot ran", description: r?.error ?? r?.summary?.status ?? "done" });
+    void bot.reload();
+  };
+
+  const events = bot.events.filter((e) => showScans || e.kind !== "scan");
 
   return (
     <>
       <Navigation />
-      <div className="min-h-screen bg-background pt-16 p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-                <Bot className="w-8 h-8" />
-                Strategy Automation Tool
-              </h1>
-                <p className="text-muted-foreground">
-                  User-configured strategy execution — you define the rules, the tool follows them
-                </p>
-                {botEnabled && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant={botRunning ? "default" : "secondary"} className="text-xs">
-                      {botRunning ? "⏳ Scanning..." : "✅ Active — next scan in ~2 min"}
-                    </Badge>
-                    {lastRunResult && (
-                      <span className="text-xs text-muted-foreground">{lastRunResult}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+      <div className="min-h-screen bg-background pt-16 p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
+        <Button variant="ghost" onClick={() => navigate("/dashboard")}><ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard</Button>
 
-          <Button
-            onClick={toggleBot}
-            variant={botEnabled ? "destructive" : "default"}
-            size="lg"
-            disabled={loading}
-          >
-            {botEnabled ? (
-              <>
-                <Pause className="w-5 h-5 mr-2" />
-                Stop Bot
-              </>
-            ) : (
-              <>
-                <Play className="w-5 h-5 mr-2" />
-                Start Bot
-              </>
-            )}
-          </Button>
-
-          {botEnabled && (
-            <Button
-              onClick={handleRunNow}
-              variant="outline"
-              size="lg"
-              disabled={botRunning}
-              className="ml-3"
-            >
-              <Bot className="w-5 h-5 mr-2" />
-              {botRunning ? "Running..." : "Run Now"}
-            </Button>
-          )}
-        </div>
-
-        {/* Trading Mode Toggle */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  tradingMode === "paper" ? "bg-primary/10" : "bg-destructive/10"
-                }`}>
-                  {tradingMode === "paper" ? (
-                    <FlaskConical className="w-6 h-6 text-primary" />
-                  ) : (
-                    <Zap className="w-6 h-6 text-destructive" />
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg">Execution Mode</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {tradingMode === "paper" 
-                      ? "Simulated execution — no real money at risk" 
-                      : "⚠️ Live execution — orders will be transmitted to your broker per your instructions"}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <Label htmlFor="trading-mode" className={`font-medium ${tradingMode === "paper" ? "text-primary" : "text-muted-foreground"}`}>
-                  Paper
-                </Label>
-                <Switch
-                  id="trading-mode"
-                  checked={tradingMode === "live"}
-                  onCheckedChange={handleTradingModeToggle}
-                />
-                <Label htmlFor="trading-mode" className={`font-medium ${tradingMode === "live" ? "text-destructive" : "text-muted-foreground"}`}>
-                  Live
-                </Label>
-              </div>
-            </div>
-            
-            {tradingMode === "live" && (
-              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive font-medium">
-                  ⚠️ Live execution is enabled. Orders will be transmitted to your connected broker based on your configured strategy parameters. You remain fully responsible for all trading outcomes.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Enhanced Stats Cards */}
-        <div className="grid md:grid-cols-4 lg:grid-cols-7 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Trades
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground">
-                {tradingStats.totalTrades}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Success Rate
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-success">
-                {tradingStats.successRate}%
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Profit/Loss
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${tradingStats.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                ${tradingStats.profitLoss >= 0 ? '+' : ''}{tradingStats.profitLoss}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Today's Trades
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground">
-                {tradingStats.todayTrades}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <Target className="w-3 h-3" />
-                Avg Confidence
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {tradingStats.avgConfidence}%
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <Brain className="w-3 h-3" />
-                Koinonia Used
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {tradingStats.koinoniaUsageRate}%
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <LineChart className="w-3 h-3" />
-                Chart Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {tradingStats.chartAnalysisUsageRate}%
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Analysis Sources Card */}
-        <Card>
+        <Card className={live ? "border-red-500/60" : undefined}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5" />
-              Analysis Data Sources
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="w-6 h-6" /> Trading bot
+                <Badge variant={live ? "destructive" : "secondary"} data-testid="bot-mode">{live ? "LIVE · Robinhood" : "PAPER"}</Badge>
+                <Badge variant={s.enabled ? "default" : "outline"}>{s.enabled ? "On" : "Off"}</Badge>
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch id="bot-enabled" checked={!!s.enabled} onCheckedChange={(v) => void bot.save({ enabled: v })} data-testid="bot-enabled" />
+                  <Label htmlFor="bot-enabled">Bot on</Label>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => void runNow()} disabled={running}>
+                  {running ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Play className="w-4 h-4 mr-1" />} Run now
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => setCloseOpen(true)} disabled={bot.stats.open.length === 0} data-testid="bot-close-all">
+                  <OctagonX className="w-4 h-4 mr-1" /> Close all
+                </Button>
+              </div>
+            </div>
             <CardDescription>
-              Market data sources used to generate analytical insights for your review
+              Checks the market every minute from 9:30 to 4:00 ET on trading days, whether or not this page is open. Last run: {lastRun}
+              {s.last_status ? ` · ${s.last_status}` : ""}. Turning the bot off stops new trades; open trades are still managed until they close.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Brain className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">Koinonia Indicator</div>
-                  <div className="text-sm text-muted-foreground">Patterns & Signals</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <LineChart className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">AI Chart Analysis</div>
-                  <div className="text-sm text-muted-foreground">Support/Resistance</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Activity className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">Live Streaming</div>
-                  <div className="text-sm text-muted-foreground">Real-time Quotes</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Newspaper className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">News Sentiment</div>
-                  <div className="text-sm text-muted-foreground">Market Mood</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Lightbulb className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">AI Scenario Analysis</div>
-                  <div className="text-sm text-muted-foreground">Study Scenarios</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Search className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="font-medium">AI Research Analysis</div>
-                  <div className="text-sm text-muted-foreground">Educational Insights</div>
-                </div>
-              </div>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              <Stat label="Today's P&L (closed)" value={money(bot.stats.realizedToday)} tone={bot.stats.realizedToday >= 0 ? "up" : "down"} />
+              <Stat label="Trades today" value={`${bot.stats.todays.length} / ${s.max_daily_trades ?? 5}`} />
+              <Stat label="Open now" value={`${bot.stats.open.length} / ${s.max_open_positions}`} />
+              <Stat label="Win rate (all)" value={bot.stats.closed.length ? `${bot.stats.winRate.toFixed(0)}% · ${bot.stats.avgR >= 0 ? "+" : ""}${bot.stats.avgR.toFixed(2)}R` : "—"} />
+              <Stat label={live ? "Total P&L (live)" : "Paper account"} value={live ? money(bot.stats.realizedAll) : money(equity)} tone={bot.stats.realizedAll >= 0 ? "up" : "down"} />
             </div>
+            {bot.error && <p className="text-xs text-red-500">{bot.error}</p>}
+            <StrategyBlurb rr={Number(s.reward_risk)} />
           </CardContent>
         </Card>
 
-        {/* Strategy Selector - Choose built-in or custom */}
-        <BotStrategySelector />
+        <TradesCard title="Open trades" trades={bot.stats.open} empty="No open trades." />
+        <TradesCard title="Recent trades" trades={bot.trades.filter((t) => !["entering", "open", "exiting"].includes(t.status)).slice(0, 30)} empty="No closed trades yet." />
 
-        {/* Bot Scanner Status */}
-        <BotScannerStatus botEnabled={botEnabled} />
-
-        {/* Real-Time Analysis Dashboard */}
-        <RealTimeAnalysisDashboard />
-
-        {/* Data Source Accuracy Tracker */}
-        <DataSourceAccuracyTracker />
-
-        {/* Settings */}
-        <AutoTradingSettings />
-
-        {/* Recent Performance Logs */}
-        {performanceLogs.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Analysis Breakdown
-              </CardTitle>
-              <CardDescription>Recent trade analysis sources and confidence scores</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {performanceLogs.map((log) => (
-                  <div key={log.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="font-semibold text-lg">{log.symbol}</div>
-                        <Badge variant="outline">{log.strategy}</Badge>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-muted-foreground">Confidence Score</div>
-                        <div className="font-bold text-primary">{log.screener_match_score || 0}%</div>
-                      </div>
-                    </div>
-                    
-                    {/* Confidence Progress Bar */}
-                    <div className="mb-3">
-                      <Progress 
-                        value={log.screener_match_score || 0} 
-                        className="h-2"
-                      />
-                    </div>
-
-                    {/* Analysis Sources */}
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      <Badge 
-                        variant={log.koinonia_signal_used ? "default" : "secondary"}
-                        className="flex items-center gap-1"
-                      >
-                        {log.koinonia_signal_used ? (
-                          <CheckCircle className="w-3 h-3" />
-                        ) : (
-                          <XCircle className="w-3 h-3" />
-                        )}
-                        Koinonia
-                      </Badge>
-                      <Badge 
-                        variant={log.chart_analysis_used ? "default" : "secondary"}
-                        className="flex items-center gap-1"
-                      >
-                        {log.chart_analysis_used ? (
-                          <CheckCircle className="w-3 h-3" />
-                        ) : (
-                          <XCircle className="w-3 h-3" />
-                        )}
-                        Chart Analysis
-                      </Badge>
-                      <Badge 
-                        variant={log.analysis_sources?.includes("ai_trade_suggestions") ? "default" : "secondary"}
-                        className="flex items-center gap-1"
-                      >
-                        {log.analysis_sources?.includes("ai_trade_suggestions") ? (
-                          <CheckCircle className="w-3 h-3" />
-                        ) : (
-                          <XCircle className="w-3 h-3" />
-                        )}
-                        Trade Suggestions
-                      </Badge>
-                      <Badge 
-                        variant={log.analysis_sources?.includes("ai_stock_analysis") ? "default" : "secondary"}
-                        className="flex items-center gap-1"
-                      >
-                        {log.analysis_sources?.includes("ai_stock_analysis") ? (
-                          <CheckCircle className="w-3 h-3" />
-                        ) : (
-                          <XCircle className="w-3 h-3" />
-                        )}
-                        Stock Analysis
-                      </Badge>
-                      {log.live_price_at_entry && (
-                        <Badge variant="outline">
-                          Live: ${log.live_price_at_entry.toFixed(2)}
-                        </Badge>
-                      )}
-                      {log.sentiment_at_entry && (
-                        <Badge 
-                          variant={log.sentiment_at_entry === "bullish" ? "default" : 
-                                   log.sentiment_at_entry === "bearish" ? "destructive" : "secondary"}
-                        >
-                          {log.sentiment_at_entry}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Patterns Detected */}
-                    {log.patterns_detected && log.patterns_detected.length > 0 && (
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">Patterns: </span>
-                        {log.patterns_detected.join(", ")}
-                      </div>
-                    )}
-
-                    {/* Entry Info */}
-                    <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                      <span>Entry: ${log.entry_price?.toFixed(2)}</span>
-                      <span>Discipline: {((log.discipline_score || 0) * 100).toFixed(0)}%</span>
-                      <span>{new Date(log.trade_opened_at).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Execution History */}
         <Card>
           <CardHeader>
-            <CardTitle>Execution History</CardTitle>
-            <CardDescription>Orders transmitted based on your configured strategy parameters</CardDescription>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2"><ScrollText className="w-5 h-5" /> What the bot did and why</CardTitle>
+              <div className="flex items-center gap-2 text-xs">
+                <Switch id="bot-show-scans" checked={showScans} onCheckedChange={setShowScans} />
+                <Label htmlFor="bot-show-scans" className="text-xs">Show every scan</Label>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {trades.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  No executions yet. Configure and activate your strategy to begin.
-                </p>
-              ) : (
-                trades.map((trade) => (
-                  <div
-                    key={trade.id}
-                    className="border rounded-lg p-4 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          trade.action === 'BUY' ? 'bg-success/10' : 
-                          trade.action === 'pass' ? 'bg-muted' : 'bg-destructive/10'
-                        }`}>
-                          {trade.action === 'BUY' ? (
-                            <TrendingUp className="w-5 h-5 text-success" />
-                          ) : trade.action === 'pass' ? (
-                            <XCircle className="w-5 h-5 text-muted-foreground" />
-                          ) : (
-                            <TrendingDown className="w-5 h-5 text-destructive" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-foreground">
-                            {trade.action === 'pass' ? `PASS - ${trade.symbol}` : `${trade.action} ${trade.symbol}`}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {new Date(trade.executed_at).toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        {trade.action !== 'pass' && (
-                          <div className="font-semibold text-foreground">
-                            {trade.quantity} @ ${trade.price}
-                          </div>
-                        )}
-                        <Badge 
-                          variant={
-                            trade.status === 'executed' ? 'default' :
-                            trade.status === 'passed' ? 'secondary' :
-                            trade.status === 'confidence_below_threshold' ? 'secondary' :
-                            trade.status === 'failed' ? 'destructive' :
-                            'outline'
-                          }
-                        >
-                          {trade.status}
-                        </Badge>
-                      </div>
-                    </div>
-                    {trade.reasoning && (
-                      <div className="text-sm text-muted-foreground bg-muted/50 rounded p-3">
-                        <strong>Analysis Notes:</strong> {trade.reasoning}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
+            <div className="max-h-96 overflow-auto space-y-1 text-xs font-mono" data-testid="bot-log">
+              {events.length === 0 && <p className="text-muted-foreground font-sans">Nothing yet. The first scan happens at 9:45 ET.</p>}
+              {events.map((e: BotEvent) => (
+                <div key={e.id} className="flex gap-2">
+                  <span className="text-muted-foreground shrink-0">{fmtTime(e.created_at)}</span>
+                  <span className={`shrink-0 uppercase w-16 ${KIND_STYLE[e.kind] ?? ""}`}>{e.kind.replace("_", " ")}</span>
+                  {e.mode === "live" && <span className="text-red-500 shrink-0">LIVE</span>}
+                  <span className="whitespace-pre-wrap">{e.message}</span>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
+
+        <BotSettingsForm settings={s} onSave={async (p) => { const ok = await bot.save(p); toast({ title: ok ? "Settings saved" : "Couldn't save settings", variant: ok ? undefined : "destructive" }); return ok; }} />
+        <BotBacktest settings={s} />
+        <RobinhoodLiveCard settings={s} robinhood={bot.robinhood} onSave={async (p) => { const ok = await bot.save(p); if (ok) toast({ title: p.bot_mode === "live" ? "Live trading is on" : "Back to paper trading" }); return ok; }} onReload={() => void bot.reload()} />
       </div>
-      </div>
-      {/* Live Trading Confirmation Dialog */}
-      <Dialog open={showLiveConfirmDialog} onOpenChange={setShowLiveConfirmDialog}>
+
+      <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <Zap className="w-5 h-5" />
-              Enable Live Execution
-            </DialogTitle>
-            <DialogDescription className="text-left space-y-3 pt-2">
-              <p>
-                <strong className="text-destructive">⚠️ Warning:</strong> You are about to enable live execution mode. By proceeding, you authorize this tool to transmit orders to your brokerage based on the strategy parameters you have configured.
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>Real orders will be transmitted to your broker per your configured strategy</li>
-                <li>You are solely responsible for all trading decisions and outcomes</li>
-                <li>Orders cannot be reversed once executed by your broker</li>
-                <li>This tool does not provide investment advice or manage your portfolio</li>
-              </ul>
-              <p className="pt-2">
-                To confirm, type <strong className="font-mono bg-muted px-1 rounded">CONFIRM</strong> below:
-              </p>
+            <DialogTitle>Close all bot trades?</DialogTitle>
+            <DialogDescription>
+              The bot will sell every open bot position at market on its next run (within a minute) and turn itself off.
+              {live ? " These are real orders in your Robinhood Agentic account." : ""}
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="py-2">
-            <Input
-              placeholder="Type CONFIRM to enable live execution"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
-              className="font-mono"
-            />
-          </div>
-          
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowLiveConfirmDialog(false);
-                setConfirmText("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmLiveTrading}
-              disabled={confirmText !== "CONFIRM"}
-            >
-              I Authorize Live Execution
-            </Button>
+            <Button variant="outline" onClick={() => setCloseOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={async () => {
+              await bot.save({ flatten_requested_at: new Date().toISOString(), enabled: false });
+              setCloseOpen(false);
+              await supabase.functions.invoke("run-my-bot");
+              void bot.reload();
+            }}>Close all now</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
 };
+
+function StrategyBlurb({ rr }: { rr: number }) {
+  return (
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer">How the bot decides</summary>
+      <div className="mt-2 space-y-1">
+        <p><strong>Buys only, closes everything by 3:50 pm ET</strong> (12:50 on early-close days). Nothing is held overnight.</p>
+        <p>Every 5 minutes (9:45 am – 3:00 pm) it looks for a stock that's going up today and just took a small dip: price above VWAP, the 9-bar average above the 21-bar
+          average, a recent pullback to the 21-bar average, and now a green bar that breaks the last bar's high with normal-or-better volume.</p>
+        <p>The stop goes just under the dip. The target is {rr}× the risk. Share count = (account × risk %) ÷ (entry − stop), capped by your max position.</p>
+        <p>Then the AI double-check (if on) can say skip. Daily loss limit, trade limits, one entry per stock per day, and the day-trade guard all apply.</p>
+      </div>
+    </details>
+  );
+}
+
+function TradesCard({ title, trades, empty }: { title: string; trades: BotTrade[]; empty: string }) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <CardContent>
+        {trades.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : (
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-left text-muted-foreground">
+                <th className="p-2">Symbol</th><th className="p-2">Status</th><th className="p-2">Opened</th><th className="p-2 text-right">Shares</th>
+                <th className="p-2 text-right">Entry</th><th className="p-2 text-right">Stop</th><th className="p-2 text-right">Target</th>
+                <th className="p-2 text-right">Exit</th><th className="p-2">Why</th><th className="p-2 text-right">P&L</th>
+              </tr></thead>
+              <tbody>
+                {trades.map((t) => (
+                  <tr key={t.id} className="border-t" data-testid="bot-trade-row">
+                    <td className="p-2 font-medium">{t.symbol}{t.mode === "live" && <span className="ml-1 text-red-500">LIVE</span>}</td>
+                    <td className="p-2">{t.status}{t.note ? <span className="block text-[10px] text-amber-500">{t.note}</span> : null}</td>
+                    <td className="p-2">{fmtTime(t.opened_at)}</td>
+                    <td className="p-2 text-right">{Number(t.quantity)}</td>
+                    <td className="p-2 text-right">{t.entry_price ? Number(t.entry_price).toFixed(2) : "…"}</td>
+                    <td className="p-2 text-right">{Number(t.stop_price).toFixed(2)}</td>
+                    <td className="p-2 text-right">{Number(t.target_price).toFixed(2)}</td>
+                    <td className="p-2 text-right">{t.exit_price ? Number(t.exit_price).toFixed(2) : ""}</td>
+                    <td className="p-2">{t.exit_reason?.replace(/_/g, " ") ?? ""}</td>
+                    <td className={`p-2 text-right ${(Number(t.pnl) || 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      {t.pnl !== null ? `${money(Number(t.pnl))}${t.r_multiple !== null ? ` (${Number(t.r_multiple) >= 0 ? "+" : ""}${Number(t.r_multiple)}R)` : ""}` : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default TradingBot;
