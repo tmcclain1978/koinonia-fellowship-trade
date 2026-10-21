@@ -168,3 +168,9 @@ verify_jwt = false
 
 [functions.robinhood-bot-check]
 verify_jwt = true
+
+[functions.phroureo-engine]
+verify_jwt = false
+
+[functions.evaluate-alerts]
+verify_jwt = false

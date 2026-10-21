@@ -41,7 +41,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        message: error.message || "Validation failed" 
+        message: error instanceof Error ? error.message : "Validation failed" 
       }),
       { 
         status: 400,
