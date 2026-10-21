@@ -39,7 +39,7 @@ import { applyVolumeProfileToChart, calculateVolumeProfile, clearVolumeProfileOv
 import { toast } from "sonner";
 import { IndicatorSettingsMap, getDefaultIndicatorSettings } from "@/types/indicator";
 import { useChartCrosshairSync, CrosshairData } from "@/hooks/useChartCrosshairSync";
-import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS } from "./indicators/registry";
+import { registerKoinoniaIndicators, resolveIndicator, figureCount, RETIRED_INDICATOR_IDS, setCustomIndicators, customIndicatorsVersion } from "./indicators/registry";
 import { useChartPrefs, setChartPrefs, setSignalPrefs, type SignalLineStyle as PrefsSignalLineStyle } from "./state/chartPrefs";
 import { restoreDrawings, fetchNewerCloudDrawings, retireChart, snapshotDrawings } from "./state/chartDrawings";
 import { registerKoinoniaOverlays } from "./overlays/registry";
@@ -92,7 +92,7 @@ const appliedIndicators = new WeakMap<Chart, string>();
 
 function applyIndicatorsToChart(chart: Chart, indicators: string[], settings: IndicatorSettingsMap) {
   // Skip if this chart already shows exactly this selection (indicators survive data reloads).
-  const key = JSON.stringify([indicators, indicators.map((id) => settings[id] ?? null)]);
+  const key = JSON.stringify([indicators, indicators.map((id) => settings[id] ?? null), customIndicatorsVersion()]);
   if (appliedIndicators.get(chart) === key) return;
   appliedIndicators.set(chart, key);
   chart.removeIndicator();
@@ -171,6 +171,8 @@ export const ProChartKit = ({
   // All chart preferences live in one shared store (./state/chartPrefs):
   // saved locally right away and synced to the cloud when available.
   const prefs = useChartPrefs();
+  // Custom indicators must be registered before any chart draws them.
+  setCustomIndicators(prefs.customIndicators);
   const selectedIndicators = prefs.indicators.filter((id) => !RETIRED_INDICATOR_IDS.has(id));
   const indicatorSettings = prefs.indicatorSettings;
   // Immediate refs so callbacks never read a stale selection.
@@ -1598,7 +1600,7 @@ export const ProChartKit = ({
 
   // Keep every chart in step with the shared selection (e.g. multi-timeframe
   // view: turning an indicator on in one chart shows it in all of them).
-  const indicatorsKey = JSON.stringify([selectedIndicators, indicatorSettings]);
+  const indicatorsKey = JSON.stringify([selectedIndicators, indicatorSettings, customIndicatorsVersion()]);
   useEffect(() => {
     if (!chartRef.current || isInitialLoadRef.current) return;
     applyIndicatorsToChart(chartRef.current, selectedIndicatorsRef.current, indicatorSettingsRef.current);

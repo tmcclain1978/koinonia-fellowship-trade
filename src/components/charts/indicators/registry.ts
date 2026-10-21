@@ -10,6 +10,7 @@
  */
 import { registerIndicator, type KLineData } from 'klinecharts';
 import * as C from './calc';
+import { CUSTOM_PREFIX, registerCustomIndicators, templateName, type CustomIndicatorDef } from '../custom/customIndicators';
 
 type FigureType = 'line' | 'bar';
 interface FigureDef {
@@ -262,8 +263,30 @@ const BY_NAME = new Map(T.map((t) => [t.name, t]));
 /** Panel ids that are intentionally unsupported (need data we don't have). */
 export const RETIRED_INDICATOR_IDS = new Set(['Correlation', 'Beta', 'FibRetrace']);
 
+/* ---- custom indicators ------------------------------------------------------ */
+
+const customDefs = new Map<string, CustomIndicatorDef>();
+
+/** Make the user's custom indicators available (registers their chart templates). */
+export function setCustomIndicators(defs: CustomIndicatorDef[]): void {
+  customDefs.clear();
+  for (const d of defs) customDefs.set(d.id, d);
+  registerCustomIndicators(defs);
+}
+
+/** Changes whenever any custom definition changes (charts re-apply indicators then). */
+export const customIndicatorsVersion = (): string =>
+  JSON.stringify(Array.from(customDefs.values()).map((d) => [d.id, d.updatedAt]));
+
+export const customDefFor = (panelId: string) => (panelId.startsWith(CUSTOM_PREFIX) ? customDefs.get(panelId.slice(CUSTOM_PREFIX.length)) : undefined);
+
 export function resolveIndicator(panelId: string): ResolvedIndicator | null {
   if (panelId === 'Volume') return { name: 'VOL', overlay: false, paneId: 'vol_pane' };
+  if (panelId.startsWith(CUSTOM_PREFIX)) {
+    const d = customDefFor(panelId);
+    if (!d) return null;
+    return { name: templateName(d.id), overlay: d.overlay, paneId: d.overlay ? undefined : `custom_${d.id}_pane` };
+  }
   let name = EXACT[panelId];
   if (!name) name = PREFIX.find(([p]) => panelId.startsWith(p))?.[1] ?? '';
   const t = name ? BY_NAME.get(name) : undefined;
@@ -280,6 +303,12 @@ export function resolveIndicator(panelId: string): ResolvedIndicator | null {
 }
 
 /** Line count of a template; used to size style arrays. */
-export const figureCount = (name: string): number => BY_NAME.get(name)?.figures.filter((f) => f.type !== 'bar').length ?? 1;
+export const figureCount = (name: string): number => {
+  if (name.startsWith('KF_CUSTOM_')) {
+    const d = customDefs.get(name.slice('KF_CUSTOM_'.length));
+    return d ? d.plots.filter((p) => p.type !== 'bar').length || 1 : 1;
+  }
+  return BY_NAME.get(name)?.figures.filter((f) => f.type !== 'bar').length ?? 1;
+};
 
 export const INDICATOR_TEMPLATES = T;

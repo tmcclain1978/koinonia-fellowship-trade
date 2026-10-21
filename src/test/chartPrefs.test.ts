@@ -55,6 +55,7 @@ describe("chart preferences", () => {
         targetWidth: 2,
         priceLabels: false,
       },
+      customIndicators: [],
     });
   });
 

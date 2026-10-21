@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TrendingUp, Search, Layers, LayoutPanelTop, Settings2, Sun, Moon } from "lucide-react";
+import { TrendingUp, Search, Layers, LayoutPanelTop, Settings2, Sun, Moon, Code2, Pencil, Trash2, Plus, AlertTriangle } from "lucide-react";
+import { setChartPrefs, useChartPrefs } from "./state/chartPrefs";
+import { CUSTOM_PREFIX, customErrors, type CustomIndicatorDef } from "./custom/customIndicators";
+import { CustomIndicatorEditor } from "./custom/CustomIndicatorEditor";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -291,7 +294,8 @@ const CATEGORIES = [
   "Volume",
   "Statistical",
   "Oscillators",
-  "Support/Resistance"
+  "Support/Resistance",
+  "Custom"
 ];
 
 export const IndicatorPanel = ({ 
@@ -304,6 +308,38 @@ export const IndicatorPanel = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [editingIndicator, setEditingIndicator] = useState<string | null>(null);
+  const { customIndicators } = useChartPrefs();
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingCustom, setEditingCustom] = useState<CustomIndicatorDef | null>(null);
+  const customEntries: IndicatorDefinition[] = customIndicators.map((d) => ({
+    id: `${CUSTOM_PREFIX}${d.id}`,
+    label: d.name,
+    category: "Custom",
+    description: `Your indicator: ${d.plots.map((p) => p.title).join(", ")}`,
+    displayType: d.overlay ? "overlay" : "pane",
+  }));
+  const allIndicators = [...AVAILABLE_INDICATORS, ...customEntries];
+
+  const openEditor = (def: CustomIndicatorDef | null) => {
+    setEditingCustom(def);
+    setEditorOpen(true);
+  };
+  const saveCustom = (def: CustomIndicatorDef) => {
+    const isNew = !customIndicators.some((d) => d.id === def.id);
+    setChartPrefs((prev) => ({
+      ...prev,
+      customIndicators: isNew ? [...prev.customIndicators, def] : prev.customIndicators.map((d) => (d.id === def.id ? def : d)),
+    }));
+    setEditorOpen(false);
+    const id = `${CUSTOM_PREFIX}${def.id}`;
+    if (!selectedRef.current.includes(id)) handleToggle(id);
+  };
+  const deleteCustom = (def: CustomIndicatorDef) => {
+    if (!confirm(`Delete the custom indicator "${def.name}"?`)) return;
+    const id = `${CUSTOM_PREFIX}${def.id}`;
+    if (selectedRef.current.includes(id)) handleToggle(id);
+    setChartPrefs((prev) => ({ ...prev, customIndicators: prev.customIndicators.filter((d) => d.id !== def.id) }));
+  };
 
   // Keep an immediate, up-to-date reference so rapid clicks don't lose selections
   const selectedRef = useRef<string[]>(selectedIndicators);
@@ -424,7 +460,7 @@ export const IndicatorPanel = ({
     const currentSelected = selectedRef.current;
     const currentSettings = settingsRef.current;
 
-    const categoryIndicators = AVAILABLE_INDICATORS
+    const categoryIndicators = allIndicators
       .filter((ind) => ind.category === category)
       .map((ind) => ind.id);
 
@@ -444,7 +480,7 @@ export const IndicatorPanel = ({
     }
   };
 
-  const filteredIndicators = AVAILABLE_INDICATORS.filter(indicator => {
+  const filteredIndicators = allIndicators.filter(indicator => {
     const matchesSearch = indicator.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           indicator.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === "All" || indicator.category === activeCategory;
@@ -510,6 +546,22 @@ export const IndicatorPanel = ({
                 <Settings2 className={`w-3.5 h-3.5 ${isEditing ? 'text-primary' : 'text-muted-foreground'}`} />
               </Button>
             )}
+            {indicator.id.startsWith(CUSTOM_PREFIX) && (() => {
+              const def = customIndicators.find((d) => `${CUSTOM_PREFIX}${d.id}` === indicator.id);
+              if (!def) return null;
+              const err = customErrors.get(def.id);
+              return (
+                <>
+                  {err && <span title={err}><AlertTriangle className="w-3.5 h-3.5 text-amber-500" /></span>}
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Edit" onClick={(e) => { e.stopPropagation(); openEditor(def); }} data-testid="custom-edit">
+                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Delete" onClick={(e) => { e.stopPropagation(); deleteCustom(def); }} data-testid="custom-delete">
+                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                  </Button>
+                </>
+              );
+            })()}
             <DisplayTypeBadge type={indicator.displayType} />
           </div>
         </div>
@@ -610,6 +662,14 @@ export const IndicatorPanel = ({
           
           <ScrollArea className="h-[320px]">
             <div className="p-4 space-y-4">
+              {(activeCategory === "Custom" || activeCategory === "All") && (
+                <div className="flex items-center justify-between rounded border border-dashed p-2">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1"><Code2 className="w-3.5 h-3.5" /> Write your own indicator</span>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openEditor(null)} data-testid="custom-new">
+                    <Plus className="w-3.5 h-3.5 mr-1" /> New
+                  </Button>
+                </div>
+              )}
               {activeCategory === "All" ? (
                 Object.entries(groupedIndicators).map(([category, indicators]) => (
                   <div key={category} className="space-y-2">
@@ -651,7 +711,7 @@ export const IndicatorPanel = ({
             <div className="text-xs text-muted-foreground mb-2">Active Indicators:</div>
             <div className="flex flex-wrap gap-1">
               {selectedIndicators.slice(0, 6).map(id => {
-                const indicator = AVAILABLE_INDICATORS.find(i => i.id === id);
+                const indicator = allIndicators.find(i => i.id === id);
                 const settings = getIndicatorSettings(id);
                 return (
                   <span 
@@ -683,6 +743,7 @@ export const IndicatorPanel = ({
           </div>
         )}
       </PopoverContent>
+      <CustomIndicatorEditor open={editorOpen} initial={editingCustom} onClose={() => setEditorOpen(false)} onSave={saveCustom} />
     </Popover>
   );
 };

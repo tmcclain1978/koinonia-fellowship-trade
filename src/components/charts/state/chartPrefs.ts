@@ -7,6 +7,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { IndicatorSettingsMap } from "@/types/indicator";
 import { cloudLoad, cloudSave } from "./chartCloud";
+import { normalizeCustom, type CustomIndicatorDef } from "../custom/customIndicators";
 
 export type SignalLineStyle = "solid" | "dashed" | "dotted";
 export type PriceScaleMode = "normal" | "logarithm" | "percentage";
@@ -52,6 +53,8 @@ export interface ChartPrefs {
   /** Levels from the option chain (expected move, gamma, max pain…). */
   options: OptionsLevelPrefs;
   signal: SignalStylePrefs;
+  /** Indicators the user wrote themselves (Indicators → Custom). */
+  customIndicators: CustomIndicatorDef[];
 }
 
 export const DEFAULT_PREFS: ChartPrefs = {
@@ -78,6 +81,7 @@ export const DEFAULT_PREFS: ChartPrefs = {
     targetWidth: 1,
     priceLabels: true,
   },
+  customIndicators: [],
 };
 
 const STORAGE_KEY = "koinonia-chart-prefs-v2";
@@ -130,6 +134,7 @@ export function normalizePrefs(raw: unknown): ChartPrefs {
       targetWidth: clampNum(s.targetWidth, 1, 6, d.signal.targetWidth),
       priceLabels: typeof s.priceLabels === "boolean" ? s.priceLabels : d.signal.priceLabels,
     },
+    customIndicators: normalizeCustom((r as { customIndicators?: unknown }).customIndicators),
   };
 }
 
