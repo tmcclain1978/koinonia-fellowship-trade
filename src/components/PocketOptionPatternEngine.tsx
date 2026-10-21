@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { addTick, type TickCandle } from "@/lib/marketData/tickCandles";
+import { poAsset } from "@/lib/pocketoption/poClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { usePocketOptionWebSocket } from "@/hooks/usePocketOptionWebSocket";
+import { usePocketOptionWebSocket, poClient } from "@/hooks/usePocketOptionWebSocket";
 import { usePocketOptionCandles } from "@/hooks/usePocketOptionCandles";
 import { Loader2, TrendingUp, TrendingDown, Activity, BarChart3, Wifi, WifiOff, Brain } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,16 +48,25 @@ const PocketOptionPatternEngine = () => {
   const [activeTab, setActiveTab] = useState<string>("predictions");
   const { toast } = useToast();
   
-  const { 
-    isConnected, 
-    balance, 
-    prices, 
-    connect, 
-    disconnect, 
+  const {
+    isConnected,
+    isReady,
+    isDemo,
+    balance,
+    prices,
+    history,
+    connect,
+    disconnect,
     executeTrade,
-    changeBalanceMode,
-    subscribeToCandles 
+    subscribeToCandles,
   } = usePocketOptionWebSocket();
+  // PocketOption's name for the pair: EURUSD while forex is open, EURUSD_otc otherwise.
+  const [asset, setAsset] = useState(() => poAsset(POPULAR_PAIRS[0]));
+  useEffect(() => {
+    setAsset(poAsset(selectedPair));
+    const t = setInterval(() => setAsset(poAsset(selectedPair)), 60_000);
+    return () => clearInterval(t);
+  }, [selectedPair]);
 
   const {
     recentCandles,
@@ -75,42 +85,53 @@ const PocketOptionPatternEngine = () => {
   }, [selectedPair]);
 
   useEffect(() => {
-    // Subscribe to price updates for selected pair when connected
-    if (isConnected && selectedPair) {
-      const assetCode = selectedPair.replace('/', '');
-      subscribeToCandles(assetCode);
-    }
-  }, [isConnected, selectedPair, subscribeToCandles]);
+    // Watch the selected pair once logged in (PocketOption sends recent candles, then live prices).
+    if (isReady) subscribeToCandles(asset, 60);
+  }, [isReady, asset, subscribeToCandles]);
 
-  // Build real 1-minute candles from price ticks. Each tick used to be saved
-  // as its own "candle" with open = high = low = close, so the history the
-  // AI prediction reads was flat lines. Now a candle is saved once its minute ends.
+  // Candles PocketOption sends for this pair (its own history): save the
+  // finished ones (the newest may still be forming).
+  const savedUpTo = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const list = history[asset];
+    if (!list?.length) return;
+    const minuteStart = Math.floor(Date.now() / 60_000) * 60_000;
+    const from = savedUpTo.current[asset] ?? 0;
+    for (const c of list) {
+      if (c.time <= from || c.time >= minuteStart) continue;
+      addCandle({ pair: selectedPair, timestamp: new Date(c.time), open: c.open, high: c.high, low: c.low, close: c.close, timeframe: '1m' });
+      savedUpTo.current[asset] = Math.max(savedUpTo.current[asset] ?? 0, c.time);
+    }
+  }, [history, asset, selectedPair, addCandle]);
+
+  // Live prices -> 1-minute candles, saved when each minute ends.
   const tickCandleRef = useRef<TickCandle | null>(null);
   useEffect(() => {
     tickCandleRef.current = null; // new pair or reconnect: start a fresh minute
-  }, [selectedPair, isConnected]);
+  }, [asset, isReady]);
   useEffect(() => {
-    const assetCode = selectedPair.replace('/', '');
-    const price = prices[assetCode];
-    if (!price || !isConnected) return;
-    const { candle, finished } = addTick(tickCandleRef.current, price, Date.now());
-    tickCandleRef.current = candle;
-    if (finished) {
-      addCandle({
-        pair: selectedPair,
-        timestamp: new Date(finished.start),
-        open: finished.open,
-        high: finished.high,
-        low: finished.low,
-        close: finished.close,
-        timeframe: '1m',
-      });
-    }
-  }, [prices, selectedPair, isConnected, addCandle]);
+    return poClient.onTick((t) => {
+      if (t.asset !== asset) return;
+      const { candle, finished } = addTick(tickCandleRef.current, t.price, t.time);
+      tickCandleRef.current = candle;
+      if (finished && finished.start > (savedUpTo.current[asset] ?? 0)) {
+        savedUpTo.current[asset] = finished.start;
+        addCandle({
+          pair: selectedPair,
+          timestamp: new Date(finished.start),
+          open: finished.open,
+          high: finished.high,
+          low: finished.low,
+          close: finished.close,
+          timeframe: '1m',
+        });
+      }
+    });
+  }, [asset, selectedPair, addCandle]);
 
   // Handle trade execution from prediction panel
   const handleExecuteFromPrediction = useCallback((direction: 'call' | 'put', amount: number) => {
-    if (!isConnected) {
+    if (!isReady) {
       toast({
         title: "Not Connected",
         description: "Please connect to PocketOption first",
@@ -119,14 +140,13 @@ const PocketOptionPatternEngine = () => {
       return;
     }
 
-    const assetCode = selectedPair.replace('/', '');
     executeTrade({
-      asset: assetCode,
+      asset,
       action: direction,
       amount,
       duration: 60,
     });
-  }, [isConnected, selectedPair, executeTrade, toast]);
+  }, [isReady, asset, executeTrade, toast]);
 
   const loadPatterns = async () => {
     setLoading(true);
@@ -179,7 +199,7 @@ const PocketOptionPatternEngine = () => {
   };
 
   const handleExecuteTrade = async (pattern: Pattern) => {
-    if (!isConnected) {
+    if (!isReady) {
       toast({
         title: "Not Connected",
         description: "Please connect to PocketOption WebSocket first",
@@ -189,7 +209,7 @@ const PocketOptionPatternEngine = () => {
     }
 
     try {
-      const assetCode = pattern.pair.replace('/', '');
+      const assetCode = poAsset(pattern.pair);
       
       executeTrade({
         asset: assetCode,
@@ -222,7 +242,7 @@ const PocketOptionPatternEngine = () => {
                 {isConnected ? (
                   <>
                     <Wifi className="w-3 h-3 mr-1" />
-                    Connected
+                    {isReady ? "Logged in" : "Logging in…"}
                   </>
                 ) : (
                   <>
@@ -252,9 +272,9 @@ const PocketOptionPatternEngine = () => {
               <Activity className="h-4 w-4" />
               <AlertDescription>
                 Current Balance: <span className="font-bold">${balance.toFixed(2)}</span>
-                {prices[selectedPair.replace('/', '')] && (
+                {prices[asset] && (
                   <span className="ml-4">
-                    {selectedPair}: <span className="font-bold">${prices[selectedPair.replace('/', '')].toFixed(5)}</span>
+                    {asset}: <span className="font-bold">{prices[asset].toFixed(5)}</span>
                   </span>
                 )}
               </AlertDescription>
@@ -280,17 +300,17 @@ const PocketOptionPatternEngine = () => {
               <Switch
                 id="live-trading"
                 checked={liveTradingEnabled}
-                onCheckedChange={(checked) => {
-                  setLiveTradingEnabled(checked);
-                  if (checked && isConnected) {
-                    changeBalanceMode('demo');
-                  }
-                }}
-                disabled={!isConnected}
+                onCheckedChange={setLiveTradingEnabled}
+                disabled={!isReady}
               />
               <Label htmlFor="live-trading" className="text-sm">
-                Live Trading Mode
+                Allow trades from this screen
               </Label>
+              {isDemo !== null && (
+                <Badge variant={isDemo ? "secondary" : "destructive"} data-testid="po-account">
+                  {isDemo ? "Demo account" : "REAL money"}
+                </Badge>
+              )}
             </div>
             <Button onClick={analyzePattern} disabled={analyzing || !isConnected}>
               {analyzing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -371,7 +391,7 @@ const PocketOptionPatternEngine = () => {
           <PocketOptionPredictionPanel
             pair={selectedPair}
             recentCandles={recentCandles}
-            isConnected={isConnected}
+            isConnected={isReady}
             onExecuteTrade={handleExecuteFromPrediction}
             candleCount={candleCount}
           />
@@ -420,7 +440,7 @@ const PocketOptionPatternEngine = () => {
                           <Button 
                             onClick={() => handleExecuteTrade(pattern)} 
                             size="sm"
-                            disabled={!isConnected || !liveTradingEnabled}
+                            disabled={!isReady || !liveTradingEnabled}
                           >
                             {liveTradingEnabled ? 'Execute Trade' : 'Enable Live Trading'}
                           </Button>

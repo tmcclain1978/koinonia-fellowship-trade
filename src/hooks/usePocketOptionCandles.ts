@@ -33,6 +33,10 @@ export const usePocketOptionCandles = (): UsePocketOptionCandlesReturn => {
   const [isSaving, setIsSaving] = useState(false);
   const unsavedCandlesRef = useRef<Candle[]>([]);
   const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Candles already stored or queued (pair|timeframe|time): never save one twice,
+  // e.g. when PocketOption re-sends its history after a reconnect.
+  const seenRef = useRef<Set<string>>(new Set());
+  const keyOf = (c: { pair: string; timeframe: string; timestamp: Date }) => `${c.pair}|${c.timeframe}|${c.timestamp.getTime()}`;
 
   // Calculate direction from OHLC
   const calculateDirection = (open: number, close: number): 'up' | 'down' | 'neutral' => {
@@ -48,13 +52,16 @@ export const usePocketOptionCandles = (): UsePocketOptionCandlesReturn => {
       ...candleData,
       direction,
     };
+    const key = keyOf(newCandle);
+    if (seenRef.current.has(key)) return;
+    seenRef.current.add(key);
 
     // Add to unsaved buffer
     unsavedCandlesRef.current.push(newCandle);
 
-    // Update state with rolling window
+    // Update state with rolling window (in time order: history and live candles can interleave)
     setCandles(prev => {
-      const updated = [...prev, newCandle];
+      const updated = [...prev.filter((c) => c.pair === newCandle.pair), newCandle].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
       // Keep only last MAX_MEMORY_CANDLES in memory
       if (updated.length > MAX_MEMORY_CANDLES) {
         return updated.slice(-MAX_MEMORY_CANDLES);
@@ -149,7 +156,18 @@ export const usePocketOptionCandles = (): UsePocketOptionCandlesReturn => {
           timeframe: c.timeframe,
         }));
 
-      setCandles(loadedCandles);
+      // Older versions saved every price tick as a flat "candle" (open = high =
+      // low = close, many per minute). Skip those; keep one candle per minute.
+      const perMinute = new Map<number, Candle>();
+      for (const c of loadedCandles) {
+        const flat = c.open === c.high && c.high === c.low && c.low === c.close;
+        const minute = Math.floor(c.timestamp.getTime() / 60_000);
+        if (flat || c.timestamp.getTime() % 60_000 !== 0) continue;
+        perMinute.set(minute, c);
+      }
+      const clean = Array.from(perMinute.values()).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      for (const c of loadedCandles) seenRef.current.add(keyOf(c));
+      setCandles(clean);
       console.log(`Loaded ${loadedCandles.length} candles for ${pair}`);
     } catch (error) {
       console.error('Error in loadCandles:', error);
