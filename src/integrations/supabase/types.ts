@@ -163,7 +163,6 @@ export type Database = {
       }
       auto_trading_settings: {
         Row: {
-          notify_email: boolean
           ai_confirm: boolean
           allowed_symbols: string[] | null
           bot_mode: string
@@ -196,7 +195,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          notify_email?: boolean
           ai_confirm?: boolean
           allowed_symbols?: string[] | null
           bot_mode?: string
@@ -229,7 +227,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          notify_email?: boolean
           ai_confirm?: boolean
           allowed_symbols?: string[] | null
           bot_mode?: string
@@ -2667,7 +2664,6 @@ export type Database = {
       }
       user_api_credentials: {
         Row: {
-          schwab_refresh_issued_at: string | null
           account_type: string | null
           account_value: number | null
           alpaca_api_key: string | null
@@ -2697,7 +2693,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          schwab_refresh_issued_at?: string | null
           account_type?: string | null
           account_value?: number | null
           alpaca_api_key?: string | null
@@ -2727,7 +2722,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          schwab_refresh_issued_at?: string | null
           account_type?: string | null
           account_value?: number | null
           alpaca_api_key?: string | null
