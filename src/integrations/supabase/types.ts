@@ -2549,9 +2549,9 @@ export type Database = {
       trading_journal: {
         Row: {
           ai_analysis: string | null
-          bot_trade_id: string | null
           ai_suggestions: string[] | null
           analyzed_at: string | null
+          bot_trade_id: string | null
           chart_analysis: string | null
           content: string
           created_at: string
@@ -2568,9 +2568,9 @@ export type Database = {
         }
         Insert: {
           ai_analysis?: string | null
-          bot_trade_id?: string | null
           ai_suggestions?: string[] | null
           analyzed_at?: string | null
+          bot_trade_id?: string | null
           chart_analysis?: string | null
           content: string
           created_at?: string
@@ -2587,9 +2587,9 @@ export type Database = {
         }
         Update: {
           ai_analysis?: string | null
-          bot_trade_id?: string | null
           ai_suggestions?: string[] | null
           analyzed_at?: string | null
+          bot_trade_id?: string | null
           chart_analysis?: string | null
           content?: string
           created_at?: string
@@ -2605,6 +2605,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trading_journal_bot_trade_id_fkey"
+            columns: ["bot_trade_id"]
+            isOneToOne: false
+            referencedRelation: "bot_trades"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trading_journal_trade_id_fkey"
             columns: ["trade_id"]
