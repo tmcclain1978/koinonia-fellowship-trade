@@ -300,9 +300,16 @@ const PaperTrading = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Count resets so the daily value history starts a new line here
+      // instead of showing the reset as a gain or loss.
+      const { data: current } = await supabase
+        .from('paper_trading_accounts')
+        .select('reset_count')
+        .eq('user_id', user.id)
+        .maybeSingle();
       const { error } = await supabase
         .from('paper_trading_accounts')
-        .update({ balance: 100000 })
+        .update({ balance: 100000, reset_count: (Number((current as { reset_count?: number } | null)?.reset_count) || 0) + 1 } as never)
         .eq('user_id', user.id);
 
       if (error) throw error;

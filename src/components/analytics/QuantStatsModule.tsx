@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { alignReturns, dailyReturns, loadBars } from "@/lib/marketData/history";
+import { MIN_DAYS, accountReturnMap, loadAccountHistory, saveToday } from "@/lib/analytics/accountHistory";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +25,7 @@ import {
   QuantMetrics 
 } from "@/lib/quantstats";
 
-const EMPTY = { dates: [] as Date[], returns: [] as number[], bench: [] as number[], symbol: "", benchmark: "" };
+const EMPTY = { dates: [] as Date[], returns: [] as number[], bench: [] as number[], symbol: "", benchmark: "", note: "" };
 
 /** Real daily returns for a symbol and a benchmark, on the dates both traded. */
 async function loadReturns(symbol: string, benchmark: string) {
@@ -38,6 +40,32 @@ async function loadReturns(symbol: string, benchmark: string) {
     bench: aligned.b,
     symbol,
     benchmark,
+    note: "",
+  };
+}
+
+/** The user's own account, from the saved daily values, vs a benchmark. */
+async function loadAccountReturns(accountKey: string, benchmark: string) {
+  const all = await loadAccountHistory();
+  const series = all.find((a) => a.key === accountKey) ?? all[0];
+  if (!series) throw new Error("No account history saved yet. It's saved automatically after each trading day, or press Save today.");
+  const acct = accountReturnMap(series);
+  if (acct.days < MIN_DAYS) {
+    throw new Error(`${series.label}: ${acct.days} of ${MIN_DAYS} trading days saved so far. Stats appear once there are ${MIN_DAYS}.`);
+  }
+  const b = await loadBars(benchmark, "daily", "2y");
+  const aligned = alignReturns(acct.map, dailyReturns(b.bars));
+  const notes = [
+    acct.unpricedDays ? `${acct.unpricedDays} day(s) had positions valued at cost (no real price).` : "",
+    acct.breaks ? `The account was reset ${acct.breaks} time(s); returns restart after each reset.` : "",
+  ].filter(Boolean).join(" ");
+  return {
+    dates: aligned.dates.map((d) => new Date(`${d}T16:00:00`)),
+    returns: aligned.a,
+    bench: aligned.b,
+    symbol: series.label,
+    benchmark,
+    note: notes,
   };
 }
 
@@ -46,9 +74,27 @@ export function QuantStatsModule() {
   const [symbolInput, setSymbolInput] = useState("SPY");
   const [symbol, setSymbol] = useState("SPY");
   const [benchmark, setBenchmark] = useState("QQQ");
+  // "symbol" = any stock/ETF; otherwise an account key from the saved history.
+  const [source, setSource] = useState<string>("symbol");
+  const accounts = useQuery({ queryKey: ["account-history"], queryFn: loadAccountHistory, staleTime: 5 * 60_000, retry: 1 });
+  const [saving, setSaving] = useState(false);
+  const onSaveToday = async () => {
+    setSaving(true);
+    try {
+      const r = await saveToday();
+      if (r.skipped) toast.info(r.skipped);
+      else toast.success(`Saved ${r.saved} account value${r.saved === 1 ? "" : "s"} for today${r.notes?.schwab ? ` (${r.notes.schwab})` : ""}.`);
+      await accounts.refetch();
+      void query.refetch();
+    } catch (e) {
+      toast.error(`Couldn't save: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
   const query = useQuery({
-    queryKey: ["quantstats", symbol, benchmark],
-    queryFn: () => loadReturns(symbol, benchmark),
+    queryKey: ["quantstats", source, symbol, benchmark],
+    queryFn: () => (source === "symbol" ? loadReturns(symbol, benchmark) : loadAccountReturns(source, benchmark)),
     staleTime: 10 * 60_000,
     retry: 1,
   });
@@ -163,13 +209,29 @@ export function QuantStatsModule() {
     <div className="space-y-6">
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-sm text-muted-foreground">
         Performance stats from real daily closing prices (last 2 years) for any stock or ETF, compared with a benchmark.
-        The app doesn't store your account's daily balance history yet, so this analyzes a symbol rather than your account.
+        Or pick one of your accounts: its value is saved after every trading day, and stats appear once {MIN_DAYS} days are saved. Deposits and withdrawals don't count as gains or losses.
       </div>
 
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <Label htmlFor="qs-source">Analyze</Label>
+              <select
+                id="qs-source"
+                data-testid="qs-source"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                <option value="symbol">A stock or ETF</option>
+                {(accounts.data ?? []).map((a) => (
+                  <option key={a.key} value={a.key}>My {a.label} ({Math.max(0, a.rows.length - 1)} days)</option>
+                ))}
+              </select>
+            </div>
+            {source === "symbol" && (
             <div>
               <Label htmlFor="qs-symbol">Symbol</Label>
               <Input
@@ -180,6 +242,7 @@ export function QuantStatsModule() {
                 className="w-28"
               />
             </div>
+            )}
             <div>
               <Label htmlFor="qs-bench">Compare with</Label>
               <Input id="qs-bench" value={benchmark} onChange={(e) => setBenchmark(e.target.value.toUpperCase())} className="w-24" />
@@ -198,17 +261,21 @@ export function QuantStatsModule() {
               <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
               Analyze
             </Button>
+            <Button variant="outline" onClick={() => void onSaveToday()} disabled={saving} data-testid="qs-save-today" title="Save your accounts' value now. The automatic save after the close replaces it.">
+              {saving ? "Saving…" : "Save today's account value"}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {query.isLoading && <p className="text-sm text-muted-foreground">Loading real price history for {symbol}…</p>}
+      {query.isLoading && <p className="text-sm text-muted-foreground">Loading {source === "symbol" ? `real price history for ${symbol}` : "your saved account history"}…</p>}
       {query.error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500" data-testid="quantstats-error">
-          Couldn't analyze {symbol}: {(query.error as Error).message}
+        <div className={`rounded-lg border p-3 text-sm ${source === "symbol" ? "border-red-500/30 bg-red-500/10 text-red-500" : "border-amber-500/30 bg-amber-500/10 text-amber-500"}`} data-testid="quantstats-error">
+          {source === "symbol" ? `Couldn't analyze ${symbol}: ` : ""}{(query.error as Error).message}
         </div>
       )}
 
+      {ready && data.note && <div className="text-xs text-amber-500" data-testid="quantstats-note">{data.note}</div>}
       {ready && (<>
       {data.bench.length === data.returns.length && metrics.beta !== undefined && (
         <div className="text-sm text-muted-foreground" data-testid="quantstats-beta">

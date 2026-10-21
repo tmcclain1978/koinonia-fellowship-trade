@@ -172,3 +172,6 @@ verify_jwt = false
 
 [functions.bot-control]
 verify_jwt = true
+
+[functions.snapshot-equity]
+verify_jwt = false
