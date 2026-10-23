@@ -20,7 +20,7 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user } } = await supabaseClient.auth.getUser();
+    const { data: { user } } = await supabaseClient.auth.getUser((req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, ''));
     if (!user) throw new Error('Not authenticated');
 
     const { symbol, action, quantity, orderType = 'market' } = await req.json();
