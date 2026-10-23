@@ -50,6 +50,13 @@ function endpointList(isDemo: 0 | 1): string[] {
   return endpointsFor(isDemo).map(endpointUrl);
 }
 
+/** PocketOption hung up right after receiving the SSID. */
+export function loginRejectedMessage(isDemo: 0 | 1): string {
+  return isDemo === 0
+    ? "PocketOption reached, but it rejected your saved SSID. It is from your REAL money account. A real-account SSID is tied to the browser and internet connection it came from, so PocketOption refuses it from the app's server. Save the SSID from your DEMO account instead, or copy a fresh real one and try right away."
+    : "PocketOption reached, but it rejected your saved SSID. It has probably expired (they change when you log out or log in again). Copy a fresh one from PocketOption and save it.";
+}
+
 /** One readable sentence about why no PocketOption server worked. */
 export function summarizeFailures(failures: Array<{ host: string; why: string }>): string {
   if (!failures.length) return "Couldn't reach PocketOption.";
@@ -167,6 +174,14 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
       ws.onmessage = (ev) => s.handle(ev.data);
       ws.onerror = (ev) => { lastProblem = ev.message; };
       ws.onclose = (ev) => {
+        if (!s.authenticated && s.connected && !gaveUp && !closed) {
+          // PocketOption let us in, got the SSID, and hung up without a word:
+          // it rejected the login. Another server will do the same.
+          gaveUp = true;
+          stopTimers();
+          toClient({ type: "error", code: "LOGIN_REJECTED", endpoint: host, message: loginRejectedMessage(auth.isDemo) });
+          return;
+        }
         if (!s.authenticated) { next(lastProblem || `closed (${ev.code}${ev.reason ? ` ${ev.reason}` : ""})`); return; }
         stopTimers();
         toClient({ type: "connection", status: "disconnected", message: "PocketOption closed the connection", closeCode: ev.code });

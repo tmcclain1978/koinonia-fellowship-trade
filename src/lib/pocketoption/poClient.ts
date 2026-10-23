@@ -192,7 +192,7 @@ export class PoClient {
       this.ws = null;
       if (this.keepAlive) this.deps.clearTimeout(this.keepAlive);
       // Problems a retry can't fix: show them and wait for the user.
-      const stopped = ["AUTH_FAILED", "BAD_SSID", "NO_SSID", "NOT_SIGNED_IN", "NO_ENDPOINT"].includes(this.s.errorCode ?? "");
+      const stopped = ["AUTH_FAILED", "LOGIN_REJECTED", "BAD_SSID", "NO_SSID", "NOT_SIGNED_IN", "NO_ENDPOINT"].includes(this.s.errorCode ?? "");
       if (!stopped) this.set({ state: "disconnected" });
       if (!this.wanted || stopped) return;
       if (this.attempts >= BACKOFF.length) {
@@ -265,7 +265,7 @@ export class PoClient {
       }
       case "error":
         this.set({ state: "error", errorMessage: m.message, errorCode: m.code });
-        this.deps.notify?.("error", m.code === "AUTH_FAILED" ? "PocketOption login failed" : "PocketOption", m.message);
+        this.deps.notify?.("error", m.code === "AUTH_FAILED" || m.code === "LOGIN_REJECTED" ? "PocketOption login failed" : "PocketOption", m.message);
         return;
     }
   }
