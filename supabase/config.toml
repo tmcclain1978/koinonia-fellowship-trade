@@ -175,3 +175,6 @@ verify_jwt = true
 
 [functions.snapshot-equity]
 verify_jwt = false
+
+[functions.collect-pocketoption-candles]
+verify_jwt = false
