@@ -12,6 +12,11 @@ export interface PoTick { asset: string; time: number; price: number }
 export interface PoCandle { time: number; open: number; high: number; low: number; close: number; volume?: number }
 export interface PoDeal { id: string; asset: string; amount: number; profit: number; result: "win" | "loss" | "draw" }
 
+export interface PoAssetInfo { asset: string; name: string; kind: string; payout: number; otc: boolean; active: boolean }
+
+/** A "load older candles" job. */
+export interface PoBackfill { asset: string; running: boolean; loaded: number; progress: number; error?: string }
+
 export interface PoSnapshot {
   state: PoState;
   endpoint?: string;
@@ -28,6 +33,9 @@ export interface PoSnapshot {
   history: Record<string, PoCandle[]>;
   deals: PoDeal[];
   lastTickAt: number | null;
+  /** PocketOption's asset list with payouts (arrives after login). */
+  assets: PoAssetInfo[];
+  backfill: PoBackfill | null;
 }
 
 export interface WsLike {
@@ -54,9 +62,10 @@ const BACKOFF = [2000, 4000, 8000, 16000, 30000];
 const MAX_HISTORY = 500;
 
 export class PoClient {
-  private s: PoSnapshot = { state: "disconnected", isDemo: null, balance: null, prices: {}, history: {}, deals: [], lastTickAt: null };
+  private s: PoSnapshot = { state: "disconnected", isDemo: null, balance: null, prices: {}, history: {}, deals: [], lastTickAt: null, assets: [], backfill: null };
   private listeners = new Set<() => void>();
   private tickListeners = new Set<(t: PoTick) => void>();
+  private pageListeners = new Set<(asset: string, candles: PoCandle[]) => void>();
   private ws: WsLike | null = null;
   private wanted = false;
   private attempts = 0;
@@ -82,6 +91,13 @@ export class PoClient {
     this.tickListeners.add(l);
     return () => {
       this.tickListeners.delete(l);
+    };
+  }
+  /** Older candles from a loadHistory() job, page by page. */
+  onHistoryPage(l: (asset: string, candles: PoCandle[]) => void) {
+    this.pageListeners.add(l);
+    return () => {
+      this.pageListeners.delete(l);
     };
   }
   private set(p: Partial<PoSnapshot>) {
@@ -120,6 +136,18 @@ export class PoClient {
   watch(asset: string, period = 60) {
     this.watching = { asset, period };
     this.sendJson({ type: "subscribe_candles", asset, period });
+  }
+
+  /** Fetch older candles (PocketOption keeps about 90 days). Pages arrive via onHistoryPage. */
+  loadHistory(asset: string, days: number, sinceMs?: number): boolean {
+    if (!this.ready) return false;
+    const ok = this.sendJson({ type: "load_history", asset, days, ...(sinceMs ? { sinceMs } : {}) });
+    if (ok) this.set({ backfill: { asset, running: true, loaded: 0, progress: 0 } });
+    return ok;
+  }
+
+  stopHistory() {
+    this.sendJson({ type: "stop_history" });
   }
 
   trade(t: { asset: string; action: "call" | "put"; amount: number; duration: number }): boolean {
@@ -192,7 +220,7 @@ export class PoClient {
       this.ws = null;
       if (this.keepAlive) this.deps.clearTimeout(this.keepAlive);
       // Problems a retry can't fix: show them and wait for the user.
-      const stopped = ["AUTH_FAILED", "BAD_SSID", "NO_SSID", "NOT_SIGNED_IN", "NO_ENDPOINT"].includes(this.s.errorCode ?? "");
+      const stopped = ["AUTH_FAILED", "LOGIN_REJECTED", "BAD_SSID", "NO_SSID", "NOT_SIGNED_IN", "NO_ENDPOINT"].includes(this.s.errorCode ?? "");
       if (!stopped) this.set({ state: "disconnected" });
       if (!this.wanted || stopped) return;
       if (this.attempts >= BACKOFF.length) {
@@ -247,6 +275,18 @@ export class PoClient {
         this.set({ history: { ...this.s.history, [m.asset]: merged } });
         return;
       }
+      case "po_assets":
+        if (Array.isArray(m.assets)) this.set({ assets: m.assets });
+        return;
+      case "po_history_page": {
+        const candles: PoCandle[] = Array.isArray(m.candles) ? m.candles : [];
+        if (candles.length) this.pageListeners.forEach((l) => l(m.asset, candles));
+        this.set({ backfill: { asset: m.asset, running: true, loaded: m.loaded ?? 0, progress: m.progress ?? 0 } });
+        return;
+      }
+      case "po_history_done":
+        this.set({ backfill: { asset: m.asset, running: false, loaded: m.loaded ?? 0, progress: m.error ? (m.progress ?? 0) : 1, ...(m.error ? { error: m.error } : {}) } });
+        return;
       case "trade_sent":
         this.deps.notify?.("info", "Trade sent", `${String(m.action).toUpperCase()} ${m.asset} $${m.amount} (${m.isDemo ? "demo" : "REAL money"})`);
         return;
@@ -265,7 +305,7 @@ export class PoClient {
       }
       case "error":
         this.set({ state: "error", errorMessage: m.message, errorCode: m.code });
-        this.deps.notify?.("error", m.code === "AUTH_FAILED" ? "PocketOption login failed" : "PocketOption", m.message);
+        this.deps.notify?.("error", m.code === "AUTH_FAILED" || m.code === "LOGIN_REJECTED" ? "PocketOption login failed" : "PocketOption", m.message);
         return;
     }
   }

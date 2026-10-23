@@ -17,6 +17,7 @@ import { safeDecrypt } from "../_shared/encryption.ts";
 import { RawWebSocket } from "../_shared/ws-client.ts";
 import {
   PO_HEADERS,
+  HistoryPager,
   PoSession,
   changeSymbolFrame,
   endpointUrl,
@@ -48,6 +49,13 @@ function endpointList(isDemo: 0 | 1): string[] {
   const test = Deno.env.get("PO_TEST_ENDPOINTS");
   if (test) return test.split(",").map((s) => s.trim()).filter(Boolean);
   return endpointsFor(isDemo).map(endpointUrl);
+}
+
+/** PocketOption hung up right after receiving the SSID. */
+export function loginRejectedMessage(isDemo: 0 | 1): string {
+  return isDemo === 0
+    ? "PocketOption reached, but it rejected your saved SSID. It is from your REAL money account. A real-account SSID is tied to the browser and internet connection it came from, so PocketOption refuses it from the app's server. Save the SSID from your DEMO account instead, or copy a fresh real one and try right away."
+    : "PocketOption reached, but it rejected your saved SSID. It has probably expired (they change when you log out or log in again). Copy a fresh one from PocketOption and save it.";
 }
 
 /** One readable sentence about why no PocketOption server worked. */
@@ -90,6 +98,35 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
   let attemptTimer: ReturnType<typeof setTimeout> | null = null;
   /** Latest watched asset, re-sent after (re)login. */
   let watching: { asset: string; period: number } | null = null;
+  /** A "load older candles" job in progress. */
+  let backfill: { pager: HistoryPager; fromSec: number; timer: ReturnType<typeof setTimeout> | null } | null = null;
+
+  const stopBackfill = (reason?: string) => {
+    if (!backfill) return;
+    if (backfill.timer) clearTimeout(backfill.timer);
+    const { pager, fromSec } = backfill;
+    backfill = null;
+    toClient({ type: "po_history_done", asset: pager.asset, loaded: pager.loaded, pages: pager.pages, oldest: pager.oldest, progress: pager.progress(fromSec), ...(reason ? { error: reason } : {}) });
+  };
+  const requestPage = () => {
+    if (!backfill || !po || po.readyState !== RawWebSocket.OPEN) return stopBackfill("Lost the connection to PocketOption.");
+    const b = backfill;
+    po.send(b.pager.next());
+    if (b.timer) clearTimeout(b.timer);
+    b.timer = setTimeout(() => { if (backfill === b) stopBackfill("PocketOption stopped answering."); }, 15_000);
+  };
+  /** A history page arrived: pass it on and ask for the next one. True if it was ours. */
+  const onHistoryPage = (e: Extract<PoEvent, { type: "po_candles" }>): boolean => {
+    const b = backfill;
+    if (!b || e.index === undefined || e.index !== b.pager.index) return false;
+    if (b.timer) clearTimeout(b.timer);
+    b.timer = null;
+    const candles = b.pager.take(e.candles);
+    toClient({ type: "po_history_page", asset: e.asset, candles, loaded: b.pager.loaded, progress: b.pager.progress(b.fromSec) });
+    if (b.pager.done) stopBackfill();
+    else b.timer = setTimeout(requestPage, 120);
+    return true;
+  };
 
   const stopTimers = () => {
     if (attemptTimer) clearTimeout(attemptTimer);
@@ -151,6 +188,8 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
             stopTimers();
             toClient({ type: "error", code: "AUTH_FAILED", message: e.reason });
             try { ws.close(); } catch { /* ignore */ }
+          } else if (e.type === "po_candles" && onHistoryPage(e)) {
+            // handled: part of a "load older candles" job
           } else {
             toClient(e as unknown as Msg);
           }
@@ -167,8 +206,17 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
       ws.onmessage = (ev) => s.handle(ev.data);
       ws.onerror = (ev) => { lastProblem = ev.message; };
       ws.onclose = (ev) => {
+        if (!s.authenticated && s.connected && !gaveUp && !closed) {
+          // PocketOption let us in, got the SSID, and hung up without a word:
+          // it rejected the login. Another server will do the same.
+          gaveUp = true;
+          stopTimers();
+          toClient({ type: "error", code: "LOGIN_REJECTED", endpoint: host, message: loginRejectedMessage(auth.isDemo) });
+          return;
+        }
         if (!s.authenticated) { next(lastProblem || `closed (${ev.code}${ev.reason ? ` ${ev.reason}` : ""})`); return; }
         stopTimers();
+        stopBackfill("Lost the connection to PocketOption.");
         toClient({ type: "connection", status: "disconnected", message: "PocketOption closed the connection", closeCode: ev.code });
         onPoClosed();
       };
@@ -193,6 +241,26 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
         if (po && session?.authenticated) po.send(changeSymbolFrame(watching.asset, watching.period));
         return;
       }
+      case "load_history": {
+        const asset = String(m.asset ?? "");
+        if (!/^#?[A-Za-z0-9_.]{2,24}$/.test(asset)) return;
+        if (!po || !session?.authenticated) {
+          toClient({ type: "po_history_done", asset, loaded: 0, pages: 0, oldest: null, progress: 0, error: "Not logged in to PocketOption yet." });
+          return;
+        }
+        stopBackfill("Replaced by a new request.");
+        const days = Math.min(30, Math.max(0.1, Number(m.days) || 7));
+        const fromSec = Math.floor(Date.now() / 1000);
+        // Stop early at what the app already has (sinceMs), if given.
+        const since = Number(m.sinceMs) > 0 ? Math.floor(Number(m.sinceMs) / 1000) : 0;
+        const untilSec = Math.max(fromSec - Math.round(days * 86400), since);
+        backfill = { pager: new HistoryPager(asset, fromSec, untilSec), fromSec, timer: null };
+        requestPage();
+        return;
+      }
+      case "stop_history":
+        stopBackfill("Stopped.");
+        return;
       case "trade": {
         if (!po || !session?.authenticated || !auth) {
           toClient({ type: "error", code: "NOT_READY", message: "Not logged in to PocketOption yet." });
@@ -219,6 +287,8 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
   const close = () => {
     closed = true;
     stopTimers();
+    if (backfill?.timer) clearTimeout(backfill.timer);
+    backfill = null;
     try { po?.close(); } catch { /* ignore */ }
   };
 

@@ -23,14 +23,14 @@ const PocketOption = () => {
             </h1>
           </div>
           <p className="text-muted-foreground">
-            Pattern-based predictive trading for OTC pairs
+            Live candle patterns, checked against your own saved history
           </p>
         </div>
 
         <Tabs defaultValue="connection" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 max-w-md">
             <TabsTrigger value="connection">Connection</TabsTrigger>
-            <TabsTrigger value="patterns" disabled={!isConnected}>
+            <TabsTrigger value="patterns">
               Pattern Engine
             </TabsTrigger>
           </TabsList>

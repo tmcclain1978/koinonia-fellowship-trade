@@ -81,11 +81,40 @@ export type PoEvent =
   | { type: "po_auth_failed"; reason: string }
   | { type: "po_balance"; balance: number; isDemo: 0 | 1 | null }
   | { type: "po_ticks"; ticks: Tick[] }
-  | { type: "po_candles"; asset: string; period: number; candles: Candle[] }
+  | { type: "po_candles"; asset: string; period: number; candles: Candle[]; index?: number }
+  | { type: "po_assets"; assets: PoAsset[] }
   | { type: "po_order_opened"; order: Record<string, unknown> }
   | { type: "po_order_failed"; reason: string; data: unknown }
   | { type: "po_deals_closed"; deals: Array<{ id: string; asset: string; amount: number; profit: number; result: "win" | "loss" | "draw" }> }
   | { type: "po_other"; event: string; data: unknown };
+
+/** One tradable asset from PocketOption's list. */
+export interface PoAsset {
+  asset: string;
+  name: string;
+  /** currency, stock, commodity, index, cryptocurrency */
+  kind: string;
+  /** Base payout in percent (your account may get a few points more). */
+  payout: number;
+  otc: boolean;
+  /** Open for trading right now. */
+  active: boolean;
+}
+
+/**
+ * updateAssets: one array per asset. Positions (checked against the live
+ * site, Oct 2026): 1 symbol, 2 name, 3 kind, 5 payout %, 9 OTC flag, 14 open.
+ */
+export function parseAssets(data: unknown): PoAsset[] {
+  if (!Array.isArray(data)) return [];
+  const out: PoAsset[] = [];
+  for (const r of data) {
+    if (!Array.isArray(r) || typeof r[1] !== "string") continue;
+    const payout = num(r[5]);
+    out.push({ asset: r[1], name: String(r[2] ?? r[1]), kind: String(r[3] ?? ""), payout: Number.isFinite(payout) ? payout : 0, otc: r[9] === 1 || r[9] === true, active: r[14] === true || r[14] === 1 });
+  }
+  return out;
+}
 
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN);
 /** PocketOption times are seconds (with decimals); we use ms. */
@@ -163,6 +192,10 @@ export function interpretEvent(event: string, data: unknown, auth: AuthInfo): Po
       return [{ type: "po_order_opened", order: (d ?? {}) as Record<string, unknown> }];
     case "failopenOrder":
       return [{ type: "po_order_failed", reason: String((d?.error ?? d?.message ?? data) || "Order rejected"), data }];
+    case "updateAssets": {
+      const assets = parseAssets(data);
+      return assets.length ? [{ type: "po_assets", assets }] : [{ type: "po_other", event, data }];
+    }
     case "successcloseOrder":
     case "updateClosedDeals":
     case "deals": {
@@ -173,7 +206,9 @@ export function interpretEvent(event: string, data: unknown, auth: AuthInfo): Po
   // History arrives under a few names (updateHistoryNewFast, loadHistoryPeriod, ...): recognize it by shape.
   if (d && typeof d === "object" && !Array.isArray(d) && typeof d.asset === "string" && (Array.isArray(d.candles) || Array.isArray(d.data))) {
     const candles = parseCandles(Array.isArray(d.candles) ? d.candles : d.data);
-    if (candles.length) return [{ type: "po_candles", asset: d.asset, period: num(d.period) || 60, candles }];
+    const index = num(d.index);
+    // An empty page still answers a history request (the pager needs to know).
+    if (candles.length || Number.isFinite(index)) return [{ type: "po_candles", asset: d.asset, period: num(d.period) || 60, candles, ...(Number.isFinite(index) ? { index } : {}) }];
   }
   return [{ type: "po_other", event, data }];
 }
@@ -282,6 +317,61 @@ export const changeSymbolFrame = (asset: string, periodSec = 60) => `42["changeS
 
 export function openOrderFrame(o: { asset: string; amount: number; action: "call" | "put"; timeSec: number; isDemo: 0 | 1; requestId: string }) {
   return `42["openOrder",${JSON.stringify({ asset: o.asset, amount: o.amount, action: o.action, isDemo: o.isDemo, requestId: o.requestId, optionType: 100, time: o.timeSec })}]`;
+}
+
+/** PocketOption sends at most this much history per request (150 one-minute candles). */
+export const HISTORY_PAGE_SEC = 9000;
+
+/** Ask for the candles in the HISTORY_PAGE_SEC before `timeSec` (seconds). `index` tags the reply. */
+export const historyFrame = (asset: string, timeSec: number, index: number, periodSec = 60) =>
+  `42["loadHistoryPeriod",${JSON.stringify({ asset, index, time: Math.floor(timeSec), offset: HISTORY_PAGE_SEC, period: periodSec })}]`;
+
+/**
+ * Walks back through history one page at a time: from `fromSec` (newest)
+ * down to `untilSec` (oldest wanted). next() gives the frame to send;
+ * take() feeds a reply and says whether to keep going.
+ */
+export class HistoryPager {
+  private cursor: number;
+  private seq = 0;
+  index = 0;
+  loaded = 0;
+  pages = 0;
+  oldest: number | null = null;
+  private emptyRun = 0;
+
+  constructor(readonly asset: string, fromSec: number, readonly untilSec: number, readonly maxPages = 400, readonly periodSec = 60) {
+    this.cursor = Math.floor(fromSec);
+  }
+
+  get done(): boolean {
+    return this.cursor <= this.untilSec || this.pages >= this.maxPages || this.emptyRun >= 3;
+  }
+
+  /** Share of the way back, 0..1. */
+  progress(fromSec: number): number {
+    const span = fromSec - this.untilSec;
+    return span > 0 ? Math.min(1, Math.max(0, (fromSec - this.cursor) / span)) : 1;
+  }
+
+  next(): string {
+    this.index = this.cursor * 100 + (++this.seq % 100);
+    return historyFrame(this.asset, this.cursor, this.index, this.periodSec);
+  }
+
+  /** A reply for our request: returns the candles in range. */
+  take(candles: Candle[]): Candle[] {
+    this.pages++;
+    const inRange = candles.filter((c) => c.time / 1000 >= this.untilSec && c.time / 1000 < this.cursor);
+    if (!candles.length) this.emptyRun++;
+    else this.emptyRun = 0;
+    const first = candles.length ? Math.floor(candles[0].time / 1000) : this.cursor - HISTORY_PAGE_SEC;
+    // Move to the start of what we got (never forward), so pages don't overlap or leave gaps.
+    this.cursor = Math.min(this.cursor - 60, first);
+    this.loaded += inRange.length;
+    if (inRange.length) this.oldest = Math.min(this.oldest ?? Infinity, inRange[0].time);
+    return inRange;
+  }
 }
 
 /** Validate a trade request from the browser. */

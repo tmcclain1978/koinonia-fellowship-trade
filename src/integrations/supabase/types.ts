@@ -1932,6 +1932,7 @@ export type Database = {
           timeframe: string
           timestamp: string
           user_id: string
+          volume: number | null
         }
         Insert: {
           close: number
@@ -1945,6 +1946,7 @@ export type Database = {
           timeframe?: string
           timestamp: string
           user_id: string
+          volume?: number | null
         }
         Update: {
           close?: number
@@ -1958,12 +1960,24 @@ export type Database = {
           timeframe?: string
           timestamp?: string
           user_id?: string
+          volume?: number | null
         }
         Relationships: []
       }
       pocketoption_patterns: {
         Row: {
           accuracy_rate: number
+          asset: string | null
+          candle_time: string | null
+          details: Json | null
+          entry_price: number | null
+          exit_price: number | null
+          expiry_candles: number
+          outcome: string | null
+          resolved_at: string | null
+          sample_size: number | null
+          timeframe: string
+          win_rate: number | null
           confidence: number
           created_at: string
           expires_at: string
@@ -1977,6 +1991,17 @@ export type Database = {
         }
         Insert: {
           accuracy_rate?: number
+          asset?: string | null
+          candle_time?: string | null
+          details?: Json | null
+          entry_price?: number | null
+          exit_price?: number | null
+          expiry_candles?: number
+          outcome?: string | null
+          resolved_at?: string | null
+          sample_size?: number | null
+          timeframe?: string
+          win_rate?: number | null
           confidence: number
           created_at?: string
           expires_at: string
@@ -1990,6 +2015,17 @@ export type Database = {
         }
         Update: {
           accuracy_rate?: number
+          asset?: string | null
+          candle_time?: string | null
+          details?: Json | null
+          entry_price?: number | null
+          exit_price?: number | null
+          expiry_candles?: number
+          outcome?: string | null
+          resolved_at?: string | null
+          sample_size?: number | null
+          timeframe?: string
+          win_rate?: number | null
           confidence?: number
           created_at?: string
           expires_at?: string
@@ -2109,6 +2145,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pocketoption_watch: {
+        Row: {
+          asset: string
+          created_at: string
+          enabled: boolean
+          last_candle_at: string | null
+          last_count: number | null
+          last_error: string | null
+          last_run_at: string | null
+          user_id: string
+        }
+        Insert: {
+          asset: string
+          created_at?: string
+          enabled?: boolean
+          last_candle_at?: string | null
+          last_count?: number | null
+          last_error?: string | null
+          last_run_at?: string | null
+          user_id: string
+        }
+        Update: {
+          asset?: string
+          created_at?: string
+          enabled?: boolean
+          last_candle_at?: string | null
+          last_count?: number | null
+          last_error?: string | null
+          last_run_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       podcast_chat_messages: {
         Row: {
