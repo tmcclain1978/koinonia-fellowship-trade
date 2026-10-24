@@ -190,6 +190,8 @@ export interface MoveRecord {
   planR: number;
   ctx: BarContext;
   market: Trend | null;
+  /** Entry price (close of the signal candle). */
+  px: number;
 }
 
 export interface MoveRecords {
@@ -229,7 +231,7 @@ export function moveRecords(series: Array<{ symbol: string; bars: Bar[] }>, spec
       if (i >= 20) {
         for (const dir of ["up", "down"] as Dir[]) {
           const r = moveOutcome(bars, i, dir, atr[i], spec);
-          if (r) records.push({ symbol, pattern: null, dir, t: bars[i].time, o: r.o, end: r.endMove, planR: r.planR, ctx: c, market: m });
+          if (r) records.push({ symbol, pattern: null, dir, t: bars[i].time, o: r.o, end: r.endMove, planR: r.planR, ctx: c, market: m, px: bars[i].close });
         }
       }
       for (const det of detectAt(bars, i, s)) {
@@ -238,7 +240,7 @@ export function moveRecords(series: Array<{ symbol: string; bars: Bar[] }>, spec
         const r = moveOutcome(bars, i, det.dir, atr[i], spec);
         if (!r) continue;
         lastAt.set(k, i);
-        records.push({ symbol, pattern: det.pattern, dir: det.dir, t: bars[i].time, o: r.o, end: r.endMove, planR: r.planR, ctx: c, market: m });
+        records.push({ symbol, pattern: det.pattern, dir: det.dir, t: bars[i].time, o: r.o, end: r.endMove, planR: r.planR, ctx: c, market: m, px: bars[i].close });
       }
     }
   }

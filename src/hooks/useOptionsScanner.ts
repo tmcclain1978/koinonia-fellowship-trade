@@ -78,7 +78,7 @@ export const optionsScanner = new OptionsScanner({
         evidence: s.evidence as unknown as Json,
         contract: (s.contract ?? (s.contractNote ? { note: s.contractNote } : null)) as unknown as Json,
         partial_price: s.partial ?? null,
-        context: (s.context || s.chainInfo ? { ...(s.context ?? {}), ...(s.chainInfo ? { chain: s.chainInfo } : {}) } : null) as unknown as Json,
+        context: (s.context || s.chainInfo || s.score !== undefined ? { ...(s.context ?? {}), ...(s.chainInfo ? { chain: s.chainInfo } : {}), ...(s.score !== undefined ? { score: s.score } : {}) } : null) as unknown as Json,
       },
       { onConflict: "user_id,symbol,mode,signal_at", ignoreDuplicates: true },
     );
@@ -155,6 +155,7 @@ async function loadRecent(): Promise<OptionSignal[]> {
       planR: r.plan_r === null ? null : Number(r.plan_r),
       ...(r.context ? { context: r.context as OptionSignal["context"] } : {}),
       ...((r.context as { chain?: OptionSignal["chainInfo"] } | null)?.chain ? { chainInfo: (r.context as { chain: OptionSignal["chainInfo"] }).chain } : {}),
+      ...(typeof (r.context as { score?: number } | null)?.score === "number" ? { score: (r.context as { score: number }).score } : {}),
     };
     s.key = optionKey(s);
     return s;
@@ -176,6 +177,21 @@ try {
 } catch {
   /* private mode */
 }
+try {
+  const savedScoring = localStorage.getItem("options-signals:scoring");
+  if (savedScoring) optionsScanner.setScoring(JSON.parse(savedScoring));
+} catch {
+  /* private mode */
+}
+export function setOptionScoring(v: Parameters<typeof optionsScanner.setScoring>[0]) {
+  optionsScanner.setScoring(v);
+  try {
+    localStorage.setItem("options-signals:scoring", JSON.stringify(optionsScanner.getSnapshot().scoring));
+  } catch {
+    /* private mode */
+  }
+}
+
 export function setOptionLimits(l: Parameters<typeof optionsScanner.setLimits>[0]) {
   optionsScanner.setLimits(l);
   try {
