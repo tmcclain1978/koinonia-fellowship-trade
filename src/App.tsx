@@ -29,6 +29,7 @@ import TradingBot from "./pages/TradingBot";
 import BotLearning from "./pages/BotLearning";
 import BotTesting from "./pages/BotTesting";
 import PocketOption from "./pages/PocketOption";
+import OptionsSignalsPage from "./pages/OptionsSignals";
 import PennyStocks from "./pages/PennyStocks";
 import NotFound from "./pages/NotFound";
 import Status from "./pages/Status";
@@ -72,6 +73,7 @@ const App = () => (
             <Route path="/bot-learning" element={<BotLearning />} />
             <Route path="/bot-testing" element={<BotTesting />} />
             <Route path="/pocketoption" element={<PocketOption />} />
+            <Route path="/options-signals" element={<OptionsSignalsPage />} />
             <Route path="/penny-stocks" element={<PennyStocks />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/advanced-analytics" element={<AdvancedAnalytics />} />

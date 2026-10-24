@@ -134,6 +134,16 @@ const Navigation = () => {
                 PocketOption
               </Link>
               <Link 
+                to="/options-signals" 
+                className={`text-sm font-medium transition-colors ${
+                  location.pathname === "/options-signals" 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Options Signals
+              </Link>
+              <Link 
                 to="/analytics"
                 className={`text-sm font-medium transition-colors ${
                   location.pathname === "/analytics" 
@@ -286,6 +296,17 @@ const Navigation = () => {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   PocketOption
+                </Link>
+                <Link 
+                  to="/options-signals" 
+                  className={`text-sm font-medium ${
+                    location.pathname === "/options-signals" 
+                      ? "text-primary" 
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Options Signals
                 </Link>
                 <Link 
                   to="/analytics"
