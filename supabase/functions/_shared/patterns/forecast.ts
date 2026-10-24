@@ -14,7 +14,7 @@ import { type Bar, type Dir, PATTERNS, detectAt, seriesFor } from "./detect.ts";
 import { type Outcome, type Scoreboard, type Verdict, MIN_SAMPLES, breakEven, outcomeOf, statFor, verdictFor, winRateFloor } from "./stats.ts";
 
 export interface Evidence {
-  kind: "pattern" | "sequence";
+  kind: "pattern" | "sequence" | "time";
   /** Plain label, e.g. "Hammer" or "Last 3 candles: red, red, green". */
   label: string;
   dir: Dir;

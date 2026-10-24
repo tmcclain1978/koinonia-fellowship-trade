@@ -66,6 +66,8 @@ export class PoClient {
   private listeners = new Set<() => void>();
   private tickListeners = new Set<(t: PoTick) => void>();
   private pageListeners = new Set<(asset: string, candles: PoCandle[]) => void>();
+  private latestWaiters = new Map<string, Array<(r: { candles: PoCandle[]; error?: string }) => void>>();
+  private historyWaiters: Array<(r: PoBackfill) => void> = [];
   private ws: WsLike | null = null;
   private wanted = false;
   private attempts = 0;
@@ -146,6 +148,33 @@ export class PoClient {
     return ok;
   }
 
+  /** The last ~150 finished 1-minute candles of any asset (doesn't change the watched one). */
+  fetchLatest(asset: string, timeoutMs = 12_000): Promise<{ candles: PoCandle[]; error?: string }> {
+    if (!this.ready || !this.sendJson({ type: "latest", asset })) return Promise.resolve({ candles: [], error: "Not connected" });
+    return new Promise((resolve) => {
+      const list = this.latestWaiters.get(asset) ?? [];
+      let done = false;
+      const finish = (r: { candles: PoCandle[]; error?: string }) => {
+        if (done) return;
+        done = true;
+        resolve(r);
+      };
+      list.push(finish);
+      this.latestWaiters.set(asset, list);
+      this.deps.setTimeout(() => {
+        const l = this.latestWaiters.get(asset);
+        if (l) this.latestWaiters.set(asset, l.filter((f) => f !== finish));
+        finish({ candles: [], error: "No answer" });
+      }, timeoutMs);
+    });
+  }
+
+  /** loadHistory() and wait until it finishes (pages still arrive via onHistoryPage). */
+  loadHistoryAndWait(asset: string, days: number, sinceMs?: number): Promise<PoBackfill> {
+    if (!this.loadHistory(asset, days, sinceMs)) return Promise.resolve({ asset, running: false, loaded: 0, progress: 0, error: "Not connected" });
+    return new Promise((resolve) => this.historyWaiters.push(resolve));
+  }
+
   stopHistory() {
     this.sendJson({ type: "stop_history" });
   }
@@ -167,7 +196,18 @@ export class PoClient {
     return false;
   }
 
+  /** Anyone waiting on an answer gets "no" when the connection drops. */
+  private failPending(error: string) {
+    const h = this.historyWaiters;
+    this.historyWaiters = [];
+    h.forEach((w) => w({ asset: "", running: false, loaded: 0, progress: 0, error }));
+    const l = this.latestWaiters;
+    this.latestWaiters = new Map();
+    for (const list of l.values()) list.forEach((f) => f({ candles: [], error }));
+  }
+
   private closeSocket() {
+    this.failPending("Disconnected");
     if (this.keepAlive) this.deps.clearTimeout(this.keepAlive);
     this.keepAlive = null;
     const ws = this.ws;
@@ -218,6 +258,7 @@ export class PoClient {
     ws.onclose = () => {
       if (this.ws !== ws) return;
       this.ws = null;
+      this.failPending("Lost the connection");
       if (this.keepAlive) this.deps.clearTimeout(this.keepAlive);
       // Problems a retry can't fix: show them and wait for the user.
       const stopped = ["AUTH_FAILED", "LOGIN_REJECTED", "BAD_SSID", "NO_SSID", "NOT_SIGNED_IN", "NO_ENDPOINT"].includes(this.s.errorCode ?? "");
@@ -284,9 +325,20 @@ export class PoClient {
         this.set({ backfill: { asset: m.asset, running: true, loaded: m.loaded ?? 0, progress: m.progress ?? 0 } });
         return;
       }
-      case "po_history_done":
-        this.set({ backfill: { asset: m.asset, running: false, loaded: m.loaded ?? 0, progress: m.error ? (m.progress ?? 0) : 1, ...(m.error ? { error: m.error } : {}) } });
+      case "po_history_done": {
+        const b: PoBackfill = { asset: m.asset, running: false, loaded: m.loaded ?? 0, progress: m.error ? (m.progress ?? 0) : 1, ...(m.error ? { error: m.error } : {}) };
+        this.set({ backfill: b });
+        const waiters = this.historyWaiters;
+        this.historyWaiters = [];
+        waiters.forEach((w) => w(b));
         return;
+      }
+      case "po_latest": {
+        const list = this.latestWaiters.get(m.asset);
+        const first = list?.shift();
+        first?.({ candles: Array.isArray(m.candles) ? m.candles : [], ...(m.error ? { error: m.error } : {}) });
+        return;
+      }
       case "trade_sent":
         this.deps.notify?.("info", "Trade sent", `${String(m.action).toUpperCase()} ${m.asset} $${m.amount} (${m.isDemo ? "demo" : "REAL money"})`);
         return;

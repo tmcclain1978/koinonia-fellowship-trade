@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PocketOptionConnection from "@/components/PocketOptionConnection";
 import PocketOptionPatternEngine from "@/components/PocketOptionPatternEngine";
+import PocketOptionSignals from "@/components/PocketOptionSignals";
 import { Activity } from "lucide-react";
 
 const PocketOption = () => {
@@ -28,8 +29,9 @@ const PocketOption = () => {
         </div>
 
         <Tabs defaultValue="connection" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsList className="grid w-full grid-cols-3 max-w-lg">
             <TabsTrigger value="connection">Connection</TabsTrigger>
+            <TabsTrigger value="signals">Signals</TabsTrigger>
             <TabsTrigger value="patterns">
               Pattern Engine
             </TabsTrigger>
@@ -40,6 +42,10 @@ const PocketOption = () => {
               onConnectionChange={setIsConnected}
               isConnected={isConnected}
             />
+          </TabsContent>
+
+          <TabsContent value="signals">
+            <PocketOptionSignals />
           </TabsContent>
 
           <TabsContent value="patterns">
