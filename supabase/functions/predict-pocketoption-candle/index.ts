@@ -261,14 +261,18 @@ serve(async (req) => {
       throw new Error("Pair is required");
     }
 
-    // Fetch recent candle history for this pair
-    const { data: candles, error: candlesError } = await supabaseClient
+    // The NEWEST 500 candles for this asset (newest first, then put back in
+    // time order). Asking for ascending + limit returned the OLDEST 500, so
+    // predictions were made from candles days old.
+    const { data: newestFirst, error: candlesError } = await supabaseClient
       .from('pocketoption_candles')
       .select('direction, timestamp')
       .eq('user_id', user.id)
       .eq('pair', pair)
-      .order('timestamp', { ascending: true })
+      .eq('timeframe', '1m')
+      .order('timestamp', { ascending: false })
       .limit(500);
+    const candles: Candle[] = ((newestFirst ?? []) as Candle[]).slice().reverse();
 
     if (candlesError) {
       console.error("Error fetching candles:", candlesError);
@@ -360,7 +364,8 @@ serve(async (req) => {
         message: (error as any).message || "Prediction failed",
       }),
       {
-        status: 400,
+        // 200 so the app can show the reason (a non-2xx reply hides the body).
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
