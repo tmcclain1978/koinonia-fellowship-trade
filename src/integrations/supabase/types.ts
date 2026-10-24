@@ -1336,6 +1336,78 @@ export type Database = {
         }
         Relationships: []
       }
+      options_predictions: {
+        Row: {
+          atr: number | null
+          baseline: number | null
+          chance: number | null
+          contract: Json | null
+          created_at: string
+          deadline: string
+          direction: string
+          entry_price: number
+          evidence: Json | null
+          exit_price: number | null
+          id: string
+          mode: string
+          outcome: string | null
+          reason: string | null
+          resolved_at: string | null
+          signal_at: string
+          stop_price: number
+          strength: string | null
+          symbol: string
+          target_price: number
+          user_id: string
+        }
+        Insert: {
+          atr?: number | null
+          baseline?: number | null
+          chance?: number | null
+          contract?: Json | null
+          created_at?: string
+          deadline: string
+          direction: string
+          entry_price: number
+          evidence?: Json | null
+          exit_price?: number | null
+          id?: string
+          mode: string
+          outcome?: string | null
+          reason?: string | null
+          resolved_at?: string | null
+          signal_at: string
+          stop_price: number
+          strength?: string | null
+          symbol: string
+          target_price: number
+          user_id: string
+        }
+        Update: {
+          atr?: number | null
+          baseline?: number | null
+          chance?: number | null
+          contract?: Json | null
+          created_at?: string
+          deadline?: string
+          direction?: string
+          entry_price?: number
+          evidence?: Json | null
+          exit_price?: number | null
+          id?: string
+          mode?: string
+          outcome?: string | null
+          reason?: string | null
+          resolved_at?: string | null
+          signal_at?: string
+          stop_price?: number
+          strength?: string | null
+          symbol?: string
+          target_price?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       paper_order_events: {
         Row: {
           created_at: string

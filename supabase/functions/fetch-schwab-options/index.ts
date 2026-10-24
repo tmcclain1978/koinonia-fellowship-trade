@@ -13,6 +13,7 @@ const finiteOrNull = (v: unknown, min = -1e6, max = 1e6) =>
 /** Fields used by the chart's options levels (gamma exposure, expected move). */
 const extraFields = (contract: any) => ({
   gamma: finiteOrNull(contract.gamma, -1, 10),
+  theta: finiteOrNull(contract.theta, -1e4, 1),
   mark: finiteOrNull(contract.mark, -1, 1e6),
   daysToExpiration: finiteOrNull(contract.daysToExpiration, -1, 5000),
   occSymbol: typeof contract.symbol === 'string' ? contract.symbol : null,
