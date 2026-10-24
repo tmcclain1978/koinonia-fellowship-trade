@@ -53,18 +53,19 @@ describe("options scanner", () => {
       clearTimeout: () => {},
     });
     await sc.start(["SPY", "QQQ"]);
-    expect(sc.getSnapshot().boards.sameday?.stats.find((s) => s.pattern === "red_streak" && s.dir === "up")?.verdict).toBe("edge");
-    // Filters on (default): today trends down, so the call is skipped, with the reason shown.
+    // Trend filters on: today trends down, so the call is skipped, with the reason shown.
+    sc.setFilters({ trend: true, market: true, lunch: true, room: false, volume: false });
     await sc.sameDayPass();
     expect(sc.getSnapshot().signals).toHaveLength(0);
     expect(sc.getSnapshot().skipped[0]).toMatchObject({ symbol: "SPY", dir: "up" });
     expect(sc.getSnapshot().skipped[0].reasons.join(" ")).toMatch(/bigger trend/);
     expect(sc.getSnapshot().calendars).toEqual({ news: "unavailable", earnings: "unavailable" });
     const imp = sc.getSnapshot().impact.sameday!;
-    expect(imp.map((x) => x.label)).toEqual(["No filters", "Trend only", "Market only", "Skip lunch only", "All filters"]);
-    expect(imp[0].n).toBeGreaterThan(imp[4].n);
+    expect(imp.map((x) => x.label)).toEqual(["No filters", "Trend only", "Market only", "Skip lunch only", "Room to target only", "Volume only", "All filters"]);
+    expect(imp[0].n).toBeGreaterThan(imp[6].n);
     // Filters off: the same setup is predicted.
-    sc.setFilters({ trend: false, market: false, lunch: false });
+    sc.setFilters({ trend: false, market: false, lunch: false, room: false });
+    expect(sc.getSnapshot().boards.sameday?.stats.find((s) => s.pattern === "red_streak" && s.dir === "up")?.verdict).toBe("edge");
     await sc.sameDayPass();
     const sig = sc.getSnapshot().signals[0];
     expect(sig).toMatchObject({ symbol: "SPY", dir: "up", mode: "sameday", at: open + 18 * M5 });
