@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Copy, Loader2, Play, Square } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { optionAlertsOn, optionsScanner, setOptionAlerts, setOptionFilters, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import { optionAlertsOn, optionsScanner, setOptionAlerts, setOptionFilters, setOptionLimits, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import { Input } from "@/components/ui/input";
 import { OPTION_SYMBOLS, type OptionSignal, type ScanFilters, optionsReport } from "@/lib/options/scanner";
 import { MODES, type FilterImpact, type Mode, type MoveBoard, type MoveVerdict, type Skipped } from "../../../supabase/functions/_shared/patterns/moves";
 import { PATTERNS } from "../../../supabase/functions/_shared/patterns/detect";
@@ -83,11 +84,24 @@ const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
           <Badge variant="outline">bigger trend {s.context.trend}</Badge>
           {s.context.market && <Badge variant="outline">market {s.context.market}</Badge>}
           {s.context.aboveVwap !== null && <Badge variant="outline">{s.context.aboveVwap ? "above" : "below"} VWAP</Badge>}
+          {s.context.rvol !== undefined && s.context.rvol !== null && <Badge variant="outline" className={s.context.rvol >= 1.2 ? "text-green-500" : ""}>volume {s.context.rvol.toFixed(1)}x normal</Badge>}
+          {s.context.nextLevel && <Badge variant="outline">next level: {s.context.nextLevel.name} ${s.context.nextLevel.price.toFixed(2)}</Badge>}
+        </div>
+      )}
+      {s.chainInfo && (
+        <div className="flex flex-wrap gap-1 text-[11px]" data-testid="chain-info">
+          {s.chainInfo.callWall !== null && <Badge variant="outline">call wall ${s.chainInfo.callWall}</Badge>}
+          {s.chainInfo.putWall !== null && <Badge variant="outline">put wall ${s.chainInfo.putWall}</Badge>}
+          {s.chainInfo.flow?.side && (
+            <Badge variant="outline" className={(s.chainInfo.flow.side === "calls") === up ? "border-green-600 text-green-500" : "border-amber-500 text-amber-500"}>
+              unusual {s.chainInfo.flow.side === "calls" ? "call" : "put"} buying today{(s.chainInfo.flow.side === "calls") === up ? " (agrees)" : " (against this trade)"}
+            </Badge>
+          )}
         </div>
       )}
       {s.partial !== undefined && (
         <div className="rounded-md border border-dashed p-2 text-xs" data-testid="plan">
-          <b>Exit plan:</b> sell half at <b>{usd(s.partial)}</b> (60% of the way), then move the stop to {usd(s.entry)} (your entry); sell the rest at {usd(s.target)}{s.mode === "sameday" ? " or after 30 minutes" : " or after 5 trading days"}.
+          <b>Exit plan:</b> sell half at <b>{usd(s.partial)}</b> (60% of the way), then move the stop to {usd(s.entry)} (your entry); sell the rest at {usd(s.target)}{s.mode === "sameday" ? " or after 30 minutes" : " or after 5 trading days"}. <b>Time stop:</b> if it hasn't moved {usd(Math.abs(s.target - s.entry) * 0.3)} your way {s.mode === "sameday" ? "within 15 minutes" : "within 2 days"}, get out.
           {s.planWinRate !== undefined && <> In the past this plan ended in profit <b>{Math.round(s.planWinRate * 100)}%</b> of the time{s.planAvgR !== undefined ? ` (average ${s.planAvgR >= 0 ? "+" : ""}${s.planAvgR.toFixed(2)}× the risk)` : ""}.</>}
           {s.planR !== undefined && s.planR !== null && <> Result with the plan: <b className={s.planR > 0 ? "text-green-500" : "text-red-500"}>{s.planR >= 0 ? "+" : ""}{s.planR.toFixed(2)}× the risk</b>.</>}
         </div>
@@ -224,6 +238,8 @@ const FILTER_LABELS: Array<[keyof ScanFilters, string, string]> = [
   ["trend", "Trade with the bigger trend", "Calls only when the hourly (same day) or 50-day (swing) trend is up; puts when it's down. Dips in an uptrend still count."],
   ["market", "Market must agree", "Skip when the index (QQQ, or SPY for QQQ) is trending the other way."],
   ["lunch", "Skip the lunch lull", "No same-day trades 11:30 am - 1:30 pm ET, when prices tend to drift."],
+  ["room", "Room to the target", "Skip when yesterday's high/low/close, the opening range, a round number (swing: 20/60-day highs and lows) or a big option wall sits between the entry and the target."],
+  ["volume", "Volume confirms", "Only when the signal candle traded more than 1.2x its normal volume for that time of day."],
   ["news", "Skip big news", "No same-day trades from 30 min before to 60 min after CPI, jobs, Fed and similar; no Fed-day afternoons."],
   ["earnings", "Avoid earnings", "No trades right after a report or across one; swing options expire before the next report when possible."],
 ];
@@ -352,6 +368,27 @@ const OptionsSignals = () => {
               </div>
             ))}
           </div>
+          <div className="flex flex-wrap items-center gap-4 rounded-md border p-3 text-sm" data-testid="limits">
+            <span className="font-medium">Daily limits (same day)</span>
+            <label className="flex items-center gap-2">Max predictions
+              <Input type="number" min={0} className="h-8 w-20" value={snap.limits.maxPerDay} onChange={(e) => setOptionLimits({ maxPerDay: Math.max(0, Number(e.target.value) || 0) })} />
+            </label>
+            <label className="flex items-center gap-2">Stop after losses
+              <Input type="number" min={0} className="h-8 w-20" value={snap.limits.stopAfterLosses} onChange={(e) => setOptionLimits({ stopAfterLosses: Math.max(0, Number(e.target.value) || 0) })} />
+            </label>
+            <span className="text-xs text-muted-foreground">0 = no limit. Bad days tend to come in streaks; stopping early protects the account.</span>
+          </div>
+          {snap.paused.length > 0 && (
+            <div className="space-y-1 rounded-md border border-amber-500/50 p-3 text-sm" data-testid="paused">
+              <p className="font-medium text-amber-500">Paused patterns (losing live)</p>
+              {snap.paused.map((x) => (
+                <div key={x.key} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span>{x.name} {x.dir === "up" ? "calls" : "puts"} ({x.mode === "sameday" ? "same day" : "swing"}): reached the target {x.wins} of its last {x.n} times vs {Math.round(x.baseline * 100)}% random</span>
+                  <Button size="sm" variant="ghost" className="h-6" onClick={() => optionsScanner.unpause(x.key)}>Give it a fresh start</Button>
+                </div>
+              ))}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">Options can lose their whole cost quickly, especially same-day ones. A "WIN" means the stock reached the target first; the dollar figures are estimates.</p>
         </CardContent>
       </Card>

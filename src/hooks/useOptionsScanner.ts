@@ -78,7 +78,7 @@ export const optionsScanner = new OptionsScanner({
         evidence: s.evidence as unknown as Json,
         contract: (s.contract ?? (s.contractNote ? { note: s.contractNote } : null)) as unknown as Json,
         partial_price: s.partial ?? null,
-        context: (s.context ?? null) as unknown as Json,
+        context: (s.context || s.chainInfo ? { ...(s.context ?? {}), ...(s.chainInfo ? { chain: s.chainInfo } : {}) } : null) as unknown as Json,
       },
       { onConflict: "user_id,symbol,mode,signal_at", ignoreDuplicates: true },
     );
@@ -154,6 +154,7 @@ async function loadRecent(): Promise<OptionSignal[]> {
       ...(r.partial_price !== null ? { partial: Number(r.partial_price) } : {}),
       planR: r.plan_r === null ? null : Number(r.plan_r),
       ...(r.context ? { context: r.context as OptionSignal["context"] } : {}),
+      ...((r.context as { chain?: OptionSignal["chainInfo"] } | null)?.chain ? { chainInfo: (r.context as { chain: OptionSignal["chainInfo"] }).chain } : {}),
     };
     s.key = optionKey(s);
     return s;
@@ -169,6 +170,21 @@ try {
 } catch {
   /* private mode */
 }
+try {
+  const savedLimits = localStorage.getItem("options-signals:limits");
+  if (savedLimits) optionsScanner.setLimits(JSON.parse(savedLimits));
+} catch {
+  /* private mode */
+}
+export function setOptionLimits(l: Parameters<typeof optionsScanner.setLimits>[0]) {
+  optionsScanner.setLimits(l);
+  try {
+    localStorage.setItem("options-signals:limits", JSON.stringify(optionsScanner.getSnapshot().limits));
+  } catch {
+    /* private mode */
+  }
+}
+
 export function setOptionFilters(f: Parameters<typeof optionsScanner.setFilters>[0]) {
   optionsScanner.setFilters(f);
   try {
