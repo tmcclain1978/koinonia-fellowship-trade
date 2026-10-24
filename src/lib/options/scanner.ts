@@ -12,9 +12,11 @@
  * stop first = LOSS, neither by the deadline = EXPIRED).
  */
 import type { Bar } from "../../../supabase/functions/_shared/patterns/detect";
-import { MODES, type Mode, type MoveBoard, type MoveOutcome, type MovePrediction, moveBoard, predictMove, resolveMove } from "../../../supabase/functions/_shared/patterns/moves";
+import { MODES, type FilterImpact, type Mode, type MoveBoard, type MoveOutcome, type MovePrediction, type MoveRecords, type Skipped, boardFrom, filterImpact, moveRecords, predictMove, resolveMove } from "../../../supabase/functions/_shared/patterns/moves";
+import { type Filters, indexFor, sameDayContext, swingContext } from "../../../supabase/functions/_shared/patterns/context";
+import { type EarningsDate, type EconEvent, earningsBlockSameDay, earningsBlockSwing, newsBlock, nextEarnings } from "../../../supabase/functions/_shared/patterns/events";
 import { etClock, sessionBounds, sessionFor } from "../../../supabase/functions/_shared/bot/session";
-import { type ChainRow, type ContractPick, pickContract } from "./contractPicker";
+import { type ChainRow, type ContractPick, pickContract, realizedVol } from "./contractPicker";
 
 export const OPTION_SYMBOLS = ["TSLA", "SPY", "AAPL", "NVDA", "QQQ"];
 
@@ -25,7 +27,17 @@ export interface OptionSignal extends MovePrediction {
   contractNote?: string;
   outcome: MoveOutcome | null;
   exit: number | null;
+  /** Result of the partial-profit plan in R (stop distances), once known. */
+  planR?: number | null;
 }
+
+/** Filters, plus the live-only news and earnings checks. */
+export interface ScanFilters extends Filters {
+  news: boolean;
+  earnings: boolean;
+}
+
+export const DEFAULT_SCAN_FILTERS: ScanFilters = { trend: true, market: true, lunch: true, news: true, earnings: true };
 
 export interface OptionsDeps {
   /** Same day: as many 5-minute candles as the data source gives (regular hours). Swing: years of daily candles. */
@@ -33,6 +45,10 @@ export interface OptionsDeps {
   /** The newest 5-minute candles (today). */
   latest(symbol: string): Promise<Bar[]>;
   chain(symbol: string, mode: Mode): Promise<{ rows: ChainRow[]; spot: number } | null>;
+  /** Economic calendar (null = not available). */
+  econEvents?(fromMs: number, toMs: number): Promise<EconEvent[] | null>;
+  /** Earnings dates for these symbols (null = not available). */
+  earnings?(symbols: string[]): Promise<EarningsDate[] | null>;
   save?(s: OptionSignal): Promise<void>;
   saveResult?(s: OptionSignal): Promise<void>;
   now?(): number;
@@ -50,6 +66,13 @@ export interface OptionsSnapshot {
   signals: OptionSignal[];
   nextCheckAt: number | null;
   error?: string;
+  filters: ScanFilters;
+  /** How each filter changes the hit rate, per mode. */
+  impact: Partial<Record<Mode, FilterImpact[]>>;
+  /** Setups that showed up but were skipped (newest first). */
+  skipped: Skipped[];
+  /** Whether the news / earnings checks have data. */
+  calendars: { news: "on" | "unavailable" | "loading"; earnings: "on" | "unavailable" | "loading" };
 }
 
 export const optionKey = (s: Pick<MovePrediction, "symbol" | "mode" | "at">) => `${s.symbol}|${s.mode}|${s.at}`;
@@ -60,7 +83,10 @@ const BOARD_TTL = 60 * 60_000;
 const AFTER_CLOSE = 20_000;
 
 export class OptionsScanner {
-  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null };
+  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" } };
+  private records: Partial<Record<Mode, MoveRecords>> = {};
+  private econ: EconEvent[] = [];
+  private earningsDates: EarningsDate[] = [];
   private listeners = new Set<() => void>();
   private signalListeners = new Set<(s: OptionSignal) => void>();
   private bars: Record<Mode, Record<string, Bar[]>> = { sameday: {}, swing: {} };
@@ -105,7 +131,7 @@ export class OptionsScanner {
     this.set({ running: true, symbols, activity: "Loading price history…", error: undefined });
     try {
       for (const mode of ["sameday", "swing"] as Mode[]) {
-        for (const sym of symbols) {
+        for (const sym of this.loadList()) {
           if (id !== this.runId) return;
           this.set({ activity: `Loading ${mode === "sameday" ? "5-minute" : "daily"} history for ${sym}…` });
           this.bars[mode][sym] = await this.deps.history(sym, mode);
@@ -113,6 +139,7 @@ export class OptionsScanner {
         }
       }
       if (id !== this.runId) return;
+      await this.loadCalendars();
       this.set({ activity: "Checking which patterns work…" });
       this.rebuildBoards();
       this.resolve();
@@ -132,13 +159,53 @@ export class OptionsScanner {
   }
 
   private rebuildBoards() {
-    const boards: OptionsSnapshot["boards"] = {};
     for (const mode of ["sameday", "swing"] as Mode[]) {
-      const series = this.s.symbols.map((symbol) => ({ symbol, bars: this.bars[mode][symbol] ?? [] })).filter((x) => x.bars.length > 60);
-      if (series.length) boards[mode] = moveBoard(series, MODES[mode]);
+      const series = this.loadList().map((symbol) => ({ symbol, bars: this.bars[mode][symbol] ?? [] })).filter((x) => x.bars.length > 60);
+      // Indexes that aren't watched are loaded only to judge the market.
+      const contextOnly = this.loadList().filter((x) => !this.s.symbols.includes(x));
+      if (series.length) this.records[mode] = moveRecords(series, MODES[mode], contextOnly);
     }
     this.boardAt = this.now();
-    this.set({ boards });
+    this.applyFilters();
+  }
+
+  /** Recompute the pattern stats for the current filters (fast: reuses the replayed trades). */
+  private applyFilters() {
+    const boards: OptionsSnapshot["boards"] = {};
+    const impact: OptionsSnapshot["impact"] = {};
+    for (const mode of ["sameday", "swing"] as Mode[]) {
+      const rec = this.records[mode];
+      if (!rec) continue;
+      boards[mode] = boardFrom(rec, this.s.filters);
+      impact[mode] = filterImpact(rec);
+    }
+    this.set({ boards, impact });
+  }
+
+  setFilters(f: Partial<ScanFilters>) {
+    this.set({ filters: { ...this.s.filters, ...f } });
+    this.applyFilters();
+  }
+
+  private async loadCalendars() {
+    const now = this.now();
+    const [ev, ea] = await Promise.all([
+      this.deps.econEvents ? this.deps.econEvents(now - 86_400_000, now + 10 * 86_400_000).catch(() => null) : Promise.resolve(null),
+      this.deps.earnings ? this.deps.earnings(this.s.symbols).catch(() => null) : Promise.resolve(null),
+    ]);
+    this.econ = ev ?? [];
+    this.earningsDates = ea ?? [];
+    this.set({ calendars: { news: ev ? "on" : "unavailable", earnings: ea ? "on" : "unavailable" } });
+  }
+
+  /** Watched symbols plus the indexes they're checked against. */
+  private loadList(): string[] {
+    return Array.from(new Set([...this.s.symbols, ...this.s.symbols.map(indexFor)]));
+  }
+
+  private skip(s: Skipped) {
+    if (this.s.skipped.some((x) => x.symbol === s.symbol && x.mode === s.mode && x.at === s.at)) return;
+    this.set({ skipped: [s, ...this.s.skipped].slice(0, 50) });
   }
 
   private schedule(id: number) {
@@ -163,7 +230,8 @@ export class OptionsScanner {
     // Swing: once per day after the close.
     const today = etClock(now).date;
     if (sess.isTradingDay && now > b.close + 5 * 60_000 && this.lastSwingDay !== today) {
-      for (const sym of this.s.symbols) this.bars.swing[sym] = await this.deps.history(sym, "swing");
+      for (const sym of this.loadList()) this.bars.swing[sym] = await this.deps.history(sym, "swing");
+      await this.loadCalendars();
       await this.swingPass(id);
     }
     if (this.now() - this.boardAt > BOARD_TTL) this.rebuildBoards();
@@ -175,7 +243,7 @@ export class OptionsScanner {
     const now = this.now();
     const board = this.s.boards.sameday;
     const close = sessionBounds(now).close;
-    for (const sym of this.s.symbols) {
+    for (const sym of this.loadList()) {
       const fresh = await this.deps.latest(sym);
       const have = this.bars.sameday[sym] ?? [];
       const byTime = new Map(have.map((x) => [x.time, x]));
@@ -192,8 +260,21 @@ export class OptionsScanner {
       const closedAt = last.time + M5;
       // Only the candle that just closed, and only if the 30 minutes fit before the close.
       if (now - closedAt > M5 || closedAt + MODES.sameday.horizon * M5 > close) continue;
-      const p = predictMove(sym, bars, board, closedAt);
-      if (p) await this.add(p);
+      const ctx = sameDayContext(bars);
+      const idx = this.bars.sameday[indexFor(sym)];
+      const market = idx?.length ? (() => {
+        const ic = sameDayContext(idx);
+        const k = idx.findIndex((x) => x.time === last.time);
+        return k >= 0 ? ic[k].trend : null;
+      })() : null;
+      const p = predictMove(sym, bars, board, closedAt, { ctx: ctx[ctx.length - 1], market, onSkip: (x) => this.skip(x) });
+      if (!p) continue;
+      const block = (this.s.filters.news ? newsBlock(closedAt, this.econ) : null) ?? (this.s.filters.earnings ? earningsBlockSameDay(sym, closedAt, this.earningsDates) : null);
+      if (block) {
+        this.skip({ symbol: sym, mode: "sameday", dir: p.dir, at: closedAt, names: p.evidence.map((e) => e.name).join(" + "), reasons: [block] });
+        continue;
+      }
+      await this.add(p);
     }
   }
 
@@ -215,8 +296,21 @@ export class OptionsScanner {
       if (!last) continue;
       // Only fresh setups (the last finished day is at most 4 calendar days old).
       if (now - last.time > 4 * 86_400_000) continue;
-      const p = predictMove(sym, bars, board, last.time);
-      if (p) await this.add(p);
+      const ctx = swingContext(bars);
+      const idx = this.bars.swing[indexFor(sym)];
+      const im = idx?.length ? (() => {
+        const ic = swingContext(idx);
+        const k = idx.findIndex((x) => etClock(x.time + 12 * 3600_000).date === etClock(last.time + 12 * 3600_000).date);
+        return k >= 0 ? ic[k].trend : null;
+      })() : null;
+      const p = predictMove(sym, bars, board, last.time, { ctx: ctx[ctx.length - 1], market: im, onSkip: (x) => this.skip(x) });
+      if (!p) continue;
+      const block = this.s.filters.earnings ? earningsBlockSwing(sym, p.at, p.until, this.earningsDates) : null;
+      if (block) {
+        this.skip({ symbol: sym, mode: "swing", dir: p.dir, at: p.at, names: p.evidence.map((e) => e.name).join(" + "), reasons: [block] });
+        continue;
+      }
+      await this.add(p);
     }
   }
 
@@ -229,7 +323,12 @@ export class OptionsScanner {
       const ch = await this.deps.chain(p.symbol, p.mode);
       if (!ch) contractNote = "Option chain needs a Schwab connection.";
       else {
-        contract = pickContract(ch.rows, { symbol: p.symbol, dir: p.dir, mode: p.mode, spot: ch.spot || p.entry, target: p.target, stop: p.stop, now: this.now() });
+        const daily = this.bars.swing[p.symbol] ?? [];
+        contract = pickContract(ch.rows, {
+          symbol: p.symbol, dir: p.dir, mode: p.mode, spot: ch.spot || p.entry, target: p.target, stop: p.stop, now: this.now(),
+          realized: realizedVol(daily.map((x) => x.close)),
+          earnings: nextEarnings(p.symbol, this.now(), this.earningsDates),
+        });
         if (!contract) contractNote = "No option with a live price right now.";
       }
     } catch (e) {
@@ -251,7 +350,7 @@ export class OptionsScanner {
       const r = resolveMove(sig, bars, this.now());
       if (!r) return sig;
       changed = true;
-      const done = { ...sig, outcome: r.o, exit: r.exit };
+      const done = { ...sig, outcome: r.o, exit: r.exit, planR: r.planR };
       void this.deps.saveResult?.(done);
       return done;
     });

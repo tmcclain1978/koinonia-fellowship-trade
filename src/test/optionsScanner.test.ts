@@ -54,11 +54,22 @@ describe("options scanner", () => {
     });
     await sc.start(["SPY", "QQQ"]);
     expect(sc.getSnapshot().boards.sameday?.stats.find((s) => s.pattern === "red_streak" && s.dir === "up")?.verdict).toBe("edge");
+    // Filters on (default): today trends down, so the call is skipped, with the reason shown.
+    await sc.sameDayPass();
+    expect(sc.getSnapshot().signals).toHaveLength(0);
+    expect(sc.getSnapshot().skipped[0]).toMatchObject({ symbol: "SPY", dir: "up" });
+    expect(sc.getSnapshot().skipped[0].reasons.join(" ")).toMatch(/bigger trend/);
+    expect(sc.getSnapshot().calendars).toEqual({ news: "unavailable", earnings: "unavailable" });
+    const imp = sc.getSnapshot().impact.sameday!;
+    expect(imp.map((x) => x.label)).toEqual(["No filters", "Trend only", "Market only", "Skip lunch only", "All filters"]);
+    expect(imp[0].n).toBeGreaterThan(imp[4].n);
+    // Filters off: the same setup is predicted.
+    sc.setFilters({ trend: false, market: false, lunch: false });
     await sc.sameDayPass();
     const sig = sc.getSnapshot().signals[0];
     expect(sig).toMatchObject({ symbol: "SPY", dir: "up", mode: "sameday", at: open + 18 * M5 });
     expect(sig.until).toBe(sig.at + 30 * 60_000);
-    expect(sig.contract).toMatchObject({ side: "CALL", strike: 579, expiration: "2026-10-21" });
+    expect(sig.contract).toMatchObject({ side: "CALL", strike: 578, expiration: "2026-10-21" }); // delta ~0.65
     expect(saved).toHaveLength(1);
     // Next candle jumps to the target
     now.t += M5;
@@ -66,10 +77,11 @@ describe("options scanner", () => {
     await sc.sameDayPass();
     const done = sc.getSnapshot().signals.find((s) => s.key === sig.key)!;
     expect(done.outcome).toBe("win");
+    expect(done.planR).toBeGreaterThan(0); // partial-profit plan: half at 60%, rest at target
     expect(results).toHaveLength(1);
     const r = optionsReport(sc.getSnapshot().signals, day, day + 86_400_000);
     expect(r).toMatchObject({ wins: 1, losses: 0, open: 0 });
-    expect(r.lines[0]).toMatchObject({ when: "11:00", symbol: "SPY", dir: "CALL", result: "WIN", contract: "SPY Oct 21 579 Call" });
+    expect(r.lines[0]).toMatchObject({ when: "11:00", symbol: "SPY", dir: "CALL", result: "WIN", contract: "SPY Oct 21 578 Call" });
     expect(r.estPnl).toBeGreaterThan(0);
     sc.stop();
   });
