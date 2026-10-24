@@ -29,10 +29,10 @@ describe("market context", () => {
     expect(ctx[150].trend).toBe("up");
     expect(ctx[199].trend).toBe("up");
     expect(ctx[199].vwap).toBeGreaterThan(0);
-    expect(passes("up", ctx[199], "up", { trend: true, market: true, lunch: false })).toBe(true);
-    expect(passes("down", ctx[199], null, { trend: true, market: false, lunch: false })).toBe(false);
-    expect(failedFilters("up", ctx[199], "down", { trend: true, market: true, lunch: false })).toEqual(["the market is trending the other way"]);
-    expect(passes("up", { trend: "up", vwap: 1, window: "lunch" }, null, { trend: false, market: false, lunch: true })).toBe(false);
+    expect(passes("up", ctx[199], "up", { trend: true, market: true, lunch: false, room: false, volume: false })).toBe(true);
+    expect(passes("down", ctx[199], null, { trend: true, market: false, lunch: false, room: false, volume: false })).toBe(false);
+    expect(failedFilters("up", ctx[199], "down", { trend: true, market: true, lunch: false, room: false, volume: false })).toEqual(["the market is trending the other way"]);
+    expect(passes("up", { trend: "up", vwap: 1, window: "lunch" }, null, { trend: false, market: false, lunch: true, room: false, volume: false })).toBe(false);
   });
 
   it("swing: 50-day trend", () => {

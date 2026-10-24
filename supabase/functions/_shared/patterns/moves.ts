@@ -34,18 +34,22 @@ export interface ModeSpec {
   /** Target and stop, in ATRs of this candle size. */
   target: number;
   stop: number;
+  /** Exit plan time stop: after this many candles, get out if the stock hasn't moved TIME_STOP_MOVE ATRs our way. */
+  timeStop: number;
   label: string;
 }
 
 export const MODES: Record<Mode, ModeSpec> = {
-  sameday: { mode: "sameday", tfMs: 5 * 60_000, horizon: 6, target: 1, stop: 1, label: "Same day (5-minute candles, up to 30 minutes)" },
-  swing: { mode: "swing", tfMs: 86_400_000, horizon: 5, target: 1, stop: 1, label: "Swing (daily candles, up to 5 trading days)" },
+  sameday: { mode: "sameday", tfMs: 5 * 60_000, horizon: 6, target: 1, stop: 1, timeStop: 3, label: "Same day (5-minute candles, up to 30 minutes)" },
+  swing: { mode: "swing", tfMs: 86_400_000, horizon: 5, target: 1, stop: 1, timeStop: 2, label: "Swing (daily candles, up to 5 trading days)" },
 };
 
 export type MoveOutcome = "win" | "loss" | "expired";
 
 /** Partial-profit plan: sell half at this share of the way to the target, then move the stop to the entry price. */
 export const PARTIAL_AT = 0.6;
+/** Time stop: the move (in ATRs, our way) needed by the time-stop candle to stay in. */
+export const TIME_STOP_MOVE = 0.3;
 
 /**
  * What a trade entered at the close of candle i would have done.
@@ -53,9 +57,10 @@ export const PARTIAL_AT = 0.6;
  * If target and stop are both touched inside one candle we can't tell which
  * came first, so it counts as a loss (cautious).
  *
- * `planR`: the result of the partial-profit plan, in units of the stop
- * distance (R): -1 = stopped out before the partial, +0.8 = partial then
- * target, +0.3 = partial then back to entry.
+ * `planR`: the result of the exit plan, in units of the stop distance (R):
+ * -1 = stopped out before the partial, +0.8 = partial then target, +0.3 =
+ * partial then back to entry; time stop = out at the close of candle
+ * `timeStop` if the stock hasn't moved TIME_STOP_MOVE ATRs our way by then.
  */
 export function moveOutcome(bars: Bar[], i: number, dir: Dir, atr: number, spec: ModeSpec): { o: MoveOutcome; endMove: number; best: number; planR: number } | null {
   const end = i + spec.horizon;
@@ -101,6 +106,8 @@ export function moveOutcome(bars: Bar[], i: number, dir: Dir, atr: number, spec:
       } else if (backToEntry) plan = (0.5 * PARTIAL_AT * spec.target * atr) / R;
       else if (hitT) plan = 0.5 * PARTIAL_AT * (spec.target * atr) / R + 0.5 * (spec.target * atr) / R;
     }
+    // Time stop: no real move by now -> out at this close.
+    if (plan === null && !tookPartial && j === i + spec.timeStop && best < TIME_STOP_MOVE) plan = Math.max(-1, ((b.close - entry) * sgn) / R);
     if (o && plan !== null) break;
   }
   const endMove = ((bars[end].close - entry) / atr) * sgn;
@@ -197,7 +204,7 @@ export function contexts(series: Array<{ symbol: string; bars: Bar[] }>, spec: M
   const ctx: Record<string, BarContext[]> = {};
   const trendAt: Record<string, Map<number, Trend>> = {};
   for (const { symbol, bars } of series) {
-    ctx[symbol] = spec.mode === "sameday" ? sameDayContext(bars) : swingContext(bars);
+    ctx[symbol] = spec.mode === "sameday" ? sameDayContext(bars, spec.target) : swingContext(bars, spec.target);
     trendAt[symbol] = new Map(bars.map((b, i) => [b.time, ctx[symbol][i].trend]));
   }
   const marketAt = (symbol: string, t: number): Trend | null => trendAt[indexFor(symbol)]?.get(t) ?? null;
@@ -344,12 +351,15 @@ export interface FilterImpact {
 
 /** How each filter changes the hit rate of all pattern signals (and of the proven ones). */
 export function filterImpact(rec: MoveRecords): FilterImpact[] {
+  const only = (k: keyof Filters): Filters => ({ ...NO_FILTERS, [k]: true });
   const sets: Array<[string, Filters]> = [
     ["No filters", NO_FILTERS],
-    ["Trend only", { trend: true, market: false, lunch: false }],
-    ["Market only", { trend: false, market: true, lunch: false }],
-    ...(rec.spec.mode === "sameday" ? ([["Skip lunch only", { trend: false, market: false, lunch: true }]] as Array<[string, Filters]>) : []),
-    ["All filters", { trend: true, market: true, lunch: rec.spec.mode === "sameday" }],
+    ["Trend only", only("trend")],
+    ["Market only", only("market")],
+    ...(rec.spec.mode === "sameday" ? ([["Skip lunch only", only("lunch")]] as Array<[string, Filters]>) : []),
+    ["Room to target only", only("room")],
+    ["Volume only", only("volume")],
+    ["All filters", { trend: true, market: true, lunch: rec.spec.mode === "sameday", room: true, volume: true }],
   ];
   return sets.map(([label, filters]) => {
     const sigs = rec.records.filter((r) => r.pattern !== null && passes(r.dir, r.ctx, r.market, filters));
@@ -395,7 +405,7 @@ export interface MovePrediction {
   planWinRate?: number;
   planAvgR?: number;
   /** What the market looked like (trend, VWAP side). */
-  context?: { trend: Trend; market: Trend | null; aboveVwap: boolean | null };
+  context?: { trend: Trend; market: Trend | null; aboveVwap: boolean | null; rvol?: number | null; nextLevel?: { price: number; name: string } | null };
 }
 
 /** A setup that showed up but was skipped by a filter (shown so you know why). */
@@ -481,7 +491,9 @@ export function predictMove(symbol: string, bars: Bar[], board: MoveBoard | null
     partial: entry + (up ? 1 : -1) * PARTIAL_AT * spec.target * atr,
     planWinRate: best.planWinRate,
     planAvgR: best.planAvgR,
-    context: live?.ctx ? { trend: live.ctx.trend, market: live.market ?? null, aboveVwap: live.ctx.vwap === null ? null : entry > live.ctx.vwap } : undefined,
+    context: live?.ctx
+      ? { trend: live.ctx.trend, market: live.market ?? null, aboveVwap: live.ctx.vwap === null ? null : entry > live.ctx.vwap, rvol: live.ctx.rvol ?? null, nextLevel: (up ? live.ctx.levelAbove : live.ctx.levelBelow) ?? null }
+      : undefined,
     reason: `${names} → ${word}. After ${best.name}, ${best.scope === "own" ? symbol : "these stocks"} reached the target first ${Math.round(best.winRate * 100)}% of ${best.n} times, vs ${Math.round(baseline * 100)}% for a random entry.`,
   };
 }
@@ -503,6 +515,8 @@ export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "ta
   let exit = 0;
   let plan: number | null = p.partial === undefined || !(R > 0) ? 0 : null;
   let tookPartial = false;
+  let bestFav = 0;
+  let k = 0;
   for (const b of window) {
     const hitS = up ? b.low <= p.stop : b.high >= p.stop;
     const hitT = up ? b.high >= p.target : b.low <= p.target;
@@ -525,6 +539,9 @@ export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "ta
         }
       } else if (back) plan = pPart;
       else if (hitT) plan = pPart + (0.5 * T) / R;
+      bestFav = Math.max(bestFav, (up ? b.high - p.entry : p.entry - b.low) / Math.max(T, 1e-9));
+      k++;
+      if (plan === null && !tookPartial && k === spec.timeStop && bestFav < TIME_STOP_MOVE) plan = Math.max(-1, ((b.close - p.entry) * (up ? 1 : -1)) / R);
     }
     if (o && plan !== null) break;
   }

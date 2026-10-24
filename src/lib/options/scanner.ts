@@ -17,6 +17,7 @@ import { type Filters, indexFor, sameDayContext, swingContext } from "../../../s
 import { type EarningsDate, type EconEvent, earningsBlockSameDay, earningsBlockSwing, newsBlock, nextEarnings } from "../../../supabase/functions/_shared/patterns/events";
 import { etClock, sessionBounds, sessionFor } from "../../../supabase/functions/_shared/bot/session";
 import { type ChainRow, type ContractPick, pickContract, realizedVol } from "./contractPicker";
+import { type ChainView, chainView } from "./chainSignals";
 
 export const OPTION_SYMBOLS = ["TSLA", "SPY", "AAPL", "NVDA", "QQQ"];
 
@@ -29,6 +30,8 @@ export interface OptionSignal extends MovePrediction {
   exit: number | null;
   /** Result of the partial-profit plan in R (stop distances), once known. */
   planR?: number | null;
+  /** Option walls and today's unusual buying, from the chain. */
+  chainInfo?: { callWall: number | null; putWall: number | null; flow: ChainView["flow"] };
 }
 
 /** Filters, plus the live-only news and earnings checks. */
@@ -37,7 +40,8 @@ export interface ScanFilters extends Filters {
   earnings: boolean;
 }
 
-export const DEFAULT_SCAN_FILTERS: ScanFilters = { trend: true, market: true, lunch: true, news: true, earnings: true };
+// Volume starts off: check "What the filters do" to see if it helps on your stocks.
+export const DEFAULT_SCAN_FILTERS: ScanFilters = { trend: true, market: true, lunch: true, room: true, volume: false, news: true, earnings: true };
 
 export interface OptionsDeps {
   /** Same day: as many 5-minute candles as the data source gives (regular hours). Swing: years of daily candles. */
@@ -73,6 +77,62 @@ export interface OptionsSnapshot {
   skipped: Skipped[];
   /** Whether the news / earnings checks have data. */
   calendars: { news: "on" | "unavailable" | "loading"; earnings: "on" | "unavailable" | "loading" };
+  limits: Limits;
+  /** Patterns paused because they've been losing live. */
+  paused: Paused[];
+}
+
+/** Daily guard rails for same-day predictions. */
+export interface Limits {
+  /** Most same-day predictions per day (0 = no limit). */
+  maxPerDay: number;
+  /** Stop for the day after this many losses (0 = never). */
+  stopAfterLosses: number;
+}
+export const DEFAULT_LIMITS: Limits = { maxPerDay: 6, stopAfterLosses: 3 };
+
+/** A pattern doing worse live than a random entry over its last 10 predictions. */
+export interface Paused {
+  key: string;
+  mode: Mode;
+  pattern: string;
+  name: string;
+  dir: "up" | "down";
+  wins: number;
+  n: number;
+  baseline: number;
+}
+
+/** Live results checked per pattern before pausing it. */
+export const POLICE_WINDOW = 10;
+
+/**
+ * Patterns whose last POLICE_WINDOW finished predictions (after `since`, if
+ * given for that pattern) reached the target less often than a random entry.
+ */
+export function pausedPatterns(signals: OptionSignal[], since: Record<string, number> = {}): Paused[] {
+  const groups = new Map<string, OptionSignal[]>();
+  for (const s of signals) {
+    if (!s.outcome) continue;
+    for (const e of s.evidence) {
+      const key = `${s.mode}|${e.pattern}|${s.dir}`;
+      if (s.at <= (since[key] ?? 0)) continue;
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
+    }
+  }
+  const out: Paused[] = [];
+  for (const [key, list] of groups) {
+    const last = list.sort((a, b) => b.at - a.at).slice(0, POLICE_WINDOW);
+    if (last.length < POLICE_WINDOW) continue;
+    const wins = last.filter((x) => x.outcome === "win").length;
+    const baseline = last.reduce((a, x) => a + x.baseline, 0) / last.length;
+    if (wins / last.length < baseline) {
+      const [mode, pattern, dir] = key.split("|");
+      const name = last[0].evidence.find((e) => e.pattern === pattern)?.name ?? pattern;
+      out.push({ key, mode: mode as Mode, pattern, name, dir: dir as "up" | "down", wins, n: last.length, baseline });
+    }
+  }
+  return out;
 }
 
 export const optionKey = (s: Pick<MovePrediction, "symbol" | "mode" | "at">) => `${s.symbol}|${s.mode}|${s.at}`;
@@ -83,7 +143,9 @@ const BOARD_TTL = 60 * 60_000;
 const AFTER_CLOSE = 20_000;
 
 export class OptionsScanner {
-  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" } };
+  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" }, limits: DEFAULT_LIMITS, paused: [] };
+  /** Pattern key -> time it was un-paused by hand (only later results count). */
+  private unpausedAt: Record<string, number> = {};
   private records: Partial<Record<Mode, MoveRecords>> = {};
   private econ: EconEvent[] = [];
   private earningsDates: EarningsDate[] = [];
@@ -123,6 +185,7 @@ export class OptionsScanner {
     const keys = new Set(this.s.signals.map((x) => x.key));
     const add = list.filter((x) => !keys.has(x.key));
     if (add.length) this.set({ signals: [...this.s.signals, ...add].sort((a, b) => b.at - a.at) });
+    this.police();
   }
 
   async start(symbols = OPTION_SYMBOLS) {
@@ -180,6 +243,40 @@ export class OptionsScanner {
       impact[mode] = filterImpact(rec);
     }
     this.set({ boards, impact });
+  }
+
+  setLimits(l: Partial<Limits>) {
+    this.set({ limits: { ...this.s.limits, ...l } });
+  }
+
+  /** Give a paused pattern a fresh start (only results from now on count). */
+  unpause(key: string) {
+    this.unpausedAt = { ...this.unpausedAt, [key]: this.now() };
+    this.police();
+  }
+
+  private police() {
+    this.set({ paused: pausedPatterns(this.s.signals, this.unpausedAt) });
+  }
+
+  /** Reasons a new same-day prediction can't be made today (limits). */
+  private limitBlock(): string | null {
+    const today = etClock(this.now()).date;
+    const todays = this.s.signals.filter((x) => x.mode === "sameday" && etClock(x.at).date === today);
+    const { maxPerDay, stopAfterLosses } = this.s.limits;
+    if (maxPerDay > 0 && todays.length >= maxPerDay) return `daily limit reached (${todays.length} same-day predictions today)`;
+    const losses = todays.filter((x) => x.outcome === "loss").length;
+    if (stopAfterLosses > 0 && losses >= stopAfterLosses) return `${losses} losses today: done for the day`;
+    return null;
+  }
+
+  /** Reason to skip because the backing pattern is paused. */
+  private pausedBlock(p: MovePrediction): string | null {
+    for (const e of p.evidence) {
+      const hit = this.s.paused.find((x) => x.key === `${p.mode}|${e.pattern}|${p.dir}`);
+      if (hit && e.verdict === "edge") return `${hit.name} is paused: it reached the target ${hit.wins} of its last ${hit.n} times, worse than a random entry`;
+    }
+    return null;
   }
 
   setFilters(f: Partial<ScanFilters>) {
@@ -269,7 +366,7 @@ export class OptionsScanner {
       })() : null;
       const p = predictMove(sym, bars, board, closedAt, { ctx: ctx[ctx.length - 1], market, onSkip: (x) => this.skip(x) });
       if (!p) continue;
-      const block = (this.s.filters.news ? newsBlock(closedAt, this.econ) : null) ?? (this.s.filters.earnings ? earningsBlockSameDay(sym, closedAt, this.earningsDates) : null);
+      const block = (this.s.filters.news ? newsBlock(closedAt, this.econ) : null) ?? (this.s.filters.earnings ? earningsBlockSameDay(sym, closedAt, this.earningsDates) : null) ?? this.pausedBlock(p) ?? this.limitBlock();
       if (block) {
         this.skip({ symbol: sym, mode: "sameday", dir: p.dir, at: closedAt, names: p.evidence.map((e) => e.name).join(" + "), reasons: [block] });
         continue;
@@ -305,7 +402,7 @@ export class OptionsScanner {
       })() : null;
       const p = predictMove(sym, bars, board, last.time, { ctx: ctx[ctx.length - 1], market: im, onSkip: (x) => this.skip(x) });
       if (!p) continue;
-      const block = this.s.filters.earnings ? earningsBlockSwing(sym, p.at, p.until, this.earningsDates) : null;
+      const block = (this.s.filters.earnings ? earningsBlockSwing(sym, p.at, p.until, this.earningsDates) : null) ?? this.pausedBlock(p);
       if (block) {
         this.skip({ symbol: sym, mode: "swing", dir: p.dir, at: p.at, names: p.evidence.map((e) => e.name).join(" + "), reasons: [block] });
         continue;
@@ -319,10 +416,18 @@ export class OptionsScanner {
     if (this.s.signals.some((x) => x.key === key)) return;
     let contract: ContractPick | null = null;
     let contractNote: string | undefined;
+    let chainInfo: OptionSignal["chainInfo"];
     try {
       const ch = await this.deps.chain(p.symbol, p.mode);
       if (!ch) contractNote = "Option chain needs a Schwab connection.";
       else {
+        const view = chainView(ch.rows, { spot: ch.spot || p.entry, dir: p.dir, entry: p.entry, target: p.target, atr: p.atr, now: this.now() });
+        chainInfo = { callWall: view.callWall, putWall: view.putWall, flow: view.flow };
+        // A big option wall before the target: price often stalls there.
+        if (this.s.filters.room && view.wallInWay) {
+          this.skip({ symbol: p.symbol, mode: p.mode, dir: p.dir, at: p.at, names: p.evidence.map((e) => e.name).join(" + "), reasons: [`the ${view.wallInWay.kind} at $${view.wallInWay.price} is in the way of the target`] });
+          return;
+        }
         const daily = this.bars.swing[p.symbol] ?? [];
         contract = pickContract(ch.rows, {
           symbol: p.symbol, dir: p.dir, mode: p.mode, spot: ch.spot || p.entry, target: p.target, stop: p.stop, now: this.now(),
@@ -334,7 +439,7 @@ export class OptionsScanner {
     } catch (e) {
       contractNote = `Couldn't load the option chain: ${(e as Error).message}`;
     }
-    const sig: OptionSignal = { ...p, key, contract, ...(contractNote ? { contractNote } : {}), outcome: null, exit: null };
+    const sig: OptionSignal = { ...p, key, contract, ...(contractNote ? { contractNote } : {}), ...(chainInfo ? { chainInfo } : {}), outcome: null, exit: null };
     this.set({ signals: [sig, ...this.s.signals].slice(0, 500) });
     this.signalListeners.forEach((l) => l(sig));
     void this.deps.save?.(sig);
@@ -354,7 +459,10 @@ export class OptionsScanner {
       void this.deps.saveResult?.(done);
       return done;
     });
-    if (changed) this.set({ signals: next });
+    if (changed) {
+      this.set({ signals: next });
+      this.police();
+    }
   }
 }
 
