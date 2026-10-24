@@ -416,7 +416,7 @@ export function useForecast(asset: string, tf: number, expiry: number, payout: n
   return { current, entries, record };
 }
 
-async function saveForecast(e: ForecastEntry) {
+export async function saveForecast(e: Forecast, method = "patterns") {
   const uid = (await supabase.auth.getSession()).data.session?.user.id;
   if (!uid) return;
   const { error } = await supabase.from("pocketoption_predictions").upsert(
@@ -430,7 +430,7 @@ async function saveForecast(e: ForecastEntry) {
       made_call: !!e.call,
       p_up: Math.round(e.pUp * 1000) / 1000,
       confidence: Math.round(e.confidence * 100),
-      prediction_method: "patterns",
+      prediction_method: method,
       sequence_used: e.reason.slice(0, 500),
       evidence: { entry: e.entry, reason: e.reason, strength: e.strength, items: e.evidence, breakEven: e.breakEven } as unknown as Json,
     },
@@ -439,7 +439,7 @@ async function saveForecast(e: ForecastEntry) {
   if (error) console.warn("[forecast] save failed:", error.message);
 }
 
-async function saveForecastResult(e: ForecastEntry, r: ForecastResult) {
+export async function saveForecastResult(e: Forecast, r: ForecastResult) {
   const uid = (await supabase.auth.getSession()).data.session?.user.id;
   if (!uid) return;
   const { error } = await supabase

@@ -19,6 +19,7 @@ import {
   PO_HEADERS,
   HistoryPager,
   PoSession,
+  historyFrame,
   changeSymbolFrame,
   endpointUrl,
   endpointsFor,
@@ -115,6 +116,18 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
     if (b.timer) clearTimeout(b.timer);
     b.timer = setTimeout(() => { if (backfill === b) stopBackfill("PocketOption stopped answering."); }, 15_000);
   };
+  /** One-page "latest candles" requests for any asset (the multi-pair scanner): index -> asset. */
+  const latest = new Map<number, { asset: string; timer: ReturnType<typeof setTimeout> }>();
+  let latestSeq = 0;
+  const onLatest = (e: Extract<PoEvent, { type: "po_candles" }>): boolean => {
+    const req = e.index === undefined ? undefined : latest.get(e.index);
+    if (!req) return false;
+    clearTimeout(req.timer);
+    latest.delete(e.index!);
+    toClient({ type: "po_latest", asset: req.asset, candles: e.candles });
+    return true;
+  };
+
   /** A history page arrived: pass it on and ask for the next one. True if it was ours. */
   const onHistoryPage = (e: Extract<PoEvent, { type: "po_candles" }>): boolean => {
     const b = backfill;
@@ -188,6 +201,8 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
             stopTimers();
             toClient({ type: "error", code: "AUTH_FAILED", message: e.reason });
             try { ws.close(); } catch { /* ignore */ }
+          } else if (e.type === "po_candles" && onLatest(e)) {
+            // handled: a scanner request
           } else if (e.type === "po_candles" && onHistoryPage(e)) {
             // handled: part of a "load older candles" job
           } else {
@@ -258,6 +273,24 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
         requestPage();
         return;
       }
+      case "latest": {
+        // The last ~150 finished candles of any asset, without switching the watched one.
+        const asset = String(m.asset ?? "");
+        if (!/^#?[A-Za-z0-9_.]{2,24}$/.test(asset)) return;
+        if (!po || !session?.authenticated) {
+          toClient({ type: "po_latest", asset, candles: [], error: "Not logged in to PocketOption yet." });
+          return;
+        }
+        const nowSec = Math.floor(Date.now() / 1000);
+        // A different size of number from the history pager's tags, so they never mix.
+        const index = nowSec * 1000 + 500 + (++latestSeq % 500);
+        const timer = setTimeout(() => {
+          if (latest.delete(index)) toClient({ type: "po_latest", asset, candles: [], error: "PocketOption didn't answer in time." });
+        }, 10_000);
+        latest.set(index, { asset, timer });
+        po.send(historyFrame(asset, Math.floor(nowSec / 60) * 60, index));
+        return;
+      }
       case "stop_history":
         stopBackfill("Stopped.");
         return;
@@ -289,6 +322,8 @@ export function createBridge(ssidRaw: string | null, setupError: { code: string;
     stopTimers();
     if (backfill?.timer) clearTimeout(backfill.timer);
     backfill = null;
+    for (const r of latest.values()) clearTimeout(r.timer);
+    latest.clear();
     try { po?.close(); } catch { /* ignore */ }
   };
 

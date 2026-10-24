@@ -45,8 +45,8 @@ export interface AssetCandles {
 }
 
 const PAGE = 1000;
-/** Most recent candles kept for analysis (~21 days of 1-minute candles). */
-export const MAX_BARS = 30_000;
+/** Most recent candles kept for analysis (~31 days of 1-minute candles, for time-of-day predictions). */
+export const MAX_BARS = 45_000;
 const SAVE_CHUNK = 500;
 
 export class CandleStore {
