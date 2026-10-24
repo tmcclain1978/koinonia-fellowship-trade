@@ -11,9 +11,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Copy, Loader2, Play, Square } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { optionAlertsOn, optionsScanner, setOptionAlerts, useOptionsScanner } from "@/hooks/useOptionsScanner";
-import { OPTION_SYMBOLS, type OptionSignal, optionsReport } from "@/lib/options/scanner";
-import { MODES, type Mode, type MoveBoard, type MoveVerdict } from "../../../supabase/functions/_shared/patterns/moves";
+import { optionAlertsOn, optionsScanner, setOptionAlerts, setOptionFilters, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import { OPTION_SYMBOLS, type OptionSignal, type ScanFilters, optionsReport } from "@/lib/options/scanner";
+import { MODES, type FilterImpact, type Mode, type MoveBoard, type MoveVerdict, type Skipped } from "../../../supabase/functions/_shared/patterns/moves";
 import { PATTERNS } from "../../../supabase/functions/_shared/patterns/detect";
 import { etClock } from "../../../supabase/functions/_shared/bot/session";
 
@@ -78,6 +78,20 @@ const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
         <div className="text-muted-foreground">Stop {usd(s.stop)}</div>
       </div>
       <div className="text-xs text-muted-foreground">Chance of reaching the target first: <b className="text-foreground">{Math.round(s.chance * 100)}%</b> (a random entry: {Math.round(s.baseline * 100)}%). {s.reason}</div>
+      {s.context && (
+        <div className="flex flex-wrap gap-1 text-[11px]" data-testid="context">
+          <Badge variant="outline">bigger trend {s.context.trend}</Badge>
+          {s.context.market && <Badge variant="outline">market {s.context.market}</Badge>}
+          {s.context.aboveVwap !== null && <Badge variant="outline">{s.context.aboveVwap ? "above" : "below"} VWAP</Badge>}
+        </div>
+      )}
+      {s.partial !== undefined && (
+        <div className="rounded-md border border-dashed p-2 text-xs" data-testid="plan">
+          <b>Exit plan:</b> sell half at <b>{usd(s.partial)}</b> (60% of the way), then move the stop to {usd(s.entry)} (your entry); sell the rest at {usd(s.target)}{s.mode === "sameday" ? " or after 30 minutes" : " or after 5 trading days"}.
+          {s.planWinRate !== undefined && <> In the past this plan ended in profit <b>{Math.round(s.planWinRate * 100)}%</b> of the time{s.planAvgR !== undefined ? ` (average ${s.planAvgR >= 0 ? "+" : ""}${s.planAvgR.toFixed(2)}× the risk)` : ""}.</>}
+          {s.planR !== undefined && s.planR !== null && <> Result with the plan: <b className={s.planR > 0 ? "text-green-500" : "text-red-500"}>{s.planR >= 0 ? "+" : ""}{s.planR.toFixed(2)}× the risk</b>.</>}
+        </div>
+      )}
       {s.contract ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-muted/50 p-2 text-sm">
           <b>{s.contract.label}</b>
@@ -95,6 +109,12 @@ const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
               <Badge variant="outline" className="border-amber-500 text-amber-500" data-testid="ev" title="Even at this chance, the option's gain at the target is too small next to its loss at the stop.">option math doesn't pay (≈ {money(ev)}) · skip or trade the stock</Badge>
             );
           })()}
+          {s.contract.notes?.map((n) => <Badge key={n} variant="outline" className="text-amber-500">{n}</Badge>)}
+          {s.contract.debitSpread && (
+            <div className="w-full text-xs" data-testid="debit-spread">
+              Cheaper choice while options are pricey: <b>{s.contract.debitSpread.label}</b> — about <b>${s.contract.debitSpread.cost}</b>, worth up to ${Math.round(s.contract.debitSpread.width * 100)} (max profit ${s.contract.debitSpread.maxProfit}), break-even {usd(s.contract.debitSpread.breakEven)}, ≈ {money(s.contract.debitSpread.profitAtTarget)} at target / {money(s.contract.debitSpread.lossAtStop)} at stop.
+            </div>
+          )}
           {open && <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={paper}>{busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Paper trade 1</Button>}
         </div>
       ) : (
@@ -124,6 +144,7 @@ const Scoreboard = ({ board }: { board: MoveBoard }) => {
               <TableHead className="text-right">Hit target first</TableHead>
               <TableHead className="text-right">Random entry</TableHead>
               <TableHead className="text-right">Lately</TableHead>
+              <TableHead className="text-right" title="Profitable with the exit plan (half at 60%, stop to entry)">With plan</TableHead>
               <TableHead>All stocks</TableHead>
               <TableHead>Works on</TableHead>
             </TableRow>
@@ -137,6 +158,7 @@ const Scoreboard = ({ board }: { board: MoveBoard }) => {
                 <TableCell className="text-right tabular-nums">{Math.round(s.winRate * 100)}%</TableCell>
                 <TableCell className="text-right tabular-nums text-muted-foreground">{Math.round(s.baseline * 100)}%</TableCell>
                 <TableCell className="text-right tabular-nums">{s.recent.n ? `${Math.round(s.recent.winRate * 100)}%` : "—"}</TableCell>
+                <TableCell className="text-right tabular-nums">{Math.round(s.planWinRate * 100)}%</TableCell>
                 <TableCell><Badge className={VERDICT[s.verdict].cls}>{VERDICT[s.verdict].label}</Badge></TableCell>
                 <TableCell className="space-x-1">
                   {own(s).map(([sym, v]) => (
@@ -152,6 +174,59 @@ const Scoreboard = ({ board }: { board: MoveBoard }) => {
     </div>
   );
 };
+
+const pctx = (x: number) => `${Math.round(x * 100)}%`;
+
+/** How each filter changes the hit rate (same past trades, filtered). */
+const ImpactTable = ({ rows }: { rows: FilterImpact[] }) => (
+  <div className="overflow-x-auto" data-testid="impact">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Filters</TableHead>
+          <TableHead className="text-right">Signals</TableHead>
+          <TableHead className="text-right">Hit target first</TableHead>
+          <TableHead className="text-right">Profitable with plan</TableHead>
+          <TableHead className="text-right">Avg result</TableHead>
+          <TableHead className="text-right">Proven patterns only</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.label}>
+            <TableCell>{r.label}</TableCell>
+            <TableCell className="text-right tabular-nums">{r.n.toLocaleString()}</TableCell>
+            <TableCell className="text-right tabular-nums">{r.n ? pctx(r.winRate) : "—"}</TableCell>
+            <TableCell className="text-right tabular-nums">{r.n ? pctx(r.planWinRate) : "—"}</TableCell>
+            <TableCell className={`text-right tabular-nums ${r.planAvgR > 0 ? "text-green-500" : "text-red-500"}`}>{r.n ? `${r.planAvgR >= 0 ? "+" : ""}${r.planAvgR.toFixed(2)}R` : "—"}</TableCell>
+            <TableCell className="text-right tabular-nums">{r.edgeN ? `${pctx(r.edgeWinRate)} of ${r.edgeN}` : "—"}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+    <p className="mt-1 text-xs text-muted-foreground">Every past pattern signal on these stocks, replayed with each filter. "Avg result" is with the exit plan, in units of the risk (R): +0.10R means about 10 cents made per $1 risked.</p>
+  </div>
+);
+
+const SkippedList = ({ list }: { list: Skipped[] }) =>
+  list.length ? (
+    <div className="space-y-1" data-testid="skipped">
+      <p className="text-xs font-medium text-muted-foreground">Skipped by your filters</p>
+      {list.slice(0, 6).map((x) => (
+        <div key={`${x.symbol}${x.at}${x.dir}`} className="text-xs text-muted-foreground">
+          {x.symbol} {x.mode === "sameday" ? etTime(x.at) : etDay(x.at)} · {x.dir === "up" ? "call" : "put"} ({x.names}) — {x.reasons.join("; ")}
+        </div>
+      ))}
+    </div>
+  ) : null;
+
+const FILTER_LABELS: Array<[keyof ScanFilters, string, string]> = [
+  ["trend", "Trade with the bigger trend", "Calls only when the hourly (same day) or 50-day (swing) trend is up; puts when it's down. Dips in an uptrend still count."],
+  ["market", "Market must agree", "Skip when the index (QQQ, or SPY for QQQ) is trending the other way."],
+  ["lunch", "Skip the lunch lull", "No same-day trades 11:30 am - 1:30 pm ET, when prices tend to drift."],
+  ["news", "Skip big news", "No same-day trades from 30 min before to 60 min after CPI, jobs, Fed and similar; no Fed-day afternoons."],
+  ["earnings", "Avoid earnings", "No trades right after a report or across one; swing options expire before the next report when possible."],
+];
 
 /** Predictions for TSLA, SPY, AAPL, NVDA and QQQ options: same-day and swing. */
 const OptionsSignals = () => {
@@ -182,6 +257,7 @@ const OptionsSignals = () => {
           </CardHeader>
           <CardContent className="space-y-3">
             {open.length ? open.map((s) => <SignalCard key={s.key} s={s} now={now} />) : <p className="py-4 text-center text-sm text-muted-foreground">{snap.running ? "No setup with a proven record right now. It keeps watching." : "Press “Start” to watch for setups."}</p>}
+            <SkippedList list={snap.skipped.filter((x) => x.mode === mode)} />
           </CardContent>
         </Card>
         <Card>
@@ -205,7 +281,15 @@ const OptionsSignals = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Which patterns work ({mode === "sameday" ? "same day" : "swing"})</CardTitle>
           </CardHeader>
-          <CardContent>{board ? <Scoreboard board={board} /> : <p className="py-4 text-center text-sm text-muted-foreground">{snap.running ? "Loading history…" : "Press “Start” to load history."}</p>}</CardContent>
+          <CardContent className="space-y-6">
+            {snap.impact[mode] && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">What the filters do</p>
+                <ImpactTable rows={snap.impact[mode]!} />
+              </div>
+            )}
+            {board ? <Scoreboard board={board} /> : <p className="py-4 text-center text-sm text-muted-foreground">{snap.running ? "Loading history…" : "Press “Start” to load history."}</p>}
+          </CardContent>
         </Card>
       </div>
     );
@@ -255,6 +339,19 @@ const OptionsSignals = () => {
             </div>
           )}
           {snap.error && <Alert variant="destructive"><AlertDescription>{snap.error}</AlertDescription></Alert>}
+          <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="filters">
+            {FILTER_LABELS.map(([k, label, help]) => (
+              <div key={k} className="flex items-start gap-2" title={help}>
+                <Switch id={`f-${k}`} checked={snap.filters[k]} onCheckedChange={(v) => setOptionFilters({ [k]: v })} />
+                <div>
+                  <Label htmlFor={`f-${k}`} className="text-sm">{label}</Label>
+                  <p className="text-[11px] text-muted-foreground">{help}</p>
+                  {k === "news" && snap.calendars.news === "unavailable" && <p className="text-[11px] text-amber-500">Economic calendar not available (needs FMP_API_KEY), so this check is off.</p>}
+                  {k === "earnings" && snap.calendars.earnings === "unavailable" && <p className="text-[11px] text-amber-500">Earnings calendar not available (needs FMP_API_KEY), so this check is off.</p>}
+                </div>
+              </div>
+            ))}
+          </div>
           <p className="text-xs text-muted-foreground">Options can lose their whole cost quickly, especially same-day ones. A "WIN" means the stock reached the target first; the dollar figures are estimates.</p>
         </CardContent>
       </Card>

@@ -44,6 +44,18 @@ export const optionsScanner = new OptionsScanner({
     if (data?.source !== "schwab") return null;
     return { rows: (data.options ?? []) as ChainRow[], spot: Number(data.underlyingPrice) || 0 };
   },
+  econEvents: async (from, to) => {
+    const { data, error } = await supabase.functions.invoke("fetch-economic-calendar", {
+      body: { startDate: new Date(from).toISOString(), endDate: new Date(to).toISOString(), countries: ["US"], importance: ["high"] },
+    });
+    if (error || data?.source !== "fmp") return null;
+    return data.events ?? [];
+  },
+  earnings: async (symbols) => {
+    const { data, error } = await supabase.functions.invoke("fetch-earnings-calendar", { body: { symbols } });
+    if (error || data?.source !== "fmp") return null;
+    return data.earnings ?? [];
+  },
   save: async (s) => {
     const uid = (await supabase.auth.getSession()).data.session?.user.id;
     if (!uid) return;
@@ -65,6 +77,8 @@ export const optionsScanner = new OptionsScanner({
         reason: s.reason,
         evidence: s.evidence as unknown as Json,
         contract: (s.contract ?? (s.contractNote ? { note: s.contractNote } : null)) as unknown as Json,
+        partial_price: s.partial ?? null,
+        context: (s.context ?? null) as unknown as Json,
       },
       { onConflict: "user_id,symbol,mode,signal_at", ignoreDuplicates: true },
     );
@@ -75,7 +89,7 @@ export const optionsScanner = new OptionsScanner({
     if (!uid) return;
     const { error } = await supabase
       .from("options_predictions")
-      .update({ outcome: s.outcome, exit_price: s.exit, resolved_at: new Date().toISOString() })
+      .update({ outcome: s.outcome, exit_price: s.exit, plan_r: s.planR ?? null, resolved_at: new Date().toISOString() })
       .eq("user_id", uid)
       .eq("symbol", s.symbol)
       .eq("mode", s.mode)
@@ -102,13 +116,16 @@ type Row = {
   contract: unknown;
   outcome: string | null;
   exit_price: number | null;
+  partial_price: number | null;
+  plan_r: number | null;
+  context: unknown;
 };
 
 /** The last 30 days of predictions (open ones get checked once candles load). */
 async function loadRecent(): Promise<OptionSignal[]> {
   const { data } = await supabase
     .from("options_predictions")
-    .select("symbol, mode, direction, signal_at, deadline, entry_price, target_price, stop_price, atr, chance, baseline, strength, reason, evidence, contract, outcome, exit_price")
+    .select("symbol, mode, direction, signal_at, deadline, entry_price, target_price, stop_price, atr, chance, baseline, strength, reason, evidence, contract, outcome, exit_price, partial_price, plan_r, context")
     .gte("signal_at", new Date(Date.now() - 30 * DAY).toISOString())
     .order("signal_at", { ascending: false })
     .limit(500);
@@ -134,6 +151,9 @@ async function loadRecent(): Promise<OptionSignal[]> {
       ...(c?.note ? { contractNote: c.note } : {}),
       outcome: (r.outcome as MoveOutcome) ?? null,
       exit: r.exit_price === null ? null : Number(r.exit_price),
+      ...(r.partial_price !== null ? { partial: Number(r.partial_price) } : {}),
+      planR: r.plan_r === null ? null : Number(r.plan_r),
+      ...(r.context ? { context: r.context as OptionSignal["context"] } : {}),
     };
     s.key = optionKey(s);
     return s;
@@ -141,6 +161,22 @@ async function loadRecent(): Promise<OptionSignal[]> {
 }
 
 let seeded = false;
+
+// Filters are remembered on this device.
+try {
+  const saved = localStorage.getItem("options-signals:filters");
+  if (saved) optionsScanner.setFilters(JSON.parse(saved));
+} catch {
+  /* private mode */
+}
+export function setOptionFilters(f: Parameters<typeof optionsScanner.setFilters>[0]) {
+  optionsScanner.setFilters(f);
+  try {
+    localStorage.setItem("options-signals:filters", JSON.stringify(optionsScanner.getSnapshot().filters));
+  } catch {
+    /* private mode */
+  }
+}
 
 /* ---- alerts -------------------------------------------------------------- */
 let alertsOn = (() => {

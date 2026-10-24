@@ -1338,6 +1338,9 @@ export type Database = {
       }
       options_predictions: {
         Row: {
+          context: Json | null
+          partial_price: number | null
+          plan_r: number | null
           atr: number | null
           baseline: number | null
           chance: number | null
@@ -1361,6 +1364,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          context?: Json | null
+          partial_price?: number | null
+          plan_r?: number | null
           atr?: number | null
           baseline?: number | null
           chance?: number | null
@@ -1384,6 +1390,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          context?: Json | null
+          partial_price?: number | null
+          plan_r?: number | null
           atr?: number | null
           baseline?: number | null
           chance?: number | null
