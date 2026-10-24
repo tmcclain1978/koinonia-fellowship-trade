@@ -18,6 +18,8 @@ import { type EarningsDate, type EconEvent, earningsBlockSameDay, earningsBlockS
 import { etClock, sessionBounds, sessionFor } from "../../../supabase/functions/_shared/bot/session";
 import { type ChainRow, type ContractPick, pickContract, realizedVol } from "./contractPicker";
 import { type ChainView, chainView } from "./chainSignals";
+import { type ConfidenceModel, type ModelCheck, score as modelScore, trainModel } from "../../../supabase/functions/_shared/patterns/model";
+import type { BarContext, Trend } from "../../../supabase/functions/_shared/patterns/context";
 
 export const OPTION_SYMBOLS = ["TSLA", "SPY", "AAPL", "NVDA", "QQQ"];
 
@@ -30,6 +32,8 @@ export interface OptionSignal extends MovePrediction {
   exit: number | null;
   /** Result of the partial-profit plan in R (stop distances), once known. */
   planR?: number | null;
+  /** Confidence score from the model (chance of reaching the target first), when the model is in use. */
+  score?: number;
   /** Option walls and today's unusual buying, from the chain. */
   chainInfo?: { callWall: number | null; putWall: number | null; flow: ChainView["flow"] };
 }
@@ -80,6 +84,10 @@ export interface OptionsSnapshot {
   limits: Limits;
   /** Patterns paused because they've been losing live. */
   paused: Paused[];
+  /** How the confidence model did on unseen (newer) history, per mode. */
+  model: Partial<Record<Mode, ModelCheck>>;
+  /** Score settings: use it (when it proved useful) and how far above average a setup must score. */
+  scoring: { use: boolean; minEdge: number };
 }
 
 /** Daily guard rails for same-day predictions. */
@@ -143,7 +151,8 @@ const BOARD_TTL = 60 * 60_000;
 const AFTER_CLOSE = 20_000;
 
 export class OptionsScanner {
-  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" }, limits: DEFAULT_LIMITS, paused: [] };
+  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" }, limits: DEFAULT_LIMITS, paused: [], model: {}, scoring: { use: true, minEdge: 0.05 } };
+  private models: Partial<Record<Mode, ConfidenceModel>> = {};
   /** Pattern key -> time it was un-paused by hand (only later results count). */
   private unpausedAt: Record<string, number> = {};
   private records: Partial<Record<Mode, MoveRecords>> = {};
@@ -227,6 +236,12 @@ export class OptionsScanner {
       // Indexes that aren't watched are loaded only to judge the market.
       const contextOnly = this.loadList().filter((x) => !this.s.symbols.includes(x));
       if (series.length) this.records[mode] = moveRecords(series, MODES[mode], contextOnly);
+      const rec = this.records[mode];
+      const trained = rec ? trainModel(rec) : null;
+      if (trained) {
+        this.models[mode] = trained.model;
+        this.set({ model: { ...this.s.model, [mode]: trained.check } });
+      }
     }
     this.boardAt = this.now();
     this.applyFilters();
@@ -243,6 +258,27 @@ export class OptionsScanner {
       impact[mode] = filterImpact(rec);
     }
     this.set({ boards, impact });
+  }
+
+  setScoring(v: Partial<OptionsSnapshot["scoring"]>) {
+    this.set({ scoring: { ...this.s.scoring, ...v } });
+  }
+
+  /** The model's score for a prediction (best of its backing patterns), or null when the model isn't in use. */
+  private scoreFor(p: MovePrediction, ctx: BarContext | undefined, market: Trend | null): number | null {
+    const m = this.models[p.mode];
+    const check = this.s.model[p.mode];
+    if (!m || !check?.useful || !this.s.scoring.use) return null;
+    return Math.max(...p.evidence.map((e) => modelScore(m, { pattern: e.pattern, dir: p.dir, ctx, market, px: p.entry })));
+  }
+
+  /** Reason to skip because the score is too low, or null. Sets p.score. */
+  private scoreBlock(p: MovePrediction & { score?: number }, ctx: BarContext | undefined, market: Trend | null): string | null {
+    const sc = this.scoreFor(p, ctx, market);
+    if (sc === null) return null;
+    p.score = sc;
+    const need = (this.s.model[p.mode]?.testRate ?? p.baseline) + this.s.scoring.minEdge;
+    return sc < need ? `confidence score ${Math.round(sc * 100)}% is below the ${Math.round(need * 100)}% needed` : null;
   }
 
   setLimits(l: Partial<Limits>) {
@@ -366,7 +402,7 @@ export class OptionsScanner {
       })() : null;
       const p = predictMove(sym, bars, board, closedAt, { ctx: ctx[ctx.length - 1], market, onSkip: (x) => this.skip(x) });
       if (!p) continue;
-      const block = (this.s.filters.news ? newsBlock(closedAt, this.econ) : null) ?? (this.s.filters.earnings ? earningsBlockSameDay(sym, closedAt, this.earningsDates) : null) ?? this.pausedBlock(p) ?? this.limitBlock();
+      const block = (this.s.filters.news ? newsBlock(closedAt, this.econ) : null) ?? (this.s.filters.earnings ? earningsBlockSameDay(sym, closedAt, this.earningsDates) : null) ?? this.pausedBlock(p) ?? this.scoreBlock(p, ctx[ctx.length - 1], market) ?? this.limitBlock();
       if (block) {
         this.skip({ symbol: sym, mode: "sameday", dir: p.dir, at: closedAt, names: p.evidence.map((e) => e.name).join(" + "), reasons: [block] });
         continue;
@@ -402,7 +438,7 @@ export class OptionsScanner {
       })() : null;
       const p = predictMove(sym, bars, board, last.time, { ctx: ctx[ctx.length - 1], market: im, onSkip: (x) => this.skip(x) });
       if (!p) continue;
-      const block = (this.s.filters.earnings ? earningsBlockSwing(sym, p.at, p.until, this.earningsDates) : null) ?? this.pausedBlock(p);
+      const block = (this.s.filters.earnings ? earningsBlockSwing(sym, p.at, p.until, this.earningsDates) : null) ?? this.pausedBlock(p) ?? this.scoreBlock(p, ctx[ctx.length - 1], im);
       if (block) {
         this.skip({ symbol: sym, mode: "swing", dir: p.dir, at: p.at, names: p.evidence.map((e) => e.name).join(" + "), reasons: [block] });
         continue;

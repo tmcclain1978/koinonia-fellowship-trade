@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Copy, Loader2, Play, Square } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { optionAlertsOn, optionsScanner, setOptionAlerts, setOptionFilters, setOptionLimits, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import { optionAlertsOn, optionsScanner, setOptionAlerts, setOptionFilters, setOptionLimits, setOptionScoring, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import type { ModelCheck } from "../../../supabase/functions/_shared/patterns/model";
 import { Input } from "@/components/ui/input";
 import { OPTION_SYMBOLS, type OptionSignal, type ScanFilters, optionsReport } from "@/lib/options/scanner";
 import { MODES, type FilterImpact, type Mode, type MoveBoard, type MoveVerdict, type Skipped } from "../../../supabase/functions/_shared/patterns/moves";
@@ -79,6 +80,9 @@ const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
         <div className="text-muted-foreground">Stop {usd(s.stop)}</div>
       </div>
       <div className="text-xs text-muted-foreground">Chance of reaching the target first: <b className="text-foreground">{Math.round(s.chance * 100)}%</b> (a random entry: {Math.round(s.baseline * 100)}%). {s.reason}</div>
+      {s.score !== undefined && (
+        <div className="text-xs" data-testid="score">Confidence score: <b className={s.score >= 0.55 ? "text-green-500" : ""}>{Math.round(s.score * 100)}%</b> <span className="text-muted-foreground">(everything weighed together; checked on newer history it never saw)</span></div>
+      )}
       {s.context && (
         <div className="flex flex-wrap gap-1 text-[11px]" data-testid="context">
           <Badge variant="outline">bigger trend {s.context.trend}</Badge>
@@ -222,6 +226,50 @@ const ImpactTable = ({ rows }: { rows: FilterImpact[] }) => (
   </div>
 );
 
+/** How the confidence score did on newer history it never saw. */
+const ModelCard = ({ check, mode, scoring }: { check: ModelCheck; mode: Mode; scoring: { use: boolean; minEdge: number } }) => (
+  <div className="space-y-2" data-testid={`model-${mode}`}>
+    <p className="text-sm font-medium">Confidence score</p>
+    <p className="text-xs text-muted-foreground">
+      Learned from the older {check.trainN.toLocaleString()} signals, then checked on the newer {check.testN.toLocaleString()} (from {new Date(check.splitAt).toLocaleDateString()}) it never saw.
+      On those, the top 30% by score reached the target <b className="text-foreground">{pctx(check.topRate)}</b> of the time vs <b className="text-foreground">{pctx(check.testRate)}</b> for all signals.
+    </p>
+    {check.useful ? (
+      <Badge className="bg-green-600 text-white hover:bg-green-600">In use: it beat the simple rules on unseen data{scoring.use ? `; setups need a score of ${pctx(check.testRate + scoring.minEdge)}+` : " (turned off)"}</Badge>
+    ) : (
+      <Badge variant="secondary">Not used: on unseen data it didn't beat the simple rules by enough</Badge>
+    )}
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Score</TableHead>
+            <TableHead className="text-right">Signals</TableHead>
+            <TableHead className="text-right">Score said</TableHead>
+            <TableHead className="text-right">Really hit the target</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {check.buckets.filter((b) => b.n > 0).map((b) => (
+            <TableRow key={b.label}>
+              <TableCell>{b.label}</TableCell>
+              <TableCell className="text-right tabular-nums">{b.n}</TableCell>
+              <TableCell className="text-right tabular-nums">{pctx(b.predicted)}</TableCell>
+              <TableCell className="text-right tabular-nums">{pctx(b.actual)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+    {check.useful && check.drivers.length > 0 && (
+      <div className="flex flex-wrap gap-1 text-[11px]">
+        <span className="text-muted-foreground">What matters most:</span>
+        {check.drivers.map((d) => <Badge key={d.name} variant="outline" className={d.effect === "helps" ? "text-green-500" : "text-red-500"}>{d.name} {d.effect === "helps" ? "▲" : "▼"}</Badge>)}
+      </div>
+    )}
+  </div>
+);
+
 const SkippedList = ({ list }: { list: Skipped[] }) =>
   list.length ? (
     <div className="space-y-1" data-testid="skipped">
@@ -298,6 +346,7 @@ const OptionsSignals = () => {
             <CardTitle className="text-base">Which patterns work ({mode === "sameday" ? "same day" : "swing"})</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {snap.model[mode] && <ModelCard check={snap.model[mode]!} mode={mode} scoring={snap.scoring} />}
             {snap.impact[mode] && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">What the filters do</p>
@@ -377,6 +426,17 @@ const OptionsSignals = () => {
               <Input type="number" min={0} className="h-8 w-20" value={snap.limits.stopAfterLosses} onChange={(e) => setOptionLimits({ stopAfterLosses: Math.max(0, Number(e.target.value) || 0) })} />
             </label>
             <span className="text-xs text-muted-foreground">0 = no limit. Bad days tend to come in streaks; stopping early protects the account.</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 rounded-md border p-3 text-sm" data-testid="scoring">
+            <div className="flex items-center gap-2">
+              <Switch id="use-score" checked={snap.scoring.use} onCheckedChange={(v) => setOptionScoring({ use: v })} />
+              <Label htmlFor="use-score">Use the confidence score</Label>
+            </div>
+            <label className="flex items-center gap-2">Must beat the average by
+              <Input type="number" min={0} max={30} className="h-8 w-20" value={Math.round(snap.scoring.minEdge * 100)} onChange={(e) => setOptionScoring({ minEdge: Math.max(0, Math.min(30, Number(e.target.value) || 0)) / 100 })} />
+              points
+            </label>
+            <span className="text-xs text-muted-foreground">Only applies when the score proved itself on unseen data (see each tab).</span>
           </div>
           {snap.paused.length > 0 && (
             <div className="space-y-1 rounded-md border border-amber-500/50 p-3 text-sm" data-testid="paused">

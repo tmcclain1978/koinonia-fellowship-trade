@@ -87,6 +87,67 @@ describe("options scanner", () => {
     sc.stop();
   });
 
+  it("confidence score: trained per mode, blocks low scores, and is shown on the signal", async () => {
+    const day = Date.UTC(2026, 9, 21);
+    const open = day + 13.5 * 3600_000;
+    const now = { t: open + 18 * M5 + 20_000 };
+    let p = 580;
+    const today: Bar[] = [];
+    for (let k = 0; k < 18; k++) {
+      const c = k >= 13 ? p - 0.15 : p + (k % 2 ? -0.1 : 0.1);
+      today.push({ time: open + k * M5, open: p, close: c, high: Math.max(p, c) + 0.03, low: Math.min(p, c) - 0.03 });
+      p = c;
+    }
+    const sc = new OptionsScanner({
+      history: async (sym, mode) => (mode === "sameday" ? (sym === "SPY" ? sessions(120, 1) : []) : []),
+      latest: async (sym) => (sym === "SPY" ? today : []),
+      chain: async () => null,
+      save: async () => {},
+      saveResult: async () => {},
+      now: () => now.t,
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    });
+    await sc.start(["SPY", "QQQ"]);
+    sc.setFilters({ trend: false, market: false, lunch: false, room: false, volume: false });
+    const check = sc.getSnapshot().model.sameday!;
+    expect(check.trainN).toBeGreaterThan(check.testN);
+    expect(check.splitAt).toBeGreaterThan(0);
+    // Pretend the model proved itself, with a pessimistic score: the setup is skipped.
+    const inner = sc as unknown as { models: Record<string, unknown>; set: (v: unknown) => void };
+    const model = (bias: number) => ({ weights: new Array(12).fill(0), bias, priors: {}, baseRate: 0.5, mean: new Array(12).fill(0), scale: new Array(12).fill(1) });
+    inner.models.sameday = model(-3);
+    inner.set({ model: { sameday: { ...check, useful: true, testRate: 0.5 } } });
+    await sc.sameDayPass();
+    expect(sc.getSnapshot().signals).toHaveLength(0);
+    expect(sc.getSnapshot().skipped[0].reasons.join(" ")).toMatch(/confidence score 5% is below the 55% needed/);
+    // Turned off: the simple rules alone decide.
+    sc.setScoring({ use: false });
+    await sc.sameDayPass();
+    expect(sc.getSnapshot().signals).toHaveLength(1);
+    expect(sc.getSnapshot().signals[0].score).toBeUndefined();
+    sc.stop();
+    // A confident score passes and is kept on the signal.
+    const sc2 = new OptionsScanner({
+      history: async (sym, mode) => (mode === "sameday" ? (sym === "SPY" ? sessions(120, 1) : []) : []),
+      latest: async (sym) => (sym === "SPY" ? today : []),
+      chain: async () => null,
+      save: async () => {},
+      saveResult: async () => {},
+      now: () => now.t,
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    });
+    await sc2.start(["SPY", "QQQ"]);
+    sc2.setFilters({ trend: false, market: false, lunch: false, room: false, volume: false });
+    const inner2 = sc2 as unknown as typeof inner;
+    inner2.models.sameday = model(3);
+    inner2.set({ model: { sameday: { ...check, useful: true, testRate: 0.5 } } });
+    await sc2.sameDayPass();
+    expect(sc2.getSnapshot().signals[0].score).toBeCloseTo(0.953, 2);
+    sc2.stop();
+  });
+
   it("no prediction when the 30 minutes would run past the close", async () => {
     const day = Date.UTC(2026, 9, 21);
     const open = day + 13.5 * 3600_000;
