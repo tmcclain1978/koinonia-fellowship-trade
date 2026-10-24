@@ -13,12 +13,13 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { usePocketOptionWebSocket, poClient } from "@/hooks/usePocketOptionWebSocket";
-import { EXPIRIES, candleStore, useBars, usePoCandles, useScoreboard, useSignals, useWatch } from "@/hooks/usePatternEngine";
+import { EXPIRIES, type ForecastEntry, candleStore, useBars, useForecast, usePoCandles, useScoreboard, useSignals, useWatch } from "@/hooks/usePatternEngine";
 import { gaps } from "@/lib/pocketoption/candleStore";
 import { type Signal, pct, trackRecord, worthAlert } from "@/lib/pocketoption/signals";
 import { PATTERNS, type Bar, type Detection } from "../../supabase/functions/_shared/patterns/detect";
 import { breakEven, statFor } from "../../supabase/functions/_shared/patterns/stats";
 import PatternChart from "./pocketoption/PatternChart";
+import NextCandleCard from "./pocketoption/NextCandleCard";
 import PatternScoreboard from "./pocketoption/PatternScoreboard";
 import VerdictBadge from "./pocketoption/VerdictBadge";
 import PocketOptionPredictionPanel from "./PocketOptionPredictionPanel";
@@ -180,6 +181,18 @@ const PocketOptionPatternEngine = () => {
     [alerts, onlyEdge, asset, tf],
   );
   const signals = useSignals(asset, tf, expiry, bars, board, onNew);
+  const forecast = useForecast(asset, tf, expiry, payout, bars, board);
+  // Alert when a new call is made.
+  const lastCallKey = useRef<string>("");
+  const currentForecast = forecast.current;
+  useEffect(() => {
+    const f = currentForecast;
+    if (!f?.call || f.key === lastCallKey.current || Date.now() > f.end) return;
+    lastCallKey.current = f.key;
+    if (!alerts) return;
+    beep();
+    toast(`Next candle: ${f.call === "up" ? "GREEN ▲ CALL" : "RED ▼ PUT"} (${pct(f.confidence)})`, { description: `${asset} ${new Date(f.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}–${new Date(f.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. ${f.reason}` });
+  }, [currentForecast, alerts, asset]);
   const record = useMemo(() => trackRecord(signals.filter((s) => s.expiry === expiry)), [signals, expiry]);
   const verdictOf = useCallback((d: Detection) => statFor(board, d, expiry)?.verdict ?? null, [board, expiry]);
 
@@ -199,6 +212,14 @@ const PocketOptionPatternEngine = () => {
     if (!isReady) return toast.error("Connect to PocketOption first");
     setManualLoad(true);
     poClient.loadHistory(asset, days);
+  };
+
+  const tradeForecast = (dir: "up" | "down", f: ForecastEntry) => {
+    if (!allowTrades) return;
+    if (isDemo === 0 && !window.confirm(`REAL money: ${dir === "up" ? "CALL" : "PUT"} ${asset} $${amount} for ${f.expiry * f.tf} min?`)) return;
+    // Trade until the end of the predicted candle(s).
+    const seconds = Math.max(5, Math.round((f.end - Date.now()) / 1000));
+    executeTrade({ asset, action: dir === "up" ? "call" : "put", amount, duration: seconds });
   };
 
   const trade = (s: Signal) => {
@@ -337,6 +358,7 @@ const PocketOptionPatternEngine = () => {
         </TabsList>
 
         <TabsContent value="patterns" className="space-y-6">
+          <NextCandleCard current={forecast.current} entries={forecast.entries} record={forecast.record} breakEven={be} live={isReady} enoughData={bars.length >= 1000} allowTrades={allowTrades} amount={amount} onTrade={tradeForecast} />
           {/* Chart */}
           <Card>
             <CardHeader className="pb-2">

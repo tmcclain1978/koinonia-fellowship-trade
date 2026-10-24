@@ -2041,6 +2041,12 @@ export type Database = {
       }
       pocketoption_predictions: {
         Row: {
+          candle_time: string | null
+          evidence: Json | null
+          expiry_candles: number
+          made_call: boolean
+          p_up: number | null
+          timeframe: string
           actual_direction: string | null
           confidence: number
           created_at: string
@@ -2056,6 +2062,12 @@ export type Database = {
           was_correct: boolean | null
         }
         Insert: {
+          candle_time?: string | null
+          evidence?: Json | null
+          expiry_candles?: number
+          made_call?: boolean
+          p_up?: number | null
+          timeframe?: string
           actual_direction?: string | null
           confidence?: number
           created_at?: string
@@ -2071,6 +2083,12 @@ export type Database = {
           was_correct?: boolean | null
         }
         Update: {
+          candle_time?: string | null
+          evidence?: Json | null
+          expiry_candles?: number
+          made_call?: boolean
+          p_up?: number | null
+          timeframe?: string
           actual_direction?: string | null
           confidence?: number
           created_at?: string

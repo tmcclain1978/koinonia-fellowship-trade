@@ -4,10 +4,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { CandleStore, type AssetCandles } from "@/lib/pocketoption/candleStore";
 import { type Signal, resolveSignals, signalKey, signalsOnLast } from "@/lib/pocketoption/signals";
 import { type Bar, type Dir, type PatternId, aggregate } from "../../supabase/functions/_shared/patterns/detect";
 import { type Scoreboard, scoreboard } from "../../supabase/functions/_shared/patterns/stats";
+import { type Forecast, type ForecastResult, forecastNext, resolveForecast } from "../../supabase/functions/_shared/patterns/forecast";
 
 /* ---- candles ------------------------------------------------------------ */
 
@@ -282,4 +284,171 @@ export function useWatch(asset: string) {
   }, [asset, refresh]);
 
   return { row, busy, setEnabled, collectNow, refresh };
+}
+
+/* ---- next-candle forecast ----------------------------------------------- */
+
+export interface ForecastEntry extends Forecast {
+  key: string;
+  result: ForecastResult | null;
+}
+
+const forecastKey = (f: Pick<Forecast, "asset" | "tf" | "start" | "expiry">) => `${f.asset}|${f.tf}|${f.start}|${f.expiry}`;
+
+type PredictionRow = {
+  pair: string;
+  timeframe: string;
+  candle_time: string | null;
+  expiry_candles: number;
+  predicted_direction: string;
+  p_up: number | null;
+  made_call: boolean;
+  confidence: number;
+  actual_direction: string | null;
+  was_correct: boolean | null;
+  evidence: unknown;
+};
+
+function entryFromRow(r: PredictionRow): ForecastEntry | null {
+  if (!r.candle_time) return null;
+  const tf = parseInt(r.timeframe) || 1;
+  const start = new Date(r.candle_time).getTime();
+  const ev = (r.evidence ?? {}) as { entry?: number; reason?: string; strength?: Forecast["strength"]; items?: Forecast["evidence"]; breakEven?: number };
+  const dir = r.predicted_direction as Dir;
+  const pUp = r.p_up === null ? (dir === "up" ? r.confidence / 100 : 1 - r.confidence / 100) : Number(r.p_up);
+  const f: ForecastEntry = {
+    key: "",
+    asset: r.pair,
+    tf,
+    expiry: r.expiry_candles,
+    start,
+    end: start + r.expiry_candles * tf * 60_000,
+    entry: ev.entry ?? 0,
+    pUp,
+    call: r.made_call ? dir : null,
+    lean: dir,
+    confidence: Math.max(pUp, 1 - pUp),
+    breakEven: ev.breakEven ?? 0.52,
+    strength: ev.strength ?? "none",
+    evidence: ev.items ?? [],
+    reason: ev.reason ?? "",
+    result: r.was_correct === null || !r.actual_direction ? null : { actual: r.actual_direction as ForecastResult["actual"], exit: 0, correct: r.was_correct },
+  };
+  f.key = forecastKey(f);
+  return f;
+}
+
+/**
+ * Predicts the next candle each time one closes (red or green, for that
+ * exact time), saves the prediction, and checks it when that candle closes.
+ */
+export function useForecast(asset: string, tf: number, expiry: number, payout: number, bars: Bar[], board: Scoreboard | null) {
+  const [entries, setEntries] = useState<ForecastEntry[]>([]);
+  const lastStart = useRef<number>(0);
+
+  // Earlier forecasts for this asset (the record survives reloads).
+  useEffect(() => {
+    let alive = true;
+    lastStart.current = 0;
+    setEntries([]);
+    (async () => {
+      const { data } = await supabase
+        .from("pocketoption_predictions")
+        .select("pair, timeframe, candle_time, expiry_candles, predicted_direction, p_up, made_call, confidence, actual_direction, was_correct, evidence")
+        .eq("pair", asset)
+        .eq("timeframe", `${tf}m`)
+        .eq("expiry_candles", expiry)
+        .not("candle_time", "is", null)
+        .order("candle_time", { ascending: false })
+        .limit(200);
+      if (!alive || !data) return;
+      const old = (data as PredictionRow[]).map(entryFromRow).filter((e): e is ForecastEntry => !!e);
+      setEntries((cur) => {
+        const keys = new Set(cur.map((e) => e.key));
+        return [...cur, ...old.filter((e) => !keys.has(e.key))].sort((a, b) => b.start - a.start);
+      });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [asset, tf, expiry]);
+
+  // A candle just closed: forecast the next one.
+  useEffect(() => {
+    const last = bars[bars.length - 1];
+    if (!last || !board) return;
+    const start = last.time + tf * 60_000;
+    if (start <= lastStart.current) return;
+    // Only for the candle happening now (not old candles filled in by a history load).
+    if (Date.now() > start + tf * 60_000) return;
+    lastStart.current = start;
+    const f = forecastNext(asset, bars, board, { expiry, payout, tf });
+    if (!f) return;
+    const e: ForecastEntry = { ...f, key: forecastKey(f), result: null };
+    setEntries((cur) => (cur.some((x) => x.key === e.key) ? cur : [e, ...cur].slice(0, 300)));
+    void saveForecast(e);
+  }, [bars, board, asset, tf, expiry, payout]);
+
+  // Check forecasts whose candle has closed.
+  useEffect(() => {
+    setEntries((cur) => {
+      let changed = false;
+      const next = cur.map((e) => {
+        if (e.result || !e.entry) return e;
+        const r = resolveForecast(e, bars);
+        if (!r) return e;
+        changed = true;
+        void saveForecastResult(e, r);
+        return { ...e, result: r };
+      });
+      return changed ? next : cur;
+    });
+  }, [bars]);
+
+  const current = entries[0] && Date.now() < entries[0].end + 5 * 60_000 ? entries[0] : null;
+  const record = useMemo(() => {
+    const done = entries.filter((e) => e.result && e.result.actual !== "flat");
+    const calls = done.filter((e) => e.call);
+    const right = calls.filter((e) => e.result!.correct).length;
+    const leans = done.filter((e) => !e.call);
+    return { calls: calls.length, right, rate: calls.length ? right / calls.length : 0, leans: leans.length, leansRight: leans.filter((e) => e.result!.correct).length };
+  }, [entries]);
+  return { current, entries, record };
+}
+
+async function saveForecast(e: ForecastEntry) {
+  const uid = (await supabase.auth.getSession()).data.session?.user.id;
+  if (!uid) return;
+  const { error } = await supabase.from("pocketoption_predictions").upsert(
+    {
+      user_id: uid,
+      pair: e.asset,
+      timeframe: `${e.tf}m`,
+      candle_time: new Date(e.start).toISOString(),
+      expiry_candles: e.expiry,
+      predicted_direction: e.call ?? e.lean,
+      made_call: !!e.call,
+      p_up: Math.round(e.pUp * 1000) / 1000,
+      confidence: Math.round(e.confidence * 100),
+      prediction_method: "patterns",
+      sequence_used: e.reason.slice(0, 500),
+      evidence: { entry: e.entry, reason: e.reason, strength: e.strength, items: e.evidence, breakEven: e.breakEven } as unknown as Json,
+    },
+    { onConflict: "user_id,pair,timeframe,candle_time,expiry_candles", ignoreDuplicates: true },
+  );
+  if (error) console.warn("[forecast] save failed:", error.message);
+}
+
+async function saveForecastResult(e: ForecastEntry, r: ForecastResult) {
+  const uid = (await supabase.auth.getSession()).data.session?.user.id;
+  if (!uid) return;
+  const { error } = await supabase
+    .from("pocketoption_predictions")
+    .update({ actual_direction: r.actual === "flat" ? "neutral" : r.actual, was_correct: r.correct, verified_at: new Date().toISOString() })
+    .eq("user_id", uid)
+    .eq("pair", e.asset)
+    .eq("timeframe", `${e.tf}m`)
+    .eq("candle_time", new Date(e.start).toISOString())
+    .eq("expiry_candles", e.expiry);
+  if (error) console.warn("[forecast] result save failed:", error.message);
 }

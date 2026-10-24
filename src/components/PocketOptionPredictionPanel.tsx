@@ -55,6 +55,7 @@ const PocketOptionPredictionPanel = ({
 }: PocketOptionPredictionPanelProps) => {
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [accuracy, setAccuracy] = useState<AccuracyStats>({
     today: { correct: 0, total: 0 },
     week: { correct: 0, total: 0 },
@@ -75,13 +76,17 @@ const PocketOptionPredictionPanel = ({
 
       if (error) throw error;
 
-      if (data.success && data.prediction) {
+      if (data?.success && data.prediction) {
         setPrediction(data.prediction);
+        setMessage(null);
       } else {
-        console.log('Prediction message:', data.message);
+        // Show why instead of a silent "No prediction available".
+        setPrediction(null);
+        setMessage(data?.message || 'The prediction service gave no answer.');
       }
     } catch (error: any) {
-      console.error('Error fetching prediction:', error);
+      setPrediction(null);
+      setMessage(`Couldn't get a prediction: ${error?.message ?? error}`);
     } finally {
       setLoading(false);
     }
@@ -356,7 +361,7 @@ const PocketOptionPredictionPanel = ({
           ) : (
             <div className="text-center py-6 text-muted-foreground">
               <p>No prediction available</p>
-              <p className="text-sm mt-1">Click refresh to generate</p>
+              <p className="text-sm mt-1" data-testid="ai-message">{message ?? 'Click refresh to generate'}</p>
             </div>
           )}
         </CardContent>
