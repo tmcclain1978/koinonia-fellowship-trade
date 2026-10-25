@@ -16,7 +16,7 @@ import { MODES, type FilterImpact, type Mode, type MoveBoard, type MoveOutcome, 
 import { type Filters, indexFor, sameDayContext, swingContext } from "../../../supabase/functions/_shared/patterns/context";
 import { type EarningsDate, type EconEvent, earningsBlockSameDay, earningsBlockSwing, newsBlock, nextEarnings } from "../../../supabase/functions/_shared/patterns/events";
 import { etClock, sessionBounds, sessionFor } from "../../../supabase/functions/_shared/bot/session";
-import { type ChainRow, type ContractPick, pickContract, realizedVol } from "./contractPicker";
+import { type ChainRow, type ContractPick, PRICEY, pickContract, realizedVol } from "./contractPicker";
 import { type ChainView, chainView } from "./chainSignals";
 import { type ConfidenceModel, type ModelCheck, score as modelScore, trainModel } from "../../../supabase/functions/_shared/patterns/model";
 import type { BarContext, Trend } from "../../../supabase/functions/_shared/patterns/context";
@@ -36,16 +36,69 @@ export interface OptionSignal extends MovePrediction {
   score?: number;
   /** Option walls and today's unusual buying, from the chain. */
   chainInfo?: { callWall: number | null; putWall: number | null; flow: ChainView["flow"] };
+  /** Real fill check: the option's live bid/ask when the prediction ended. */
+  fill?: Fill;
+  /** Automatic paper trade for this prediction. */
+  paper?: PaperTrade;
 }
+
+/**
+ * What you could really have done: buy at the ask when the prediction was
+ * made, sell at the bid when it ended (vs the in-between "mid" price).
+ */
+export interface Fill {
+  entryAsk: number;
+  entryMid: number;
+  /** Null when there was no live quote (e.g. the option had expired). */
+  exitBid: number | null;
+  exitMid: number | null;
+  /** Per contract, buying at the ask and selling at the bid. */
+  realPnl: number | null;
+  /** Per contract, at mid prices both ways. */
+  midPnl: number | null;
+  /** What the app estimated beforehand (target / stop estimate), if it had one. */
+  estPnl: number | null;
+  at: number;
+  note?: string;
+}
+
+export interface PaperTrade {
+  qty: number;
+  /** Fill prices per share. */
+  buy?: number;
+  sell?: number;
+  /** Total, all contracts. */
+  pnl?: number;
+  error?: string;
+  /** Set while an order is being placed (not saved). */
+  busy?: boolean;
+}
+
+/** Average result per contract if the chance is right (target estimate on wins, stop estimate on losses). */
+export function expectedValue(chance: number, c: Pick<ContractPick, "profitAtTarget" | "lossAtStop">): number {
+  return chance * c.profitAtTarget + (1 - chance) * c.lossAtStop;
+}
+
+/** The better of the single option and the cheaper spread (when one was suggested). */
+export function bestExpectedValue(chance: number, c: ContractPick): number {
+  return Math.max(expectedValue(chance, c), c.debitSpread ? expectedValue(chance, c.debitSpread) : -Infinity);
+}
+
+/** Is the suggested option priced high compared with how much the stock really moves? */
+export const isPricey = (c: ContractPick) => c.ivVsMove !== null && c.ivVsMove > PRICEY;
 
 /** Filters, plus the live-only news and earnings checks. */
 export interface ScanFilters extends Filters {
   news: boolean;
   earnings: boolean;
+  /** Skip when options cost a lot more than the stock's real moves justify (swing: unless a cheaper spread is offered). */
+  pricey: boolean;
+  /** Skip when the option's estimated gain at the target, times the chance, doesn't beat the estimated loss at the stop. */
+  payoff: boolean;
 }
 
 // Volume starts off: check "What the filters do" to see if it helps on your stocks.
-export const DEFAULT_SCAN_FILTERS: ScanFilters = { trend: true, market: true, lunch: true, room: true, volume: false, news: true, earnings: true };
+export const DEFAULT_SCAN_FILTERS: ScanFilters = { trend: true, market: true, lunch: true, room: true, volume: false, news: true, earnings: true, pricey: true, payoff: true };
 
 export interface OptionsDeps {
   /** Same day: as many 5-minute candles as the data source gives (regular hours). Swing: years of daily candles. */
@@ -59,6 +112,8 @@ export interface OptionsDeps {
   earnings?(symbols: string[]): Promise<EarningsDate[] | null>;
   save?(s: OptionSignal): Promise<void>;
   saveResult?(s: OptionSignal): Promise<void>;
+  /** Save the fill check / paper trade details of a prediction. */
+  saveExtra?(s: OptionSignal): Promise<void>;
   now?(): number;
   setTimeout?(f: () => void, ms: number): unknown;
   clearTimeout?(t: unknown): void;
@@ -88,7 +143,18 @@ export interface OptionsSnapshot {
   model: Partial<Record<Mode, ModelCheck>>;
   /** Score settings: use it (when it proved useful) and how far above average a setup must score. */
   scoring: { use: boolean; minEdge: number };
+  /** Automatic paper trading (the page places the orders). */
+  autoPaper: AutoPaper;
 }
+
+export interface AutoPaper {
+  on: boolean;
+  /** Contracts per trade. */
+  qty: number;
+  /** Only when the option math pays (positive expected result). */
+  onlyIfPays: boolean;
+}
+export const DEFAULT_AUTO_PAPER: AutoPaper = { on: false, qty: 1, onlyIfPays: true };
 
 /** Daily guard rails for same-day predictions. */
 export interface Limits {
@@ -147,11 +213,15 @@ export const optionKey = (s: Pick<MovePrediction, "symbol" | "mode" | "at">) => 
 
 const M5 = 5 * 60_000;
 const BOARD_TTL = 60 * 60_000;
+/** A fill is checked only this soon after the result happened (later, the quote no longer reflects it). */
+const FILL_FRESH_SAMEDAY = 10 * 60_000;
+const FILL_FRESH_SWING = 36 * 3600_000;
 /** Ask for the latest candles this long after each 5-minute close. */
 const AFTER_CLOSE = 20_000;
 
 export class OptionsScanner {
-  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" }, limits: DEFAULT_LIMITS, paused: [], model: {}, scoring: { use: true, minEdge: 0.05 } };
+  private s: OptionsSnapshot = { running: false, symbols: [], activity: "Stopped", boards: {}, loaded: { sameday: {}, swing: {} }, signals: [], nextCheckAt: null, filters: DEFAULT_SCAN_FILTERS, impact: {}, skipped: [], calendars: { news: "loading", earnings: "loading" }, limits: DEFAULT_LIMITS, paused: [], model: {}, scoring: { use: true, minEdge: 0.05 }, autoPaper: DEFAULT_AUTO_PAPER };
+  private resultListeners = new Set<(s: OptionSignal) => void>();
   private models: Partial<Record<Mode, ConfidenceModel>> = {};
   /** Pattern key -> time it was un-paused by hand (only later results count). */
   private unpausedAt: Record<string, number> = {};
@@ -185,6 +255,29 @@ export class OptionsScanner {
       this.signalListeners.delete(l);
     };
   }
+  /** Called when a prediction gets its result (target, stop or deadline). */
+  onResult(l: (s: OptionSignal) => void) {
+    this.resultListeners.add(l);
+    return () => {
+      this.resultListeners.delete(l);
+    };
+  }
+
+  setAutoPaper(v: Partial<AutoPaper>) {
+    const next = { ...this.s.autoPaper, ...v };
+    next.qty = Math.max(1, Math.min(10, Math.round(next.qty) || 1));
+    this.set({ autoPaper: next });
+  }
+
+  /** Update a prediction's paper trade (and save it unless it's just "busy"). */
+  markPaper(key: string, paper: PaperTrade) {
+    let hit: OptionSignal | undefined;
+    const signals = this.s.signals.map((x) => (x.key === key ? (hit = { ...x, paper }) : x));
+    if (!hit) return;
+    this.set({ signals });
+    if (!paper.busy) void this.deps.saveExtra?.(hit);
+  }
+
   private set(p: Partial<OptionsSnapshot>) {
     this.s = { ...this.s, ...p };
     this.listeners.forEach((l) => l());
@@ -471,6 +564,11 @@ export class OptionsScanner {
           earnings: nextEarnings(p.symbol, this.now(), this.earningsDates),
         });
         if (!contract) contractNote = "No option with a live price right now.";
+        const why = contract ? this.priceBlock(p, contract) : null;
+        if (why) {
+          this.skip({ symbol: p.symbol, mode: p.mode, dir: p.dir, at: p.at, names: p.evidence.map((e) => e.name).join(" + "), reasons: [why] });
+          return;
+        }
       }
     } catch (e) {
       contractNote = `Couldn't load the option chain: ${(e as Error).message}`;
@@ -481,23 +579,78 @@ export class OptionsScanner {
     void this.deps.save?.(sig);
   }
 
+  /** Reason to skip because of the option's price, or null. */
+  private priceBlock(p: MovePrediction, c: ContractPick): string | null {
+    const f = this.s.filters;
+    if (f.pricey && isPricey(c) && !(p.mode === "swing" && c.debitSpread)) {
+      return `options are pricey: they price in ${Math.round((c.iv ?? 0) * 100)}% yearly moves, the stock has been moving about ${Math.round(((c.iv ?? 0) / (c.ivVsMove ?? 1)) * 100)}%`;
+    }
+    if (f.payoff) {
+      const ev = bestExpectedValue(p.chance, c);
+      if (ev <= 0) return `the option math doesn't pay: about ${ev < 0 ? "−" : ""}$${Math.abs(Math.round(ev))} per contract on average, even at a ${Math.round(p.chance * 100)}% chance`;
+    }
+    return null;
+  }
+
   /** WIN / LOSS / EXPIRED for predictions whose result is known. */
   resolve() {
-    let changed = false;
+    const fresh: OptionSignal[] = [];
+    const ended: OptionSignal[] = [];
     const next = this.s.signals.map((sig) => {
       if (sig.outcome) return sig;
       const bars = this.bars[sig.mode][sig.symbol];
       if (!bars?.length) return sig;
       const r = resolveMove(sig, bars, this.now());
       if (!r) return sig;
-      changed = true;
       const done = { ...sig, outcome: r.o, exit: r.exit, planR: r.planR };
       void this.deps.saveResult?.(done);
+      ended.push(done);
+      // Only check the fill while the option quote still reflects that moment.
+      if (done.contract && this.now() - r.hitAt <= (sig.mode === "sameday" ? FILL_FRESH_SAMEDAY : FILL_FRESH_SWING)) fresh.push(done);
       return done;
     });
-    if (changed) {
+    if (ended.length) {
       this.set({ signals: next });
       this.police();
+      ended.forEach((x) => this.resultListeners.forEach((l) => l(x)));
+      if (fresh.length) void this.checkFills(fresh);
+    }
+  }
+
+  /**
+   * Real fill check: look up the same option in the live chain right when the
+   * prediction ended, and compare buying at the ask / selling at the bid with
+   * the mid price and the app's estimate.
+   */
+  private async checkFills(list: OptionSignal[]) {
+    const bySymbol = new Map<string, OptionSignal[]>();
+    for (const s of list) (bySymbol.get(`${s.symbol}|${s.mode}`) ?? bySymbol.set(`${s.symbol}|${s.mode}`, []).get(`${s.symbol}|${s.mode}`)!).push(s);
+    for (const group of bySymbol.values()) {
+      let rows: ChainRow[] | null = null;
+      try {
+        rows = (await this.deps.chain(group[0].symbol, group[0].mode))?.rows ?? null;
+      } catch {
+        rows = null;
+      }
+      for (const s of group) {
+        const c = s.contract!;
+        const row = rows?.find((r) => String(r.type).toUpperCase() === c.side && r.strike === c.strike && r.expiration === c.expiration && r.bid >= 0 && r.ask > 0);
+        const exitMid = row ? (row.mark && row.mark > 0 ? row.mark : (row.bid + row.ask) / 2) : null;
+        const fill: Fill = {
+          entryAsk: c.ask,
+          entryMid: c.mid,
+          exitBid: row ? row.bid : null,
+          exitMid,
+          realPnl: row ? Math.round((row.bid - c.ask) * 100) : null,
+          midPnl: exitMid !== null ? Math.round((exitMid - c.mid) * 100) : null,
+          estPnl: s.outcome === "win" ? c.profitAtTarget : s.outcome === "loss" ? c.lossAtStop : null,
+          at: this.now(),
+          ...(row ? {} : { note: rows ? "the option had no live quote when the prediction ended" : "couldn't load the option chain when the prediction ended" }),
+        };
+        let hit: OptionSignal | undefined;
+        this.set({ signals: this.s.signals.map((x) => (x.key === s.key ? (hit = { ...x, fill }) : x)) });
+        if (hit) void this.deps.saveExtra?.(hit);
+      }
     }
   }
 }

@@ -10,11 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Copy, Loader2, Play, Square } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { optionAlertsOn, optionsScanner, setOptionAlerts, setOptionFilters, setOptionLimits, setOptionScoring, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import { optionAlertsOn, optionsScanner, paperBuy, setOptionAlerts, setOptionAutoPaper, setOptionFilters, setOptionLimits, setOptionScoring, useOptionsScanner } from "@/hooks/useOptionsScanner";
+import { type ReportRow, weekStart, weeklyReport, weeklyText } from "@/lib/options/weekly";
 import type { ModelCheck } from "../../../supabase/functions/_shared/patterns/model";
 import { Input } from "@/components/ui/input";
-import { OPTION_SYMBOLS, type OptionSignal, type ScanFilters, optionsReport } from "@/lib/options/scanner";
+import { OPTION_SYMBOLS, type OptionSignal, type ScanFilters, expectedValue, optionsReport } from "@/lib/options/scanner";
 import { MODES, type FilterImpact, type Mode, type MoveBoard, type MoveVerdict, type Skipped } from "../../../supabase/functions/_shared/patterns/moves";
 import { PATTERNS } from "../../../supabase/functions/_shared/patterns/detect";
 import { etClock } from "../../../supabase/functions/_shared/bot/session";
@@ -43,24 +43,18 @@ function useNow(ms = 1000) {
 }
 
 const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
-  const [busy, setBusy] = useState(false);
   const up = s.dir === "up";
   const move = Math.abs(s.target - s.entry);
   const res = s.outcome;
   const open = !res && now < s.until;
+  const busy = !!s.paper?.busy;
   const paper = async () => {
     if (!s.contract) return;
-    setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("place-paper-order", {
-        body: { symbol: s.symbol, action: "buy", quantity: 1, strike: s.contract.strike, side: s.contract.side, expiration: s.contract.expiration, orderType: "market", notes: `Options Signals: ${s.reason}` },
-      });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
-      toast.success("Paper trade placed", { description: `Bought 1 ${s.contract.label}` });
+      await paperBuy(s, 1);
+      toast.success("Paper trade placed", { description: `Bought 1 ${s.contract.label}. It's sold automatically when the prediction ends.` });
     } catch (e) {
       toast.error("Paper trade failed", { description: (e as Error).message });
-    } finally {
-      setBusy(false);
     }
   };
   return (
@@ -120,7 +114,7 @@ const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
           {s.contract.spread > 0.15 && <Badge variant="outline" className="text-amber-500">wide spread {Math.round(s.contract.spread * 100)}%</Badge>}
           {(() => {
             // Average result if this chance is right: wins pay the target estimate, losses cost the stop estimate.
-            const ev = s.chance * s.contract.profitAtTarget + (1 - s.chance) * s.contract.lossAtStop;
+            const ev = expectedValue(s.chance, s.contract);
             return ev > 0 ? (
               <span className="font-medium text-green-500" data-testid="ev">expected ≈ {money(ev)} per contract</span>
             ) : (
@@ -133,12 +127,90 @@ const SignalCard = ({ s, now }: { s: OptionSignal; now: number }) => {
               Cheaper choice while options are pricey: <b>{s.contract.debitSpread.label}</b> — about <b>${s.contract.debitSpread.cost}</b>, worth up to ${Math.round(s.contract.debitSpread.width * 100)} (max profit ${s.contract.debitSpread.maxProfit}), break-even {usd(s.contract.debitSpread.breakEven)}, ≈ {money(s.contract.debitSpread.profitAtTarget)} at target / {money(s.contract.debitSpread.lossAtStop)} at stop.
             </div>
           )}
-          {open && <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={paper}>{busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Paper trade 1</Button>}
+          {open && !s.paper?.buy && <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={paper}>{busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Paper trade 1</Button>}
         </div>
       ) : (
         <div className="text-xs text-muted-foreground">{s.contractNote ?? "No contract suggestion."}</div>
       )}
+      {s.paper && (
+        <div className="text-xs" data-testid="paper">
+          <b>Paper trade:</b>{" "}
+          {s.paper.busy ? "placing the order…" : s.paper.error ? <span className="text-red-500">{s.paper.error}</span> : s.paper.sell !== undefined ? (
+            <>bought {s.paper.qty} at {usd(s.paper.buy!)}, sold at {usd(s.paper.sell)} → <b className={(s.paper.pnl ?? 0) >= 0 ? "text-green-500" : "text-red-500"}>{money(s.paper.pnl ?? 0)}</b></>
+          ) : s.paper.buy !== undefined ? <>bought {s.paper.qty} at {usd(s.paper.buy)} · sells automatically when the prediction ends</> : null}
+        </div>
+      )}
+      {s.fill && (
+        <div className="text-xs" data-testid="fill">
+          <b>Real fill check:</b>{" "}
+          {s.fill.realPnl !== null ? (
+            <>
+              buying at the ask ({usd(s.fill.entryAsk)}) and selling at the bid ({usd(s.fill.exitBid!)}) → <b className={s.fill.realPnl >= 0 ? "text-green-500" : "text-red-500"}>{money(s.fill.realPnl)}</b> per contract.
+              <span className="text-muted-foreground"> At the mid price it was {money(s.fill.midPnl ?? 0)}, so the bid/ask gap cost ${Math.max(0, Math.round((s.fill.midPnl ?? 0) - s.fill.realPnl))}{s.fill.estPnl !== null ? `; the app estimated ${money(s.fill.estPnl)}` : ""}.</span>
+            </>
+          ) : <span className="text-muted-foreground">not available ({s.fill.note}).</span>}
+        </div>
+      )}
     </div>
+  );
+};
+
+const RowsTable = ({ title, rows }: { title: string; rows: ReportRow[] }) =>
+  rows.length ? (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      <Table>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.key}>
+              <TableCell className="py-1">{r.label}</TableCell>
+              <TableCell className="py-1 text-right tabular-nums">{r.wins} of {r.n}</TableCell>
+              <TableCell className={`py-1 text-right tabular-nums ${r.hitRate > r.baseline ? "text-green-500" : r.hitRate < r.baseline ? "text-red-500" : ""}`}>{Math.round(r.hitRate * 100)}%</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  ) : null;
+
+/** How a week's predictions did, with plain notes. */
+const WeeklyCard = ({ signals, now }: { signals: OptionSignal[]; now: number }) => {
+  const [back, setBack] = useState(0);
+  const r = weeklyReport(signals, weekStart(now, back));
+  const decided = r.wins + r.losses + r.expired;
+  return (
+    <Card data-testid="weekly">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+          <span>Weekly report card · {r.label}</span>
+          <span className="flex flex-wrap gap-1">
+            {["This week", "Last week", "2 weeks ago", "3 weeks ago"].map((l, i) => (
+              <Button key={l} size="sm" variant={back === i ? "default" : "outline"} className="h-7" onClick={() => setBack(i)}>{l}</Button>
+            ))}
+            <Button size="sm" variant="outline" className="h-7" onClick={async () => { try { await navigator.clipboard.writeText(weeklyText(r)); toast.success("Copied"); } catch { toast.error("Couldn't copy"); } }}><Copy className="mr-1 h-3 w-3" />Copy</Button>
+          </span>
+        </CardTitle>
+        <CardDescription>Same day and swing together, Monday to Sunday (New York time).</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid gap-3 text-sm sm:grid-cols-4">
+          <div className="rounded-md border p-3"><div className="text-muted-foreground">Hit target first</div><div className="text-xl font-bold" data-testid="weekly-rate">{decided ? `${r.wins} of ${decided} (${Math.round(r.hitRate * 100)}%)` : "—"}</div><div className="text-xs text-muted-foreground">{decided ? `random entry ≈ ${Math.round(r.baseline * 100)}%` : ""}</div></div>
+          <div className="rounded-md border p-3"><div className="text-muted-foreground">Hit stop / no move</div><div className="text-xl font-bold">{r.losses} / {r.expired}</div>{r.open ? <div className="text-xs text-muted-foreground">{r.open} still open</div> : null}</div>
+          <div className="rounded-md border p-3"><div className="text-muted-foreground">Real fills</div><div className={`text-xl font-bold ${r.fills.realPnl >= 0 ? "text-green-500" : "text-red-500"}`}>{r.fills.n ? money(r.fills.realPnl) : "—"}</div><div className="text-xs text-muted-foreground">{r.fills.n ? `${r.fills.n} checked · per contract` : "none checked yet"}</div></div>
+          <div className="rounded-md border p-3"><div className="text-muted-foreground">Paper trades</div><div className={`text-xl font-bold ${r.paper.pnl >= 0 ? "text-green-500" : "text-red-500"}`}>{r.paper.n ? money(r.paper.pnl) : "—"}</div><div className="text-xs text-muted-foreground">{r.paper.n ? `${r.paper.wins} of ${r.paper.n} made money` : "none closed"}</div></div>
+        </div>
+        <ul className="list-disc space-y-1 pl-5 text-sm" data-testid="weekly-notes">
+          {r.notes.map((n) => <li key={n}>{n}</li>)}
+        </ul>
+        {decided > 0 && (
+          <div className="grid gap-4 md:grid-cols-3">
+            <RowsTable title="By stock" rows={r.bySymbol} />
+            <RowsTable title="By pattern" rows={r.byPattern.slice(0, 8)} />
+            <RowsTable title="Same day / swing · calls / puts" rows={[...r.byMode, ...r.byDir]} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
 
@@ -290,6 +362,8 @@ const FILTER_LABELS: Array<[keyof ScanFilters, string, string]> = [
   ["volume", "Volume confirms", "Only when the signal candle traded more than 1.2x its normal volume for that time of day."],
   ["news", "Skip big news", "No same-day trades from 30 min before to 60 min after CPI, jobs, Fed and similar; no Fed-day afternoons."],
   ["earnings", "Avoid earnings", "No trades right after a report or across one; swing options expire before the next report when possible."],
+  ["pricey", "Skip pricey options", "Skip when options cost a lot more than the stock's real moves justify (priced for 25%+ bigger moves than the stock has been making). Swing trades use the cheaper spread instead."],
+  ["payoff", "Option math must pay", "Skip when the option's estimated gain at the target, times the chance, doesn't beat its estimated loss at the stop."],
 ];
 
 /** Predictions for TSLA, SPY, AAPL, NVDA and QQQ options: same-day and swing. */
@@ -438,6 +512,20 @@ const OptionsSignals = () => {
             </label>
             <span className="text-xs text-muted-foreground">Only applies when the score proved itself on unseen data (see each tab).</span>
           </div>
+          <div className="flex flex-wrap items-center gap-4 rounded-md border p-3 text-sm" data-testid="auto-paper">
+            <div className="flex items-center gap-2">
+              <Switch id="auto-paper" checked={snap.autoPaper.on} onCheckedChange={(v) => setOptionAutoPaper({ on: v })} />
+              <Label htmlFor="auto-paper">Paper trade every prediction automatically</Label>
+            </div>
+            <label className="flex items-center gap-2">Contracts
+              <Input type="number" min={1} max={10} className="h-8 w-20" value={snap.autoPaper.qty} onChange={(e) => setOptionAutoPaper({ qty: Number(e.target.value) || 1 })} />
+            </label>
+            <div className="flex items-center gap-2">
+              <Switch id="auto-paper-pays" checked={snap.autoPaper.onlyIfPays} onCheckedChange={(v) => setOptionAutoPaper({ onlyIfPays: v })} />
+              <Label htmlFor="auto-paper-pays">Only when the option math pays</Label>
+            </div>
+            <span className="text-xs text-muted-foreground">Practice money only. Buys the suggested option when a prediction is made and sells it when the prediction ends. Works while this app is open.</span>
+          </div>
           {snap.paused.length > 0 && (
             <div className="space-y-1 rounded-md border border-amber-500/50 p-3 text-sm" data-testid="paused">
               <p className="font-medium text-amber-500">Paused patterns (losing live)</p>
@@ -452,6 +540,8 @@ const OptionsSignals = () => {
           <p className="text-xs text-muted-foreground">Options can lose their whole cost quickly, especially same-day ones. A "WIN" means the stock reached the target first; the dollar figures are estimates.</p>
         </CardContent>
       </Card>
+
+      <WeeklyCard signals={snap.signals} now={now} />
 
       <Tabs defaultValue="sameday" className="space-y-4">
         <TabsList className="grid w-full max-w-md grid-cols-2">
