@@ -505,7 +505,7 @@ export function predictMove(symbol: string, bars: Bar[], board: MoveBoard | null
  * same day: candles that start at or after `at` and end by `until`.
  * swing: the next `horizon` daily candles after the signal day (`at` = that day's candle time).
  */
-export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "target" | "stop" | "mode" | "entry"> & { partial?: number }, bars: Bar[], now: number): { o: MoveOutcome; exit: number; planR: number | null } | null {
+export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "target" | "stop" | "mode" | "entry"> & { partial?: number }, bars: Bar[], now: number): { o: MoveOutcome; exit: number; planR: number | null; hitAt: number } | null {
   const up = p.dir === "up";
   const spec = MODES[p.mode];
   const window = spec.mode === "sameday"
@@ -515,6 +515,8 @@ export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "ta
   const T = Math.abs(p.target - p.entry);
   let o: MoveOutcome | null = null;
   let exit = 0;
+  /** When the result happened: close of the candle that hit the target or stop. */
+  let hitAt = 0;
   let plan: number | null = p.partial === undefined || !(R > 0) ? 0 : null;
   let tookPartial = false;
   let bestFav = 0;
@@ -525,9 +527,11 @@ export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "ta
     if (!o && hitS) {
       o = "loss";
       exit = p.stop;
+      hitAt = b.time + spec.tfMs;
     } else if (!o && hitT) {
       o = "win";
       exit = p.target;
+      hitAt = b.time + spec.tfMs;
     }
     if (plan === null && p.partial !== undefined) {
       const hitP = up ? b.high >= p.partial : b.low <= p.partial;
@@ -549,11 +553,12 @@ export function resolveMove(p: Pick<MovePrediction, "dir" | "at" | "until" | "ta
   }
   const complete = spec.mode === "sameday" ? now >= p.until && window.length > 0 : window.length >= spec.horizon;
   if (!o && !complete) return null;
-  if (plan === null && !complete) return { o: o!, exit, planR: null };
+  if (plan === null && !complete) return { o: o!, exit, planR: null, hitAt };
   if (plan === null) {
     const last = window[window.length - 1].close;
     const moveR = ((last - p.entry) * (up ? 1 : -1)) / R;
     plan = tookPartial ? (0.5 * Math.abs(p.partial! - p.entry)) / R + 0.5 * Math.max(0, moveR) : Math.max(-1, moveR);
   }
-  return o ? { o, exit, planR: p.partial === undefined ? null : plan } : { o: "expired", exit: window[window.length - 1].close, planR: p.partial === undefined ? null : plan };
+  const endAt = window[window.length - 1].time + spec.tfMs;
+  return o ? { o, exit, planR: p.partial === undefined ? null : plan, hitAt } : { o: "expired", exit: window[window.length - 1].close, planR: p.partial === undefined ? null : plan, hitAt: endAt };
 }

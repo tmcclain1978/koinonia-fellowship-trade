@@ -7,13 +7,21 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { normalizeBars } from "@/lib/marketData/history";
-import { OptionsScanner, type OptionSignal, optionKey } from "@/lib/options/scanner";
+import { OptionsScanner, type OptionSignal, bestExpectedValue, optionKey } from "@/lib/options/scanner";
 import type { ChainRow, ContractPick } from "@/lib/options/contractPicker";
 import type { Bar } from "../../supabase/functions/_shared/patterns/detect";
 import type { Mode, MoveOutcome } from "../../supabase/functions/_shared/patterns/moves";
 import { isRegularSessionTime } from "../../supabase/functions/_shared/candle-buckets";
+import { etClock } from "../../supabase/functions/_shared/bot/session";
 
 const REAL = new Set(["schwab", "polygon", "alphavantage"]);
+
+/** Everything extra about a prediction, kept in its `context` column. */
+function contextJson(s: OptionSignal): Json {
+  const paper = s.paper ? (({ busy: _busy, ...rest }) => rest)(s.paper) : undefined;
+  const extra = { ...(s.chainInfo ? { chain: s.chainInfo } : {}), ...(s.score !== undefined ? { score: s.score } : {}), ...(s.fill ? { fill: s.fill } : {}), ...(paper ? { paper } : {}) };
+  return (s.context || Object.keys(extra).length ? { ...(s.context ?? {}), ...extra } : null) as unknown as Json;
+}
 const DAY = 86_400_000;
 
 async function candles(symbol: string, interval: string, startMs?: number): Promise<Bar[]> {
@@ -78,7 +86,7 @@ export const optionsScanner = new OptionsScanner({
         evidence: s.evidence as unknown as Json,
         contract: (s.contract ?? (s.contractNote ? { note: s.contractNote } : null)) as unknown as Json,
         partial_price: s.partial ?? null,
-        context: (s.context || s.chainInfo || s.score !== undefined ? { ...(s.context ?? {}), ...(s.chainInfo ? { chain: s.chainInfo } : {}), ...(s.score !== undefined ? { score: s.score } : {}) } : null) as unknown as Json,
+        context: contextJson(s),
       },
       { onConflict: "user_id,symbol,mode,signal_at", ignoreDuplicates: true },
     );
@@ -95,6 +103,18 @@ export const optionsScanner = new OptionsScanner({
       .eq("mode", s.mode)
       .eq("signal_at", new Date(s.at).toISOString());
     if (error) console.warn("[options] result save failed:", error.message);
+  },
+  saveExtra: async (s) => {
+    const uid = (await supabase.auth.getSession()).data.session?.user.id;
+    if (!uid) return;
+    const { error } = await supabase
+      .from("options_predictions")
+      .update({ context: contextJson(s) })
+      .eq("user_id", uid)
+      .eq("symbol", s.symbol)
+      .eq("mode", s.mode)
+      .eq("signal_at", new Date(s.at).toISOString());
+    if (error) console.warn("[options] save failed:", error.message);
   },
 });
 
@@ -156,6 +176,8 @@ async function loadRecent(): Promise<OptionSignal[]> {
       ...(r.context ? { context: r.context as OptionSignal["context"] } : {}),
       ...((r.context as { chain?: OptionSignal["chainInfo"] } | null)?.chain ? { chainInfo: (r.context as { chain: OptionSignal["chainInfo"] }).chain } : {}),
       ...(typeof (r.context as { score?: number } | null)?.score === "number" ? { score: (r.context as { score: number }).score } : {}),
+      ...((r.context as { fill?: OptionSignal["fill"] } | null)?.fill ? { fill: (r.context as { fill: OptionSignal["fill"] }).fill } : {}),
+      ...((r.context as { paper?: OptionSignal["paper"] } | null)?.paper ? { paper: (r.context as { paper: OptionSignal["paper"] }).paper } : {}),
     };
     s.key = optionKey(s);
     return s;
@@ -190,6 +212,80 @@ export function setOptionScoring(v: Parameters<typeof optionsScanner.setScoring>
   } catch {
     /* private mode */
   }
+}
+
+try {
+  const savedAuto = localStorage.getItem("options-signals:auto-paper");
+  if (savedAuto) optionsScanner.setAutoPaper(JSON.parse(savedAuto));
+} catch {
+  /* private mode */
+}
+export function setOptionAutoPaper(v: Parameters<typeof optionsScanner.setAutoPaper>[0]) {
+  optionsScanner.setAutoPaper(v);
+  try {
+    localStorage.setItem("options-signals:auto-paper", JSON.stringify(optionsScanner.getSnapshot().autoPaper));
+  } catch {
+    /* private mode */
+  }
+}
+
+/* ---- paper trades (practice money only) ---------------------------------- */
+async function paperOrder(s: OptionSignal, action: "buy" | "sell", qty: number): Promise<number> {
+  const c = s.contract!;
+  const { data, error } = await supabase.functions.invoke("place-paper-order", {
+    body: { symbol: s.symbol, action, quantity: qty, strike: c.strike, side: c.side, expiration: c.expiration, orderType: "market", notes: `Options Signals${action === "sell" ? " (closed: prediction ended)" : ""}: ${s.reason}` },
+  });
+  if (error || data?.error) throw new Error(data?.error || error?.message || "Paper order failed");
+  const price = Number(data?.fillPrice);
+  if (!(price > 0)) throw new Error("Paper order didn't fill");
+  return price;
+}
+
+/** Buy the suggested option with practice money (by hand or automatically). */
+export async function paperBuy(s: OptionSignal, qty = 1) {
+  optionsScanner.markPaper(s.key, { qty, busy: true });
+  try {
+    const buy = await paperOrder(s, "buy", qty);
+    optionsScanner.markPaper(s.key, { qty, buy });
+    return buy;
+  } catch (e) {
+    optionsScanner.markPaper(s.key, { qty, error: (e as Error).message });
+    throw e;
+  }
+}
+
+// Automatic paper trades: buy when a prediction is made...
+optionsScanner.onSignal((s) => {
+  const a = optionsScanner.getSnapshot().autoPaper;
+  if (!a.on || !s.contract) return;
+  if (a.onlyIfPays && bestExpectedValue(s.chance, s.contract) <= 0) return;
+  void paperBuy(s, a.qty).then(
+    () => toast.success("Paper trade placed", { description: `Bought ${a.qty} ${s.contract!.label} (practice money)` }),
+    (e) => toast.error("Auto paper trade failed", { description: (e as Error).message }),
+  );
+});
+// ...and sell when it ends (target, stop or deadline), whether it was bought by hand or automatically.
+optionsScanner.onResult((s) => {
+  const p = s.paper;
+  if (!p?.buy || p.sell !== undefined || !s.contract) return;
+  optionsScanner.markPaper(s.key, { ...p, busy: true });
+  void paperOrder(s, "sell", p.qty).then(
+    (sell) => optionsScanner.markPaper(s.key, { qty: p.qty, buy: p.buy, sell, pnl: Math.round((sell - p.buy!) * 100 * p.qty) }),
+    (e) => optionsScanner.markPaper(s.key, { ...p, error: `Couldn't close: ${(e as Error).message}` }),
+  );
+});
+
+// Friday after the close: the weekly report card is ready.
+function weeklyReminder() {
+  const c = etClock(Date.now());
+  if (c.weekday !== "Fri" || c.minute < 16 * 60 + 15) return;
+  try {
+    if (localStorage.getItem("options-signals:weekly-shown") === c.date) return;
+    localStorage.setItem("options-signals:weekly-shown", c.date);
+  } catch {
+    return;
+  }
+  if (optionsScanner.getSnapshot().signals.some((s) => Date.now() - s.at < 7 * DAY)) toast("Your weekly report card is ready", { description: "Open Options Signals to see how this week's predictions did." });
 }
 
 export function setOptionLimits(l: Parameters<typeof optionsScanner.setLimits>[0]) {
@@ -254,6 +350,8 @@ export function useOptionsScanner() {
     if (seeded) return;
     seeded = true;
     void loadRecent().then((l) => optionsScanner.seed(l));
+    weeklyReminder();
+    setInterval(weeklyReminder, 60_000);
   }, []);
   return snap;
 }
