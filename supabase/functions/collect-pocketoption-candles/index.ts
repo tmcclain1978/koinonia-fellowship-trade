@@ -8,7 +8,7 @@
 // for the 1-minute candles since the newest one already saved (first run:
 // the last `FIRST_RUN_DAYS` days), and saves them, skipping any already there.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isCronCall, isInternalCall, getAuthedUser } from "../_shared/internal-auth.ts";
 import { safeDecrypt } from "../_shared/encryption.ts";
 import { type Candle, endpointUrl, endpointsFor, parseSsid } from "../_shared/pocketoption-protocol.ts";
