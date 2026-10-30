@@ -53,7 +53,8 @@ function endpointList(isDemo: 0 | 1): string[] {
   return endpointsFor(isDemo).map(endpointUrl);
 }
 
-type Admin = ReturnType<typeof createClient>;
+// deno-lint-ignore no-explicit-any
+type Admin = any;
 
 async function collectUser(admin: Admin, userId: string, assets: string[], deadline: number) {
   const results: Array<{ asset: string; saved: number; error?: string }> = [];

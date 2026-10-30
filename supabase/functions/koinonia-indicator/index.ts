@@ -150,7 +150,7 @@ serve(async (req) => {
               }
             }
           } catch (e) {
-            console.log('[koinonia] FMP quote error:', e?.(message as any) ?? e);
+            console.log('[koinonia] FMP quote error:', (e as any)?.message ?? e);
           }
         }
 
@@ -182,7 +182,7 @@ serve(async (req) => {
             };
           }
         } catch (e) {
-          console.log('[koinonia] Schwab quote error:', e?.(message as any) ?? e);
+          console.log('[koinonia] Schwab quote error:', (e as any)?.message ?? e);
         }
 
         return null;
@@ -288,7 +288,7 @@ serve(async (req) => {
           }
         }
       } catch (e) {
-        console.log('[koinonia] fetch-schwab-candles failed:', e?.(message as any) ?? e);
+        console.log('[koinonia] fetch-schwab-candles failed:', (e as any)?.message ?? e);
       }
 
       // 2) FMP historical candles (better than mock, and usually not rate-limited here)
@@ -321,7 +321,7 @@ serve(async (req) => {
             }
           }
         } catch (e) {
-          console.log('[koinonia] FMP historical error:', e?.(message as any) ?? e);
+          console.log('[koinonia] FMP historical error:', (e as any)?.message ?? e);
         }
       }
 
@@ -367,7 +367,7 @@ serve(async (req) => {
               }
             }
           } catch (e) {
-            console.log('[koinonia] Polygon candles error:', e?.(message as any) ?? e);
+            console.log('[koinonia] Polygon candles error:', (e as any)?.message ?? e);
           }
         }
       }
